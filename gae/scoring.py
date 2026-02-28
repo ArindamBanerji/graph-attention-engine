@@ -64,10 +64,10 @@ class ScoringResult:
 
 
 # ---------------------------------------------------------------------------
-# score_alert
+# score_entity  (score_alert is a backward-compatible alias)
 # ---------------------------------------------------------------------------
 
-def score_alert(
+def score_entity(
     f: np.ndarray,
     W: np.ndarray,
     actions: list[str],
@@ -76,7 +76,9 @@ def score_alert(
     """
     Tier 2 scoring matrix — Eq. 4 from the math blog.
 
-    Computes:
+    Computes the action probability distribution for one entity given its
+    factor vector and the current weight matrix:
+
         raw   = f · Wᵀ / τ                                 [Eq. 4, numerator]
         probs = softmax(raw)                                [Eq. 4, softmax]
 
@@ -85,7 +87,7 @@ def score_alert(
     Parameters
     ----------
     f : np.ndarray, shape (1, n_f)
-        Factor vector from Tier 1 (assemble_factor_vector).
+        Factor vector for the entity, from Tier 1 (assemble_factor_vector).
     W : np.ndarray, shape (n_a, n_f)
         Weight matrix; rows = actions, columns = factors.
     actions : list[str]
@@ -152,3 +154,7 @@ def score_alert(
         factor_vector=f,
         temperature=tau,
     )
+
+
+# Backward-compatible alias — existing callers using score_alert continue to work.
+score_alert = score_entity

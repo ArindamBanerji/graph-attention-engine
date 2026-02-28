@@ -44,21 +44,25 @@ class FactorComputer(Protocol):
     Reference: docs/gae_design_v5.md §5.1.
     """
 
-    async def compute(self, node_id: str) -> dict[str, float]:
+    async def compute(self, entity_id: str, context: Any = None) -> float:
         """
-        Fetch raw scalar properties for *node_id*.
+        Compute a normalized score ∈ [0, 1] for *entity_id*.
+
+        Each FactorComputer returns a single scalar — one element of the
+        factor vector f that is assembled by assemble_factor_vector().
 
         Parameters
         ----------
-        node_id : str
-            Opaque node identifier.
+        entity_id : str
+            Opaque identifier for the graph entity being scored.
+        context : Any, default None
+            Optional caller-provided context (e.g. alert metadata).
+            Implementations may ignore this argument.
 
         Returns
         -------
-        dict[str, float]
-            Mapping of property name → scalar value.
-            Keys must be a superset of all required properties declared in
-            the relevant SchemaContract.
+        float
+            Normalized factor score ∈ [0, 1].
         """
         ...
 

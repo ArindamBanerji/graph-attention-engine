@@ -120,8 +120,8 @@ class PendingValidation:
 
     Attributes
     ----------
-    alert_id : str
-        Identifier for the alert that triggered this decision.
+    entity_id : str
+        Identifier for the entity that triggered this decision.
     action : str
         Action name taken.
     action_index : int
@@ -134,7 +134,7 @@ class PendingValidation:
         Days to wait before applying learning (default 14).
     """
 
-    alert_id: str
+    entity_id: str
     action: str
     action_index: int
     factor_vector: np.ndarray
@@ -338,7 +338,7 @@ class LearningState:
         # C3: Autonomous decisions enter pending validation — no immediate learning
         if decision_source == "autonomous":
             self.pending_validations.append(PendingValidation(
-                alert_id=f"auto-{self.decision_count}",
+                entity_id=f"auto-{self.decision_count}",
                 action=action_name,
                 action_index=action_index,
                 factor_vector=f.copy(),
@@ -557,7 +557,7 @@ class LearningState:
             if (now - pv.auto_decided_at) > pv.validation_window_days * 86400.0
         ]
         for pv in expired:
-            r_t = -1 if incident_checker(pv.alert_id) else +1
+            r_t = -1 if incident_checker(pv.entity_id) else +1
             self.update(
                 action_index=pv.action_index,
                 action_name=pv.action,

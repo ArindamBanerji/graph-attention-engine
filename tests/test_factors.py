@@ -77,8 +77,8 @@ class TestFactorComputerProtocol:
         """FactorComputer is @runtime_checkable — we can isinstance-check it."""
 
         class MyComputer:
-            async def compute(self, node_id: str) -> dict:
-                return {"a": 1.0}
+            async def compute(self, entity_id: str, context=None) -> float:
+                return 1.0
 
         assert isinstance(MyComputer(), FactorComputer)
 

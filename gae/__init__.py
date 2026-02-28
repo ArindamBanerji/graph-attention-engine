@@ -13,7 +13,7 @@ __version__ = "0.1.0"
 from gae.primitives import scaled_dot_product_attention, softmax
 
 # Tier 2 — scoring matrix (Eq. 4)
-from gae.scoring import ScoringResult, score_alert
+from gae.scoring import ScoringResult, score_entity, score_alert  # score_alert is alias
 
 # Tier 3 — weight learning (Eq. 4b, 4c)
 from gae.learning import (
@@ -53,7 +53,8 @@ __all__ = [
     "softmax",
     # scoring
     "ScoringResult",
-    "score_alert",
+    "score_entity",
+    "score_alert",      # backward-compatible alias for score_entity
     # learning
     "ALPHA",
     "EPSILON",
