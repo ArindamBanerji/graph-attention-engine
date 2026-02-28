@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.dakshineshwari.net)",
+      "Bash(pip install:*)",
+      "Bash(python:*)"
+    ]
+  }
+}
