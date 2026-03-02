@@ -34,7 +34,7 @@ Hardening:
 
 Default values are set for NO-OP behaviour:
     discount_strength = 0.0  → A1 inactive
-    epsilon_vector    = None → uniform EPSILON across all factors
+    epsilon_vector    = None → built from profile via build_epsilon_vector()
     dimension_metadata = []  → no provisional dimensions tracked
     pending_validations = [] → no deferred validations
 
@@ -48,6 +48,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+
+from gae.calibration import CalibrationProfile
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +217,9 @@ class LearningState:
         Number of factors (columns of W). Grows via expand_weight_matrix().
     factor_names : list[str]
         Factor names in column order. len == n_factors at all times.
+    profile : CalibrationProfile
+        Domain-configurable hyperparameters (learning rate, penalty ratio,
+        temperature, per-factor decay classes). Required.
     decision_count : int
         Total completed (non-deferred) update steps.
     history : list[WeightUpdate]
@@ -226,7 +231,7 @@ class LearningState:
         0.0 = inactive (NO-OP default); 0.5 = design spec value.
     epsilon_vector : np.ndarray or None, shape (n_f,)
         A2 hardening: per-factor decay rates.
-        None → filled with uniform EPSILON in __post_init__.
+        None → built from profile via build_epsilon_vector() in __post_init__.
     dimension_metadata : list[DimensionMetadata]
         A4 hardening: lifecycle records for all non-original dimensions.
         [] = no provisional dimensions tracked (NO-OP default).
@@ -239,6 +244,7 @@ class LearningState:
     n_actions: int
     n_factors: int
     factor_names: list[str]
+    profile: CalibrationProfile
     decision_count: int = 0
     history: list[WeightUpdate] = field(default_factory=list)
     expansion_history: list[dict[str, Any]] = field(default_factory=list)
@@ -263,11 +269,48 @@ class LearningState:
             f"!= n_factors ({self.n_factors})"
         )
         if self.epsilon_vector is None:
-            self.epsilon_vector = np.full(self.n_factors, EPSILON, dtype=np.float64)
+            self.epsilon_vector = self.build_epsilon_vector()
         assert self.epsilon_vector.shape == (self.n_factors,), (
             f"epsilon_vector.shape {self.epsilon_vector.shape} "
             f"!= (n_factors={self.n_factors},)"
         )
+
+    # ------------------------------------------------------------------
+    # build_epsilon_vector  — A2 per-factor decay (Eq. 4c)
+    # ------------------------------------------------------------------
+
+    def build_epsilon_vector(self) -> np.ndarray:
+        """Build per-factor decay vector from profile.
+
+        Implements A2 hardening: maps each scoring dimension to its decay class,
+        then resolves the per-class rate from profile.decay_class_rates.
+
+        For each factor (by index in factor_names):
+          1. Look up decay class from profile.factor_decay_classes (default: "standard")
+          2. Look up rate from profile.decay_class_rates
+          3. Set epsilon[i] = rate
+
+        Factors absent from profile.factor_decay_classes receive the "standard" class.
+        Decay classes absent from profile.decay_class_rates fall back to
+        profile.epsilon_default.
+
+        Reference: docs/gae_design_v5.md §8.4 (A2 hardening); blog Eq. 4c.
+
+        Returns
+        -------
+        np.ndarray, shape (n_factors,)
+            Per-factor ε values for use in Eq. 4c decay.
+        """
+        eps = np.empty(self.n_factors, dtype=np.float64)
+        for i, name in enumerate(self.factor_names):
+            decay_class = self.profile.factor_decay_classes.get(name, "standard")
+            eps[i] = self.profile.decay_class_rates.get(
+                decay_class, self.profile.epsilon_default
+            )
+        assert eps.shape == (self.n_factors,), (
+            f"build_epsilon_vector: result shape {eps.shape} != ({self.n_factors},)"
+        )
+        return eps
 
     # ------------------------------------------------------------------
     # update  — Eq. 4b + Eq. 4c
@@ -290,7 +333,7 @@ class LearningState:
             Eq. 4c: W        ← (1 − ε_vector) · W
             Clamp:  W        ← clip(W, −W_CLAMP, +W_CLAMP)
 
-        where δ(t) = 1.0 if outcome == +1, else LAMBDA_NEG (20 : 1 asymmetry).
+        where δ(t) = 1.0 if outcome == +1, else profile.penalty_ratio.
 
         Reference: docs/gae_design_v5.md §8.2; blog Eq. 4b, 4c.
 
@@ -348,14 +391,14 @@ class LearningState:
 
         W_before = self.W.copy()
 
-        # Eq. 4b — asymmetric δ(t): correct=1.0, incorrect=LAMBDA_NEG
-        delta_t = 1.0 if outcome == +1 else LAMBDA_NEG
+        # Eq. 4b — asymmetric δ(t): correct=1.0, incorrect=profile.penalty_ratio
+        delta_t = 1.0 if outcome == +1 else self.profile.penalty_ratio
 
         # A1: Confidence-discounted learning rate (confirmation bias mitigation)
-        alpha = ALPHA
+        alpha = self.profile.learning_rate
         if outcome == +1 and self.discount_strength > 0.0 and confidence_at_decision is not None:
             discount = 1.0 - self.discount_strength * confidence_at_decision
-            alpha = ALPHA * max(discount, 0.05)  # floor at 5% of base rate
+            alpha = self.profile.learning_rate * max(discount, 0.05)  # floor at 5%
 
         # Eq. 4b — compute update vector for action row, shape (n_f,)
         update_vector = alpha * outcome * f.flatten() * delta_t

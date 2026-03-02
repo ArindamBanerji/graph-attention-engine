@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from gae.calibration import CalibrationProfile
 from gae.convergence import (
     ACCURACY_THRESHOLD,
     STABILITY_THRESHOLD,
@@ -22,7 +23,8 @@ F = np.array([[0.9, 0.3, 0.1, 0.2, 0.8, 0.7]])
 
 
 def make_state(**kw) -> LearningState:
-    d = dict(W=W_INIT.copy(), n_actions=4, n_factors=6, factor_names=NAMES[:])
+    d = dict(W=W_INIT.copy(), n_actions=4, n_factors=6, factor_names=NAMES[:],
+             profile=CalibrationProfile())
     d.update(kw)
     return LearningState(**d)
 
@@ -149,7 +151,8 @@ class TestConvergenceTaskVerification:
         ])
         f = np.array([[0.9, 0.3, 0.1, 0.2, 0.8, 0.7]])
         names = ["travel", "asset", "threat", "time", "device", "pattern"]
-        state = LearningState(W=W.copy(), n_actions=4, n_factors=6, factor_names=names)
+        state = LearningState(W=W.copy(), n_actions=4, n_factors=6, factor_names=names,
+                              profile=CalibrationProfile())
         state.update(0, "fp_close", +1, f)
         state.update(0, "fp_close", -1, f)
         state.expand_weight_matrix("new_dim")

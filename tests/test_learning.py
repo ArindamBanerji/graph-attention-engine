@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from gae.calibration import CalibrationProfile
 from gae.learning import (
     ALPHA,
     EPSILON,
@@ -37,6 +38,7 @@ def make_state(**kwargs) -> LearningState:
         n_actions=4,
         n_factors=6,
         factor_names=FACTOR_NAMES[:],
+        profile=CalibrationProfile(),
     )
     defaults.update(kwargs)
     return LearningState(**defaults)
@@ -68,12 +70,12 @@ class TestLearningStateConstruction:
     def test_shape_mismatch_raises(self):
         with pytest.raises(AssertionError):
             LearningState(W=W_INIT.copy(), n_actions=3, n_factors=6,
-                          factor_names=FACTOR_NAMES)
+                          factor_names=FACTOR_NAMES, profile=CalibrationProfile())
 
     def test_wrong_factor_names_length_raises(self):
         with pytest.raises(AssertionError):
             LearningState(W=W_INIT.copy(), n_actions=4, n_factors=6,
-                          factor_names=["a", "b"])
+                          factor_names=["a", "b"], profile=CalibrationProfile())
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +278,8 @@ def test_task_verification_smoke():
     f = np.array([[0.9, 0.3, 0.1, 0.2, 0.8, 0.7]])
     names = ["travel", "asset", "threat", "time", "device", "pattern"]
 
-    state = LearningState(W=W.copy(), n_actions=4, n_factors=6, factor_names=names)
+    state = LearningState(W=W.copy(), n_actions=4, n_factors=6, factor_names=names,
+                          profile=CalibrationProfile())
     u1 = state.update(0, "fp_close", +1, f)
     u2 = state.update(0, "fp_close", -1, f)
     ratio = np.linalg.norm(u2.delta_applied) / np.linalg.norm(u1.delta_applied)

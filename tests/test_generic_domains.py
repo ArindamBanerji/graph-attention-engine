@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from gae.calibration import CalibrationProfile
 from gae.contracts import PropertySpec, SchemaContract
 from gae.convergence import get_convergence_metrics
 from gae.factors import FactorComputer, assemble_factor_vector
@@ -53,7 +54,7 @@ def _make_state(
     if names is None:
         names = [f"factor_{i}" for i in range(n_factors)]
     return LearningState(W=W, n_actions=n_actions, n_factors=n_factors,
-                         factor_names=names)
+                         factor_names=names, profile=CalibrationProfile())
 
 
 def _make_f(n_factors: int, seed: int = 7) -> np.ndarray:
@@ -85,6 +86,7 @@ def _load_learning_state(path: Path) -> LearningState:
         n_actions=data["n_actions"],
         n_factors=data["n_factors"],
         factor_names=list(data["factor_names"]),
+        profile=CalibrationProfile(),
         decision_count=data["decision_count"],
         discount_strength=data["discount_strength"],
         epsilon_vector=np.array(data["epsilon_vector"], dtype=np.float64),
@@ -210,10 +212,12 @@ class TestLearningAcrossDomains:
                 # Two separate states, identical initial W
                 state_pos = LearningState(W=W.copy(), n_actions=n_actions,
                                           n_factors=n_factors,
-                                          factor_names=[f"f{i}" for i in range(n_factors)])
+                                          factor_names=[f"f{i}" for i in range(n_factors)],
+                                          profile=CalibrationProfile())
                 state_neg = LearningState(W=W.copy(), n_actions=n_actions,
                                           n_factors=n_factors,
-                                          factor_names=[f"f{i}" for i in range(n_factors)])
+                                          factor_names=[f"f{i}" for i in range(n_factors)],
+                                          profile=CalibrationProfile())
 
                 u_correct = state_pos.update(0, "action_0", +1, f)
                 u_incorrect = state_neg.update(0, "action_0", -1, f)
@@ -269,6 +273,7 @@ class TestConvergenceScenarios:
             n_actions=3,
             n_factors=4,
             factor_names=[f"factor_{i}" for i in range(4)],
+            profile=CalibrationProfile(),
             epsilon_vector=np.full(4, 0.05),
         )
         f = np.array([[0.6, 0.8, 0.4, 0.7]])

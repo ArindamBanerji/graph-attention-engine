@@ -1,21 +1,26 @@
-# Graph Attention Engine — Design & Architecture v5
+# Graph Attention Engine — Design & Architecture v7
 
-**Date:** February 28, 2026
-**Version:** 5.0 (v4.0 restructured for standalone three-repo architecture)
-**Status:** Design complete. Standalone library: `pip install graph-attention-engine` (Apache 2.0)
+**Date:** March 1, 2026
+**Version:** 7.0 (v5 + v6 addendum consolidated into single document)
+**Status:** v4.1 tagged. Planning v4.5 GAE preamble + v5.0 GAE broadening.
 **Repository:** graph-attention-engine (standalone, numpy-only)
-**Scope:** v4.1 (Tiers 1-3 foundation), v5.0 (completion + API hardening), v5.5 (Tiers 4-5 + open-source release)
+**Scope:** v4.1 (Tiers 1-3 foundation), v4.5 (CalibrationProfile preamble), v5.0 (completion + API hardening + evaluation), v5.5 (Tiers 4-5 + open-source release)
 **Companion repos:** ci-platform (UCL, agents, event bus, governance — v4.5+), soc-copilot (SOC domain — proprietary)
-**Inputs:** Math blog (published), CI 4.0 blog (published), technology scorecard & gap analysis, open-source impact analysis
+**Inputs:** Math blog (published), CI 4.0 blog (published), technology scorecard & gap analysis, open-source impact analysis, design_decisions_v1.md
 
-> **Changes from v4.0:**
-> (1) **Three-repo architecture.** GAE is a standalone pip-installable library with ZERO external dependencies (numpy only). Platform infrastructure (UCL, agents, event bus, governance) moves to ci-platform repo. SOC domain moves to soc-copilot repo.
-> (2) **Demand-side contracts only.** SchemaContract, EmbeddingContract, PropertySpec stay in GAE (pure Python declarations). Supply-side governance (DomainOntology, SchemaValidator, drift detection) moves to ci-platform.
-> (3) **Event types, not event bus.** GAE defines typed event dataclasses. The async event bus lives in ci-platform/copilot.
-> (4) **FactorComputer protocol only.** GAE defines the Protocol + `assemble_factor_vector()`. Async Neo4j orchestration lives in copilot/platform.
-> (5) **Tier 6 (Artifact Evolution) relocated** to ci-platform. GAE provides scoring primitives that evolution uses, but the pipeline itself is platform infrastructure.
-> (6) All `gae/` paths → `gae/` paths. This IS the standalone package.
-> (7) Prompt sequence covers GAE repo only (GAE-0 through GAE-2a-protocol). SOC prompts in soc_copilot_design_v1.
+> **Changes from v5/v6:**
+> This document consolidates v5 (three-repo architecture, full tier specification) with the v6 addendum (CalibrationProfile, evaluation framework, domain schema protocol, institutional judgment metrics, ablation framework, EmbeddingProvider protocol). All v6 modifications are integrated inline — no separate addendum required.
+>
+> Key additions from v6:
+> (1) **CalibrationProfile.** All learning hyperparameters (α, λ_neg, τ, ε) move from hardcoded constants to a domain-configurable dataclass.
+> (2) **Three-layer decay design.** Domain schema declares decay classes → CalibrationProfile maps to rates → GAE learning loop consumes.
+> (3) **Evaluation framework.** EvaluationScenario, EvaluationReport, and run_evaluation() provide a shared evaluation format across EVAL-1, SEED-2, and B3 gate consumers.
+> (4) **Domain schema protocol.** DomainSchemaSpec creates a single source of truth for factor metadata.
+> (5) **Institutional judgment metrics.** Quantifies accumulated institutional judgment for CISO/CPO stakeholders.
+> (6) **Ablation framework.** Four baseline configs prove each architectural component's value.
+> (7) **EmbeddingProvider protocol.** Replaces PropertyEmbedder with a protocol supporting multiple embedding strategies.
+>
+> Unchanged from v5: §1-3 (foundations, requirements, equations), §4.1/4.3-4.6 (repo strategy except structure), §5 (causal architecture), §6 (Tier 1 factors), §10 (Tier 5 attention/discovery), §11 (Tier 6 artifact evolution).
 
 ---
 
@@ -871,11 +876,12 @@ P(action | alert) = softmax(f · Wᵀ / τ)
 f: factor vector (1 × n_factors), computed by Tier 1
 W: weight matrix (n_actions × n_factors), learned by Tier 3
 τ: temperature scalar, controls softmax sharpness
+    (v7: from CalibrationProfile if provided, else explicit τ param, else 0.25)
 """
 
 import numpy as np
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 @dataclass
 class ScoringResult:
@@ -894,14 +900,23 @@ def softmax(x: np.ndarray) -> np.ndarray:
 
 def score_alert(
     f: np.ndarray, W: np.ndarray,
-    actions: List[str], tau: float = 0.25
+    actions: List[str], tau: float = None,
+    profile: 'CalibrationProfile' = None
 ) -> ScoringResult:
     """
     Eq. 4: P(action | alert) = softmax(f · Wᵀ / τ)
 
+    Temperature resolution order:
+        1. Explicit tau parameter (if provided)
+        2. profile.temperature (if profile provided)
+        3. Default: 0.25
+
     Shape checks (from math blog):
         f (1 × n_factors) × Wᵀ (n_factors × n_actions) = (1 × n_actions)
     """
+    if tau is None:
+        tau = profile.temperature if profile else 0.25
+
     n_factors = f.shape[1]
     n_actions = W.shape[0]
 
@@ -955,6 +970,8 @@ Plus architectural hardening:
 - **A4:** Soft discovery expansion with accelerated decay (false discovery protection)
 - **C3:** Delayed outcome validation for autonomous decisions
 
+> **v7 change from v5:** All hardcoded constants (ALPHA, LAMBDA_NEG, EPSILON_DEFAULT) replaced by CalibrationProfile (§16). Module-level constants retained as documentation/fallback. LearningState constructor accepts `profile: CalibrationProfile`.
+
 ### 8.2 Core Interface
 
 ```python
@@ -962,7 +979,7 @@ Plus architectural hardening:
 """
 Tier 3: Hebbian Weight Updates — Eq. 4b, 4c from the math blog.
 
-Base parameters from math blog:
+v7: All parameters from CalibrationProfile (§16). Module constants for reference:
     α = 0.02           base learning rate
     λ_neg = 20.0       asymmetric penalty multiplier
     ε = 0.001          default decay rate (half-life ~693 decisions)
@@ -974,6 +991,9 @@ Hardening parameters (calibrated post-v5.0):
     autonomous_validation_window = 14  C3: days before autonomous outcome trusted
 """
 
+from .calibration import CalibrationProfile
+
+# Module-level constants: documentation + fallback. LearningState reads from profile.
 ALPHA = 0.02
 LAMBDA_NEG = 20.0
 EPSILON_DEFAULT = 0.001
@@ -1019,6 +1039,7 @@ class LearningState:
     n_actions: int
     n_factors: int
     factor_names: List[str]
+    profile: CalibrationProfile = field(default_factory=CalibrationProfile)
     decision_count: int = 0
     history: List[WeightUpdate] = field(default_factory=list)
     expansion_history: List[dict] = field(default_factory=list)
@@ -1026,14 +1047,23 @@ class LearningState:
     pending_validations: List[PendingValidation] = field(default_factory=list)
 
     # A2: Per-factor decay vector (one rate per factor)
-    epsilon_vector: np.ndarray = None  # shape (n_factors,), set from SchemaContracts
-
-    # A1: Confirmation bias discounting
-    discount_strength: float = 0.5
+    epsilon_vector: np.ndarray = None  # shape (n_factors,), built from CalibrationProfile
+    
+    # Factor decay class assignments (from domain schema or SchemaContracts)
+    factor_decay_classes: List[str] = None
 
     def __post_init__(self):
         if self.epsilon_vector is None:
-            self.epsilon_vector = np.full(self.n_factors, EPSILON_DEFAULT)
+            self.epsilon_vector = self._build_epsilon_vector()
+
+    def _build_epsilon_vector(self) -> np.ndarray:
+        """Map each factor's decay_class → ε via CalibrationProfile."""
+        if self.factor_decay_classes:
+            return np.array([
+                self.profile.get_decay_rate(dc) 
+                for dc in self.factor_decay_classes
+            ])
+        return np.full(self.n_factors, self.profile.get_decay_rate("standard"))
 
     def update(
         self,
@@ -1048,9 +1078,14 @@ class LearningState:
         Eq. 4b: W[a,:] ← W[a,:] + α_eff · r(t) · f(t) · δ(t)
         Eq. 4c: W *= (1 − ε_vector)
 
+        Reads from self.profile:
+          - profile.learning_rate (was ALPHA)
+          - profile.penalty_ratio (was LAMBDA_NEG)
+          - profile.discount_strength (A1)
+          
         Hardening:
           A1: α_eff = α × (1 - discount_strength × max_confidence) for r(t)=+1
-          A2: ε_vector provides per-factor decay rates
+          A2: ε_vector provides per-factor decay rates (from profile.decay_class_rates)
           C3: Autonomous decisions deferred to pending_validations
         """
         assert outcome in (+1, -1), "r(t) must be +1 or -1"
@@ -1068,14 +1103,14 @@ class LearningState:
 
         W_before = self.W.copy()
 
-        # Eq. 4b: asymmetric δ(t)
-        delta_t = 1.0 if outcome == +1 else LAMBDA_NEG
+        # Eq. 4b: asymmetric δ(t) — from profile
+        delta_t = 1.0 if outcome == +1 else self.profile.penalty_ratio
 
-        # A1: Confidence-discounted learning rate (only for confirmations)
-        alpha = ALPHA
+        # A1: Confidence-discounted learning rate (only for confirmations) — from profile
+        alpha = self.profile.learning_rate
         if outcome == +1 and confidence_at_decision is not None:
-            confidence_discount = 1.0 - (self.discount_strength * confidence_at_decision)
-            alpha = ALPHA * max(confidence_discount, 0.05)  # floor at 5% of base
+            confidence_discount = 1.0 - (self.profile.discount_strength * confidence_at_decision)
+            alpha = self.profile.learning_rate * max(confidence_discount, 0.05)  # floor at 5% of base
 
         update_vector = alpha * outcome * f.flatten() * delta_t
         self.W[action_index, :] += update_vector
@@ -1209,23 +1244,41 @@ class LearningState:
         })
 ```
 
-### 8.4 Per-Factor Decay Configuration (A2)
+### 8.4 Three-Layer Decay Design (Per-Factor Decay Configuration — A2)
 
-```python
-# Decay rates set from SchemaContract.decay_rate per factor:
-#
-# | Factor               | Decay Class | ε      | Half-life          |
-# |----------------------|-------------|--------|--------------------|
-# | asset_criticality    | permanent   | 0.0001 | ~6,930 decisions   |
-# | vip_status           | permanent   | 0.0001 | ~6,930 decisions   |
-# | travel_match         | campaign    | 0.003  | ~231 decisions     |
-# | device_trust         | standard    | 0.001  | ~693 decisions     |
-# | time_anomaly         | standard    | 0.001  | ~693 decisions     |
-# | pattern_history      | campaign    | 0.003  | ~231 decisions     |
-#
-# Permanent: insider threat indicators. Campaign: active threat TTPs.
-# Domain-expert decision, not a learning parameter.
+> **v7 replaces the v5 static table.** v5 §8.4 showed a fixed per-factor decay table. v7 introduces the three-layer design where decay rates flow from domain schema through CalibrationProfile to the learning loop.
+
 ```
+┌───────────────────────────────────────────────────────────┐
+│ Layer 1: Domain Schema (domain expertise)                  │
+│   "travel_match is campaign-class"                         │
+│   "asset_criticality is permanent-class"                   │
+│   Source: domain_schema.yaml in copilot repo               │
+├───────────────────────────────────────────────────────────┤
+│ Layer 2: CalibrationProfile (operational tuning)           │
+│   "For SOC, campaign = 0.003, permanent = 0.0001"          │
+│   "For S2P, campaign = 0.005, permanent = 0.0001"          │
+│   Source: CalibrationProfile in DomainConfig                │
+├───────────────────────────────────────────────────────────┤
+│ Layer 3: GAE Learning Loop (math)                          │
+│   factor → schema lookup → decay class → profile lookup    │
+│   → ε value → Eq. 4c: W *= (1 - ε)                        │
+│   Source: gae/learning.py                                   │
+└───────────────────────────────────────────────────────────┘
+```
+
+**Reference decay rates (SOC domain):**
+
+| Factor               | Decay Class | ε      | Half-life          |
+|----------------------|-------------|--------|--------------------|
+| asset_criticality    | permanent   | 0.0001 | ~6,930 decisions   |
+| vip_status           | permanent   | 0.0001 | ~6,930 decisions   |
+| travel_match         | campaign    | 0.003  | ~231 decisions     |
+| device_trust         | standard    | 0.001  | ~693 decisions     |
+| time_anomaly         | standard    | 0.001  | ~693 decisions     |
+| pattern_history      | campaign    | 0.003  | ~231 decisions     |
+
+Permanent: insider threat indicators. Campaign: active threat TTPs. Adding a new decay class is a schema + profile config change. No GAE code changes required.
 
 ---
 
@@ -1235,12 +1288,18 @@ class LearningState:
 
 **Eq. 5:** Eᵢ — shape (mᵢ × d), entity embedding matrix per domain.
 
-### 9.2 Interface
+### 9.2 EmbeddingProvider Protocol
+
+> **v7 change from v5:** PropertyEmbedder replaced by EmbeddingProvider protocol, supporting multiple embedding strategies. PropertyEmbeddingProvider (numpy-only, default) and TransformerEmbeddingProvider (optional [embeddings] extra).
 
 ```python
 # gae/embeddings.py
 """
 Tier 4: Entity Embeddings — Eq. 5.
+
+v7: EmbeddingProvider protocol with two implementations:
+  - PropertyEmbeddingProvider: numpy-only, ships with GAE core (default)
+  - TransformerEmbeddingProvider: sentence-transformers, optional [embeddings] extra
 
 v5.5: property-based embeddings (no training required).
     1. Extract numeric/categorical properties from each entity
@@ -1249,16 +1308,38 @@ v5.5: property-based embeddings (no training required).
     (Validated by math blog Experiment 2: F1=0.293, 110× above random)
 
 Future (v6+): Learned embeddings via GNN or contrastive learning.
-The EmbeddingContract architecture and primitives.py backend-swappable
+The EmbeddingProvider protocol and primitives.py backend-swappable
 design mean a GNN-based embedder contributed by the community plugs in
 without changing the engine's API.
 """
 
 EMBEDDING_DIM = 128
 
-class PropertyEmbedder:
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class EmbeddingProvider(Protocol):
+    """Protocol for entity embedding computation.
+    
+    Two implementations:
+    - PropertyEmbeddingProvider: numpy-only, ships with GAE core (default)
+    - TransformerEmbeddingProvider: sentence-transformers, optional [embeddings] extra
+    
+    Domain copilots can implement custom providers for domain-specific embeddings.
     """
-    Compute entity embeddings from Neo4j node properties.
+    def embed_entities(
+        self, 
+        entities: list[dict],          # [{id, properties...}, ...]
+        schema: 'DomainSchemaSpec',    # For property extraction guidance
+    ) -> tuple[np.ndarray, list[str]]: # (E: m×d, entity_ids)
+        ...
+
+
+class PropertyEmbeddingProvider:
+    """Default provider. NumPy-only. Property-based embeddings.
+    
+    Validated by math blog Experiment 2: F1=0.293, 110× above random.
+    Quality degrades with missing data and scale — B3 gate tests this.
 
     Calibration step from math blog:
     (a) z-score normalization per feature dimension
@@ -1268,44 +1349,23 @@ class PropertyEmbedder:
      cross-domain dot products are uninterpretable."
      — Math blog, §4
     """
-
-    def __init__(self, feature_schema: Dict[str, List[str]], d: int = EMBEDDING_DIM):
-        self.feature_schema = feature_schema
+    def __init__(self, d: int = EMBEDDING_DIM):
         self.d = d
-
-    async def compute_domain_embeddings(
-        self, domain_name: str, neo4j: AsyncSession,
-        embedding_contract: 'EmbeddingContract' = None
-    ) -> Tuple[np.ndarray, List[str]]:
-        """
-        Compute Eᵢ for domain i.
-
-        If embedding_contract is provided (v5.5+), applies contract-specified
-        handling for missing data instead of silent 0.0 defaults.
-
-        Returns: E (m × d), entity_ids mapping row → entity ID.
-        """
-        properties = self.feature_schema[domain_name]
-        query = f"""
-        MATCH (e:{domain_name})
-        RETURN e.id AS entity_id, {', '.join(f'e.{p} AS {p}' for p in properties)}
-        """
-        result = await neo4j.run(query)
-        records = [r async for r in result]
-
-        m = len(records)
-        if m == 0:
+    
+    def embed_entities(self, entities, schema):
+        if not entities:
             return np.zeros((0, self.d)), []
-
+        
+        # Extract properties based on schema
+        properties = [p.name for p in schema.factors[0].required_properties] if schema else []
+        m = len(entities)
         raw = np.zeros((m, len(properties)))
         entity_ids = []
-        for i, record in enumerate(records):
-            entity_ids.append(record["entity_id"])
+        
+        for i, entity in enumerate(entities):
+            entity_ids.append(entity.get("id", f"idx-{i}"))
             for j, prop in enumerate(properties):
-                val = record.get(prop, 0.0)
-                if val is None and embedding_contract:
-                    # Apply contract-specified missing-data strategy
-                    val = embedding_contract.handle_missing(prop, raw[:i, j] if i > 0 else None)
+                val = entity.get(prop, 0.0)
                 raw[i, j] = float(val) if val is not None else 0.0
 
         # (a) Z-score normalization per dimension
@@ -1329,6 +1389,49 @@ class PropertyEmbedder:
 
         assert E.shape == (m, self.d), f"Eᵢ must be ({m}, {self.d}), got {E.shape}"
         return E, entity_ids
+
+
+class TransformerEmbeddingProvider:
+    """Optional provider. Requires [embeddings] extra.
+    
+    Better quality embeddings via sentence-transformers.
+    Fallback if PropertyEmbeddingProvider fails B3 gate (F1 < 0.2).
+    """
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2", d: int = 384):
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise ImportError(
+                "TransformerEmbeddingProvider requires sentence-transformers. "
+                "Install with: pip install graph-attention-engine[embeddings]"
+            )
+        self.model = SentenceTransformer(model_name)
+        self.d = d
+    
+    def embed_entities(self, entities, schema):
+        # Convert entity properties to text descriptions, encode via transformer
+        pass
+```
+
+### 9.3 Legacy Interface (Copilot-Level — Reference)
+
+```python
+# For copilots using Neo4j directly (reference — NOT in GAE)
+class PropertyEmbedder:
+    """Legacy embedder using async Neo4j queries.
+    Copilots can use this or implement EmbeddingProvider directly."""
+
+    def __init__(self, feature_schema: Dict[str, List[str]], d: int = EMBEDDING_DIM):
+        self.feature_schema = feature_schema
+        self.d = d
+
+    async def compute_domain_embeddings(
+        self, domain_name: str, neo4j: AsyncSession,
+        embedding_contract: 'EmbeddingContract' = None
+    ) -> Tuple[np.ndarray, List[str]]:
+        """Compute Eᵢ for domain i from Neo4j graph."""
+        # ... same implementation as v5 PropertyEmbedder
+        pass
 ```
 
 ---
@@ -1662,7 +1765,9 @@ This is why contracts are not a nice-to-have. They are a correctness requirement
 """
 Graph Attention Engine — public API.
 Tiers 1-3 (v4.1): score_alert(), LearningState, assemble_factor_vector()
-Tiers 4-5 (v5.5): compute_domain_embeddings(), cross_attention(), extract_discoveries()
+Calibration (v4.5): CalibrationProfile
+Evaluation/Judgment/Ablation (v5.0): EvaluationScenario, InstitutionalJudgmentMetrics, AblationConfig
+Tiers 4-5 (v5.5): EmbeddingProvider, cross_attention(), extract_discoveries()
 """
 
 # Tier 1 — Factor Protocol + Assembly
@@ -1674,11 +1779,26 @@ from .scoring import score_alert, ScoringResult
 # Tier 3 — Weight Learning
 from .learning import LearningState, WeightUpdate, PendingValidation
 
+# Calibration (v4.5)
+from .calibration import CalibrationProfile, soc_calibration_profile
+
 # Contracts — Demand-side declarations
 from .contracts import SchemaContract, EmbeddingContract, PropertySpec
 
+# Domain Schema Protocol (v4.5/v5.0)
+from .schema import DomainSchemaSpec, FactorSpec, load_domain_schema
+
 # Convergence Monitoring
 from .convergence import get_convergence_metrics
+
+# Evaluation Framework (v5.0)
+from .evaluation import EvaluationScenario, EvaluationResult, EvaluationReport
+
+# Institutional Judgment (v5.0)
+from .judgment import InstitutionalJudgmentMetrics
+
+# Ablation (v5.0)
+from .ablation import AblationConfig, AblationReport, static_config, full_config
 
 # Event Types (dataclasses, no bus)
 from .events import (
@@ -1694,7 +1814,7 @@ from .primitives import scaled_dot_product_attention, get_backend
 from .store import save_learning_state, load_learning_state
 
 # Tier 4 [v5.5]
-# from .embeddings import PropertyEmbedder, compute_domain_embeddings
+# from .embeddings import EmbeddingProvider, PropertyEmbeddingProvider
 
 # Tier 5 [v5.5]
 # from .attention import cross_attention, multi_domain_attention
@@ -1864,6 +1984,7 @@ CYCLE 10 — TRUST ASYMMETRY:
 - P11 works: events emitted for all mutations (step 8)
 - Asymmetry works: incorrect outcomes dominate (steps 18-21)
 
+
 ---
 
 ## 14. Semantic Accumulation — How New Data Propagates
@@ -2019,12 +2140,985 @@ class FreshnessFactor(FactorComputer):
 
 ---
 
-## 16. Claude Code Prompt Sequence (GAE Repo Only)
+## 16. CalibrationProfile (`gae/calibration.py`)
+
+### 16.1 Design Rationale
+
+The v5 design hardcodes learning hyperparameters as module-level constants in `learning.py` (ALPHA=0.02, LAMBDA_NEG=20.0, EPSILON_DEFAULT=0.001). This prevents multi-domain usage — SOC needs 20:1 penalty asymmetry, but S2P procurement might need 5:1 (wrong approvals are costly but not $4.44M costly). CalibrationProfile makes these domain-configurable without touching GAE internals.
+
+**Ownership split:**
+- **GAE** defines CalibrationProfile (the dataclass) and LearningState (the consumer)
+- **DomainConfig** (in ci-platform or copilot) returns a CalibrationProfile
+- **SOCDomainConfig** provides SOC-specific values; a future S2PDomainConfig provides different ones
+
+### 16.2 Interface
+
+```python
+# gae/calibration.py
+"""
+CalibrationProfile: domain-configurable hyperparameters for the GAE learning loop.
+
+Core parameters (v4.5):
+    learning_rate      α in Eq. 4b. Controls update magnitude per decision.
+    penalty_ratio      λ_neg in Eq. 4b. Asymmetric penalty multiplier (20:1 for SOC).
+    temperature        τ in Eq. 4. Softmax sharpness for action selection.
+    decay_class_rates  Maps decay class names → ε values for Eq. 4c.
+    discount_strength  A1 confirmation bias mitigation. 0.0 = disabled.
+
+Extension point:
+    extensions         Dict for experimental parameters. Graduate to named fields when stable.
+
+Future candidates (documented, not committed):
+    convergence_threshold      Minimum decisions before declaring convergence
+    cold_start_window          Decisions during which learning rate is elevated
+    factor_overrides           Per-factor learning rate or penalty overrides
+    exploration_rate           Initial softmax temperature boost for cold start
+"""
+
+from dataclasses import dataclass, field
+from typing import Any
+
+# Decay class defaults — domain-configurable via CalibrationProfile
+DEFAULT_DECAY_CLASS_RATES = {
+    "permanent": 0.0001,    # Half-life ~6,930 decisions. Asset types, org structure.
+    "standard": 0.001,      # Half-life ~693 decisions. Default.
+    "campaign": 0.003,      # Half-life ~231 decisions. Threat campaigns, project phases.
+    "transient": 0.01,      # Half-life ~69 decisions. Spot prices, breaking alerts.
+}
+
+@dataclass
+class CalibrationProfile:
+    """Domain-configurable hyperparameters for GAE learning loop.
+    
+    Every field has a sensible default. A domain that only cares about
+    penalty_ratio passes CalibrationProfile(penalty_ratio=5.0) and gets
+    standard defaults for everything else. New parameters added to future
+    versions don't break existing consumers.
+    """
+    # Core learning parameters
+    learning_rate: float = 0.02
+    penalty_ratio: float = 20.0
+    temperature: float = 0.25
+    
+    # Per-factor decay (A2): maps decay class → ε value
+    # Domain copilot's SchemaContract declares each factor's decay_class.
+    # CalibrationProfile maps that class name to a numeric rate.
+    decay_class_rates: dict[str, float] = field(
+        default_factory=lambda: dict(DEFAULT_DECAY_CLASS_RATES)
+    )
+    
+    # Confirmation bias mitigation (A1)
+    # 0.0 = disabled (v4.5 default). SOC tunes to ~0.3-0.5 at v5.0.
+    # Formula: α_eff = α × (1 - discount_strength × max(P))
+    discount_strength: float = 0.0
+    
+    # Extension point for experimental parameters
+    extensions: dict[str, Any] = field(default_factory=dict)
+    
+    def get_decay_rate(self, decay_class: str) -> float:
+        """Look up ε for a decay class. Falls back to 'standard' if unknown."""
+        return self.decay_class_rates.get(
+            decay_class, 
+            self.decay_class_rates.get("standard", 0.001)
+        )
+    
+    def validate(self) -> list[str]:
+        """Return list of validation warnings (empty = valid)."""
+        warnings = []
+        if self.learning_rate <= 0 or self.learning_rate > 0.5:
+            warnings.append(f"learning_rate {self.learning_rate} outside recommended range (0, 0.5]")
+        if self.penalty_ratio < 1.0:
+            warnings.append(f"penalty_ratio {self.penalty_ratio} < 1.0 means positive outcomes penalized more than negative")
+        if self.temperature <= 0:
+            warnings.append(f"temperature must be positive, got {self.temperature}")
+        if self.discount_strength < 0 or self.discount_strength > 1.0:
+            warnings.append(f"discount_strength {self.discount_strength} outside [0, 1]")
+        return warnings
+
+
+# Convenience constructors for known domains
+def soc_calibration_profile() -> CalibrationProfile:
+    """SOC domain defaults: high asymmetry, standard temperature."""
+    return CalibrationProfile(
+        learning_rate=0.02,
+        penalty_ratio=20.0,       # One missed threat ≈ $4.44M avg breach cost
+        temperature=0.25,
+        discount_strength=0.0,    # Enable at v5.0 after evaluation
+    )
+
+def s2p_calibration_profile() -> CalibrationProfile:
+    """S2P domain defaults: moderate asymmetry, softer temperature.
+    NOTE: Placeholder — validate with real procurement data."""
+    return CalibrationProfile(
+        learning_rate=0.02,
+        penalty_ratio=5.0,        # Wrong approval costly but not catastrophic
+        temperature=0.4,          # Softer — procurement decisions less time-critical
+        decay_class_rates={
+            "permanent": 0.0001,  # Supplier master data
+            "standard": 0.001,
+            "campaign": 0.005,    # Commodity price cycles (faster than threat campaigns)
+            "transient": 0.02,    # Spot pricing
+        },
+        discount_strength=0.0,
+    )
+```
+
+### 16.3 Impact on LearningState (§8 Changes)
+
+LearningState constructor changes from hardcoded constants to CalibrationProfile:
+
+```python
+# BEFORE (v5):
+ALPHA = 0.02
+LAMBDA_NEG = 20.0
+EPSILON_DEFAULT = 0.001
+
+class LearningState:
+    discount_strength: float = 0.5  # hardcoded
+    ...
+
+# AFTER (v6):
+class LearningState:
+    """Persistent state for the weight matrix and its history."""
+    W: np.ndarray
+    n_actions: int
+    n_factors: int
+    factor_names: List[str]
+    profile: CalibrationProfile = field(default_factory=CalibrationProfile)
+    decision_count: int = 0
+    history: List[WeightUpdate] = field(default_factory=list)
+    # ... rest unchanged
+
+    def __post_init__(self):
+        # Build epsilon_vector from factor decay classes + profile rates
+        if self.epsilon_vector is None:
+            self.epsilon_vector = self._build_epsilon_vector()
+    
+    def _build_epsilon_vector(self) -> np.ndarray:
+        """Map each factor's decay_class → ε via CalibrationProfile."""
+        # Requires factor_decay_classes to be set (from domain schema or SchemaContracts)
+        if hasattr(self, 'factor_decay_classes') and self.factor_decay_classes:
+            return np.array([
+                self.profile.get_decay_rate(dc) 
+                for dc in self.factor_decay_classes
+            ])
+        return np.full(self.n_factors, self.profile.get_decay_rate("standard"))
+
+    def update(self, action_index, action_name, outcome, f, 
+               confidence_at_decision=None, decision_source="analyst"):
+        """
+        Eq. 4b + 4c. Now reads from self.profile instead of module constants.
+        """
+        # ...
+        delta_t = 1.0 if outcome == +1 else self.profile.penalty_ratio  # was LAMBDA_NEG
+        
+        alpha = self.profile.learning_rate  # was ALPHA
+        if outcome == +1 and confidence_at_decision is not None:
+            confidence_discount = 1.0 - (self.profile.discount_strength * confidence_at_decision)
+            alpha = self.profile.learning_rate * max(confidence_discount, 0.05)
+        
+        update_vector = alpha * outcome * f.flatten() * delta_t
+        self.W[action_index, :] += update_vector
+        self.W *= (1 - self.epsilon_vector)  # per-factor decay unchanged
+        # ... rest unchanged
+```
+
+### 16.4 Impact on score_alert (§7 Changes)
+
+```python
+# BEFORE (v5):
+def score_alert(f, W, actions, tau=0.25):
+
+# AFTER (v6):
+def score_alert(f, W, actions, tau=None, profile=None):
+    """
+    Eq. 4. Temperature from profile if provided, else tau param, else 0.25.
+    """
+    if tau is None:
+        tau = profile.temperature if profile else 0.25
+    # ... rest unchanged
+```
+
+### 16.5 Three-Layer Decay Design (Replaces §8.4)
+
+v5 §8.4 showed a static table of per-factor decay rates. v6 replaces this with the three-layer design:
+
+```
+┌───────────────────────────────────────────────────────────┐
+│ Layer 1: Domain Schema (domain expertise)                  │
+│   "travel_match is campaign-class"                         │
+│   "asset_criticality is permanent-class"                   │
+│   Source: domain_schema.yaml in copilot repo               │
+├───────────────────────────────────────────────────────────┤
+│ Layer 2: CalibrationProfile (operational tuning)           │
+│   "For SOC, campaign = 0.003, permanent = 0.0001"          │
+│   "For S2P, campaign = 0.005, permanent = 0.0001"          │
+│   Source: CalibrationProfile in DomainConfig                │
+├───────────────────────────────────────────────────────────┤
+│ Layer 3: GAE Learning Loop (math)                          │
+│   factor → schema lookup → decay class → profile lookup    │
+│   → ε value → Eq. 4c: W *= (1 - ε)                        │
+│   Source: gae/learning.py                                   │
+└───────────────────────────────────────────────────────────┘
+```
+
+Adding a new decay class is a schema + profile config change. No GAE code changes required.
+
+
+## 17. Evaluation Framework (`gae/evaluation.py`)
+
+### 17.1 Design Rationale
+
+Three consumers need a shared evaluation format:
+- **EVAL-1** (v5.0): Accuracy measurement against ground truth
+- **SEED-2** (v5.0): Planted patterns in realistic data
+- **B3 gate** (v4.5 Phase C): Discovery test cases
+
+The format is a GAE-level capability so any domain copilot can define evaluation scenarios and run them through the standard eval pipeline.
+
+### 17.2 Core Data Structures
+
+```python
+# gae/evaluation.py
+"""
+Evaluation framework: scenario definition, execution, and reporting.
+
+Three-tier progression:
+    Tier 1 (v4.5): Bernoulli oracle — proves learning mechanism works
+    Tier 2 (v5.0): Constructed scenarios — proves product makes correct decisions
+    Tier 3 (v6.0): Live analyst decisions — proves product works in production
+
+Ground truth: Constructed from domain techniques × graph context combinations.
+Each scenario has planted signals with deterministic correct answers.
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class EvaluationScenario:
+    """A complete, self-contained test case. Deterministic.
+    
+    Run it twice, get the same result. No external dependencies.
+    The graph_context specifies what must be true for this scenario.
+    The test harness ensures those conditions exist before running.
+    """
+    # Identity
+    scenario_id: str              # "SOC-T1078-FP-01", "S2P-DUAL-SOURCE-01"
+    description: str              # Human-readable
+    
+    # Classification
+    domain: str                   # "soc", "s2p", "finserv"
+    category: str                 # Domain-specific: "travel_anomaly", "spend_exception"
+    technique_id: Optional[str]   # ATT&CK for SOC ("T1078"), N/A for S2P
+    confidence_tier: str          # "high" | "medium" | "low"
+                                  # high: clear-cut. medium: reasonable disagreement.
+                                  # low: genuinely ambiguous — lower accuracy expected.
+    
+    # Input — what the graph looks like when this alert fires
+    graph_context: dict           # {
+                                  #   "entities": [...],
+                                  #   "relationships": [...],
+                                  #   "absent": [...]  ← conditions that must NOT exist
+                                  # }
+    alert: dict                   # Alert/trigger parameters
+    
+    # Expected output
+    expected_action: str          # "suppress", "escalate", "investigate", "approve", "hold"
+    expected_dominant_factors: list[str]  # Which factors should drive the decision.
+                                          # Getting the right answer for wrong reasons
+                                          # is a false pass.
+    
+    # For discovery scenarios (B3 gate)
+    planted_relationship: Optional[dict] = None     # Cross-graph connection to find
+    expected_confidence_shift: Optional[dict] = None # {"before": 0.89, "after_direction": "decrease"}
+    
+    # For compounding test scenarios
+    learning_prerequisite: Optional[dict] = None    # {
+                                                     #   "min_prior_decisions": 20,
+                                                     #   "prior_categories": ["travel_anomaly"],
+                                                     #   "prior_correctness_rate": 0.9
+                                                     # }
+                                                     # Test harness uses simulation to generate
+                                                     # prerequisite history before running scenario.
+
+
+@dataclass
+class EvaluationResult:
+    """Result of running one scenario."""
+    scenario_id: str
+    actual_action: str
+    actual_confidence: float
+    actual_dominant_factors: list[str]
+    action_correct: bool
+    dominant_factors_correct: bool    # Did the right factors drive the decision?
+    confidence_tier: str
+    factor_values: dict[str, float]  # Raw factor values for debugging
+
+
+@dataclass
+class EvaluationReport:
+    """Aggregate report across a scenario set."""
+    total: int
+    action_accuracy: float            # % scenarios where action was correct
+    factor_accuracy: float            # % scenarios where dominant factors were correct
+    combined_accuracy: float          # % where BOTH action AND factors correct
+    
+    by_category: dict[str, float]     # Accuracy per alert/trigger category
+    by_confidence_tier: dict[str, float]  # Accuracy by difficulty
+    by_category: dict[str, float]     # Accuracy per category (ATT&CK technique for SOC, procurement type for S2P, etc.)
+    
+    # Compounding metrics (only populated if learning_prerequisite scenarios present)
+    cold_start_accuracy: Optional[float] = None    # Accuracy on scenarios with no prerequisite
+    post_learning_accuracy: Optional[float] = None  # Accuracy on scenarios with prerequisite
+    learning_delta: Optional[float] = None          # post - cold_start (the compounding proof)
+    
+    # Discovery metrics (only populated if planted_relationship scenarios present)
+    discovery_precision: Optional[float] = None
+    discovery_recall: Optional[float] = None
+    discovery_f1: Optional[float] = None
+    
+    def summary(self) -> str:
+        """Human-readable summary."""
+        lines = [
+            f"Evaluation: {self.total} scenarios",
+            f"  Action accuracy: {self.action_accuracy:.1%}",
+            f"  Factor accuracy: {self.factor_accuracy:.1%}",
+            f"  Combined: {self.combined_accuracy:.1%}",
+            f"  By tier: high={self.by_confidence_tier.get('high', 0):.1%}, "
+            f"medium={self.by_confidence_tier.get('medium', 0):.1%}, "
+            f"low={self.by_confidence_tier.get('low', 0):.1%}",
+        ]
+        if self.learning_delta is not None:
+            lines.append(f"  Learning delta: +{self.learning_delta:.1%} "
+                        f"(cold={self.cold_start_accuracy:.1%} → "
+                        f"post={self.post_learning_accuracy:.1%})")
+        if self.discovery_f1 is not None:
+            lines.append(f"  Discovery F1: {self.discovery_f1:.3f} "
+                        f"(P={self.discovery_precision:.3f}, R={self.discovery_recall:.3f})")
+        return "\n".join(lines)
+```
+
+### 17.3 Evaluation Runner (v5.0 — design only)
+
+```python
+def run_evaluation(
+    scenarios: list[EvaluationScenario],
+    scoring_fn,           # score_alert or equivalent
+    learning_state,       # LearningState instance
+    graph_setup_fn,       # Async function to seed graph_context for a scenario
+    factor_compute_fn,    # Async function to compute factors for an alert
+) -> EvaluationReport:
+    """
+    Run a scenario set and produce an EvaluationReport.
+    
+    For each scenario:
+      1. If learning_prerequisite: run simulation to generate prerequisite history
+      2. Seed graph_context (entities, relationships, absent conditions)
+      3. Compute factors
+      4. Score alert
+      5. Compare actual vs expected
+    
+    Implementation at v5.0 (EVAL-1 prompt). Design specified here for
+    format stability across SEED-2 and B3 consumers.
+    """
+    pass  # v5.0 implementation
+```
+
+### 17.4 Scenario Examples
+
+See `design_decisions_v1.md` for two worked examples:
+- `SOC-T1078-FP-01`: Singapore travel login, clear false positive (high confidence)
+- `SOC-T1078-DISC-01`: Same scenario with role change + threat campaign (discovery variant)
+
+**Scenario design guidance:**
+- 30-40 scenarios for Tier 2, distributed across categories × confidence tiers
+- Each category should have at least one high, one medium, one low confidence scenario
+- The `absent` field is critical — it declares what must NOT exist in the graph
+- `expected_dominant_factors` prevents false passes from correct action via wrong reasoning
+
+
+## 18. Domain Schema Format (GAE Protocol Side)
+
+### 18.1 Design Rationale
+
+Factor metadata (decay class, temporal nature, required graph structure) currently lives in three places: SchemaContract, CalibrationProfile, and seed scripts. The domain schema format creates a single source of truth.
+
+GAE defines the format (protocol). Copilots provide the content (domain-specific schemas). ci-platform validates and enforces (runtime governance).
+
+**Ontology maturity levels:**
+- Level 0 (v4.1): Implicit — exists in seed scripts and Cypher queries
+- Level 1 (v5.0): Declared + validated — `domain_schema.yaml` + ContractChecker
+- Level 2 (v6.0): Enforced — SchemaValidator gates all write paths
+
+### 18.2 Schema Format Definition
+
+```python
+# gae/schema.py
+"""
+Domain schema format definition.
+
+GAE defines what a valid schema looks like.
+Copilots provide actual schemas as YAML or JSON.
+ci-platform validates schemas against the live graph.
+
+This module provides:
+- DomainSchemaSpec: Python representation of a domain schema
+- load_domain_schema(): Parse YAML/JSON into DomainSchemaSpec
+- validate_schema_contracts(): Check SchemaContracts match schema
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class FactorSpec:
+    """Schema entry for a factor."""
+    name: str
+    decay_class: str              # "permanent", "standard", "campaign", "transient"
+    description: str
+    required_labels: list[str]
+    required_relationships: list[tuple[str, str, str]]  # (source, rel_type, target)
+    required_properties: dict[str, list[str]]
+    computes_from: str            # "graph_traversal" | "property_read" | "derived"
+
+@dataclass
+class EntitySpec:
+    """Schema entry for an entity type (graph label)."""
+    label: str
+    properties: dict[str, dict]   # property_name → {"dtype": "float", "required": bool, ...}
+    description: str
+
+@dataclass
+class RelationshipSpec:
+    """Schema entry for a relationship type."""
+    type: str
+    source_label: str
+    target_label: str
+    properties: dict[str, dict]   # Optional relationship properties
+    cardinality: str              # "one_to_one" | "one_to_many" | "many_to_many"
+    description: str
+
+@dataclass
+class DomainSchemaSpec:
+    """Complete domain schema. One per domain copilot."""
+    domain: str                   # "soc", "s2p", "finserv"
+    version: str
+    description: str
+    
+    entities: list[EntitySpec]
+    relationships: list[RelationshipSpec]
+    factors: list[FactorSpec]
+    
+    # Actions this domain supports
+    actions: list[dict]           # [{"name": "suppress", "description": "..."}, ...]
+    
+    # Decay class definitions (may extend standard set)
+    decay_classes: dict[str, dict] = field(default_factory=dict)
+    # e.g., {"campaign": {"description": "Active threat TTPs", "default_rate": 0.003}}
+    
+    def get_factor_decay_classes(self) -> dict[str, str]:
+        """Map factor_name → decay_class for CalibrationProfile consumption."""
+        return {f.name: f.decay_class for f in self.factors}
+    
+    def validate_against_contracts(self, contracts: list) -> list[str]:
+        """Check that SchemaContracts are consistent with this schema."""
+        warnings = []
+        schema_labels = {e.label for e in self.entities}
+        for contract in contracts:
+            for label in contract.required_labels:
+                if label not in schema_labels:
+                    warnings.append(
+                        f"Contract {contract.factor_name} requires label '{label}' "
+                        f"not in schema"
+                    )
+        return warnings
+```
+
+### 18.3 Example Schema File (SOC — reference)
+
+```yaml
+# domains/soc/domain_schema.yaml
+domain: soc
+version: "1.0"
+description: "Security Operations Center — alert triage and response"
+
+entities:
+  - label: User
+    properties:
+      id: {dtype: str, required: true}
+      department: {dtype: str, required: true}
+      risk_score: {dtype: float, required: false}
+      role: {dtype: str, required: false}
+    description: "Enterprise user identity"
+    
+  - label: Alert
+    properties:
+      id: {dtype: str, required: true}
+      situation_type: {dtype: str, required: true}
+      source_ip: {dtype: str, required: false}
+      geo: {dtype: str, required: false}
+      technique_id: {dtype: str, required: false}  # ATT&CK
+    description: "Security alert from SIEM or detection system"
+
+  - label: ThreatIntel
+    properties:
+      severity: {dtype: str, required: true}
+      source: {dtype: str, required: true}
+      confidence: {dtype: float, required: true}
+      campaign: {dtype: str, required: false}
+      technique: {dtype: str, required: false}
+    description: "Threat intelligence indicator or campaign"
+
+  # ... Asset, Device, TravelRecord, Decision, DataClass, TimeSlot
+
+relationships:
+  - type: HAS_TRAVEL
+    source_label: User
+    target_label: TravelRecord
+    cardinality: one_to_many
+    description: "User has an approved travel record"
+    
+  - type: DECIDED_ON
+    source_label: Decision
+    target_label: Alert
+    cardinality: many_to_one
+    description: "Decision was made on this alert"
+    
+  # ... STORES, ASSOCIATED_WITH, ACTIVE_AT, USES_DEVICE
+
+factors:
+  - name: travel_match
+    decay_class: campaign
+    description: "Does user have matching travel record for alert geography?"
+    required_labels: [User, TravelRecord]
+    required_relationships: [(User, HAS_TRAVEL, TravelRecord)]
+    required_properties:
+      User: [id]
+      TravelRecord: [destination, date]
+    computes_from: graph_traversal
+
+  - name: asset_criticality
+    decay_class: permanent
+    description: "How critical is the accessed asset?"
+    required_labels: [Asset, DataClass]
+    required_relationships: [(Asset, STORES, DataClass)]
+    required_properties:
+      Asset: [id, criticality]
+      DataClass: [sensitivity]
+    computes_from: graph_traversal
+
+  - name: pattern_history
+    decay_class: standard
+    description: "Historical base rate for this alert type — THE COMPOUNDING PROOF FACTOR"
+    required_labels: [Decision, Alert]
+    required_relationships: [(Decision, DECIDED_ON, Alert)]
+    required_properties:
+      Decision: [action, correct, outcome]
+      Alert: [situation_type]
+    computes_from: graph_traversal
+
+  # ... threat_intel_enrichment (campaign), time_anomaly (standard), device_trust (standard)
+
+actions:
+  - name: false_positive_close
+    description: "Close alert as false positive. No analyst action needed."
+  - name: escalate_tier2
+    description: "Escalate to Tier 2 analyst for investigation."
+  - name: enrich_and_wait
+    description: "Request additional context, hold for 24h."
+  - name: escalate_incident
+    description: "Immediate incident response. Highest severity."
+
+decay_classes:
+  permanent:
+    description: "Organizational structure, asset classifications. Changes rarely."
+    default_rate: 0.0001
+  standard:
+    description: "Baseline behavioral patterns. Default for most factors."
+    default_rate: 0.001
+  campaign:
+    description: "Active threat campaigns, seasonal procurement patterns."
+    default_rate: 0.003
+  transient:
+    description: "Breaking alerts, spot pricing. High volatility."
+    default_rate: 0.01
+```
+
+### 18.4 Integration Flow
+
+```
+At startup (v5.0):
+  1. Copilot loads domain_schema.yaml
+  2. Parse → DomainSchemaSpec
+  3. schema.get_factor_decay_classes() → {"travel_match": "campaign", ...}
+  4. CalibrationProfile.get_decay_rate("campaign") → 0.003
+  5. LearningState._build_epsilon_vector() → [0.003, 0.0001, 0.003, 0.001, 0.001, 0.001]
+  6. ContractChecker validates SchemaContracts against live graph
+  7. If mismatches: warnings logged, factors with unmet contracts return default values
+```
+
+
+## 19. Institutional Judgment Metrics (`gae/judgment.py`)
+
+### 19.1 Design Rationale
+
+"The system gets smarter" must be measurable, not just asserted. These metrics quantify the accumulated institutional judgment in terms a CISO (SOC) or CPO (S2P) can evaluate.
+
+GAE computes abstract mathematical metrics. Domain copilots translate them into operational language.
+
+### 19.2 Interface
+
+```python
+# gae/judgment.py
+"""
+Institutional Judgment metrics.
+
+Three metrics quantify how the system's learned judgment differs from
+a fresh install. The translation to operational language (analyst hours
+saved, MTTR reduction, processing time saved) lives in the domain copilot.
+"""
+
+import numpy as np
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class InstitutionalJudgmentMetrics:
+    """Computed by GAE from LearningState and evaluation results."""
+    
+    # Metric 1: Prior Divergence × Accuracy Improvement
+    prior_divergence: float          # ||W_current - W_initial|| (L2 norm)
+    baseline_accuracy: float         # Accuracy at W_initial (evaluation scenarios)
+    current_accuracy: float          # Accuracy at W_current
+    accuracy_improvement: float      # current - baseline
+    
+    # Metric 2: Learning state
+    decisions_processed: int
+    categories_with_improvement: int # How many alert categories improved over baseline
+    strongest_category: str          # Category with highest accuracy improvement
+    weakest_category: str            # Category with lowest or negative improvement
+    
+    # Metric 3: Recovery behavior
+    avg_recovery_decisions: float    # Average decisions to recover accuracy after an error
+    
+    # Judgment score: combined measure
+    judgment_score: float            # prior_divergence × accuracy_improvement × decisions_factor
+                                     # Normalized to [0, 100] scale
+    
+    @staticmethod
+    def compute(
+        W_initial: np.ndarray,
+        learning_state,              # LearningState
+        evaluation_results: dict,    # category → accuracy at current W
+        baseline_results: dict,      # category → accuracy at W_initial
+    ) -> 'InstitutionalJudgmentMetrics':
+        """Compute all metrics from learning state and evaluation results."""
+        W_current = learning_state.W
+        divergence = float(np.linalg.norm(W_current - W_initial))
+        
+        baseline_acc = np.mean(list(baseline_results.values()))
+        current_acc = np.mean(list(evaluation_results.values()))
+        improvement = current_acc - baseline_acc
+        
+        category_deltas = {
+            cat: evaluation_results.get(cat, 0) - baseline_results.get(cat, 0)
+            for cat in set(evaluation_results) | set(baseline_results)
+        }
+        improved = sum(1 for d in category_deltas.values() if d > 0)
+        strongest = max(category_deltas, key=category_deltas.get) if category_deltas else ""
+        weakest = min(category_deltas, key=category_deltas.get) if category_deltas else ""
+        
+        # Recovery speed from learning history
+        recovery_decisions = _compute_recovery_speed(learning_state.history)
+        
+        # Normalized judgment score [0, 100]
+        decisions_factor = min(learning_state.decision_count / 100, 1.0)  # saturates at 100
+        raw_score = divergence * max(improvement, 0) * decisions_factor
+        judgment_score = min(raw_score * 1000, 100.0)  # scaling TBD from empirical data
+        
+        return InstitutionalJudgmentMetrics(
+            prior_divergence=divergence,
+            baseline_accuracy=float(baseline_acc),
+            current_accuracy=float(current_acc),
+            accuracy_improvement=float(improvement),
+            decisions_processed=learning_state.decision_count,
+            categories_with_improvement=improved,
+            strongest_category=strongest,
+            weakest_category=weakest,
+            avg_recovery_decisions=recovery_decisions,
+            judgment_score=judgment_score,
+        )
+
+
+def _compute_recovery_speed(history) -> float:
+    """Average number of decisions to restore accuracy after an error."""
+    if len(history) < 5:
+        return 0.0
+    errors = [i for i, h in enumerate(history) if h.outcome == -1]
+    if not errors:
+        return 0.0
+    recovery_counts = []
+    for err_idx in errors:
+        # Count decisions until next 3 consecutive correct
+        consecutive = 0
+        for j in range(err_idx + 1, len(history)):
+            if history[j].outcome == +1:
+                consecutive += 1
+                if consecutive >= 3:
+                    recovery_counts.append(j - err_idx)
+                    break
+            else:
+                consecutive = 0
+    return float(np.mean(recovery_counts)) if recovery_counts else float(len(history))
+```
+
+### 19.3 Domain Translation (Copilot-Level — Reference)
+
+```python
+# soc-copilot: services/judgment_translator.py (REFERENCE — NOT part of GAE)
+class SOCJudgmentTranslator:
+    """Translate GAE metrics to CISO-meaningful language."""
+    
+    def translate(self, metrics: InstitutionalJudgmentMetrics) -> dict:
+        return {
+            "headline": (
+                f"After {metrics.decisions_processed} triage decisions, "
+                f"accuracy improved {metrics.accuracy_improvement:.0%} from baseline"
+            ),
+            "strongest_area": f"Best learning: {metrics.strongest_category} alerts",
+            "operational_impact": {
+                "analyst_decisions_automated": int(metrics.decisions_processed * metrics.current_accuracy),
+                "estimated_hours_saved": self._hours_saved(metrics),
+                "recovery_after_error": f"{metrics.avg_recovery_decisions:.0f} decisions",
+            },
+            "judgment_score": metrics.judgment_score,
+            "judgment_score_explanation": (
+                f"Score reflects {metrics.prior_divergence:.2f} divergence from generic priors "
+                f"with {metrics.accuracy_improvement:.0%} accuracy gain across "
+                f"{metrics.categories_with_improvement} alert categories"
+            ),
+        }
+```
+
+## 20. Ablation Framework (`gae/ablation.py`)
+
+### 20.1 Design Rationale
+
+Proving decisions are better than competing approaches requires ablation — running the same evaluation scenarios under degraded configurations and showing each architectural component's contribution. This is the standard methodology in ML research.
+
+### 20.2 Interface
+
+```python
+# gae/ablation.py
+"""
+Ablation framework: prove each architectural component's value.
+
+Four baselines, all runnable within the product:
+  Static:        Fixed W at expert priors. Never learns.
+  Flat learning: Symmetric reinforcement (no asymmetric penalty).
+  No graph:      Random/uniform factor vector. W still learns.
+  Full system:   Everything — the product.
+
+Usage (v5.0):
+  configs = [static_config(), flat_learning_config(), no_graph_config(), full_config()]
+  report = run_ablation(scenarios, configs, ...)
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+from .calibration import CalibrationProfile
+
+@dataclass
+class AblationConfig:
+    """Configuration for one ablation run."""
+    name: str
+    description: str
+    learning_enabled: bool = True
+    asymmetric_penalty: bool = True
+    graph_context_enabled: bool = True
+    decay_enabled: bool = True
+    calibration_profile: Optional[CalibrationProfile] = None
+    
+    def to_profile(self, base_profile: CalibrationProfile) -> CalibrationProfile:
+        """Derive a CalibrationProfile for this ablation config."""
+        if self.calibration_profile:
+            return self.calibration_profile
+        profile = CalibrationProfile(
+            learning_rate=base_profile.learning_rate if self.learning_enabled else 0.0,
+            penalty_ratio=base_profile.penalty_ratio if self.asymmetric_penalty else 1.0,
+            temperature=base_profile.temperature,
+            discount_strength=base_profile.discount_strength,
+        )
+        return profile
+
+
+# Convenience constructors
+def static_config() -> AblationConfig:
+    return AblationConfig(
+        name="static",
+        description="Fixed W at expert priors. Never learns. Day 1000 = Day 1.",
+        learning_enabled=False,
+    )
+
+def flat_learning_config() -> AblationConfig:
+    return AblationConfig(
+        name="flat_learning",
+        description="Symmetric reinforcement. No 20:1 penalty. No risk awareness.",
+        asymmetric_penalty=False,
+    )
+
+def no_graph_config() -> AblationConfig:
+    return AblationConfig(
+        name="no_graph",
+        description="Random factor vectors. W learns from noise. No context.",
+        graph_context_enabled=False,
+    )
+
+def full_config() -> AblationConfig:
+    return AblationConfig(
+        name="full_system",
+        description="Full product: graph context + asymmetric learning + decay.",
+    )
+
+
+@dataclass
+class AblationReport:
+    """Comparative results across ablation configurations."""
+    configs: list[AblationConfig]
+    per_config_results: dict[str, 'EvaluationReport']  # config.name → report
+    
+    # Computed comparisons
+    accuracy_deltas: dict[str, float]       # vs full_system
+    recovery_deltas: dict[str, float]       # vs full_system
+    confirmation_bias_results: dict[str, bool]  # Did each config catch the TP after 20 FPs?
+    
+    def summary(self) -> str:
+        """Human-readable comparison."""
+        lines = ["Ablation Results:"]
+        full = self.per_config_results.get("full_system")
+        for config in self.configs:
+            result = self.per_config_results.get(config.name)
+            if result:
+                delta = self.accuracy_deltas.get(config.name, 0)
+                lines.append(
+                    f"  {config.name}: {result.action_accuracy:.1%} accuracy "
+                    f"({delta:+.1%} vs full)"
+                )
+        return "\n".join(lines)
+```
+
+
+## 21. What's Built vs What's Next
+
+### 21.1 GAE v0.1.0 (Tagged with v4.1)
+
+| Module | Status | Tests | Notes |
+|---|---|---|---|
+| `factors.py` | ✅ Complete | 12 tests | FactorComputer Protocol + assemble_factor_vector |
+| `scoring.py` | ✅ Complete | 15 tests | Eq. 4 with shape checks |
+| `learning.py` | ✅ Complete | 18 tests | Eq. 4b, 4c. Hardcoded constants (to be refactored) |
+| `convergence.py` | ✅ Complete | 8 tests | Three failure modes detected |
+| `contracts.py` | ✅ Complete | 6 tests | SchemaContract + EmbeddingContract |
+| `events.py` | ✅ Complete | 4 tests | Pure dataclasses |
+| `store.py` | ✅ Complete | 5 tests | JSON persistence |
+| `primitives.py` | ✅ Complete | 2 tests | NumPy backend only |
+| `__init__.py` | ✅ Complete | — | Public API exports |
+
+**Total:** 70 core tests + 107 generic domain tests = 177 passing.
+**Measured results:** 28.6x asymmetric trust (exceeds 20:1 target), cold-start 2.5s, convergence threshold min-20.
+
+### 21.2 GAE v4.5 Preamble (NEW — 2-3 prompts in GAE repo)
+
+| Prompt | Creates | Tests | Gate |
+|---|---|---|---|
+| **GAE-CAL-1** | `gae/calibration.py` (CalibrationProfile dataclass + convenience constructors + validation). Refactor `learning.py` to accept CalibrationProfile. Refactor `scoring.py` to accept temperature from profile. | Profile creates with defaults. SOC profile matches current behavior. LearningState.update() uses profile.learning_rate, profile.penalty_ratio. score_alert uses profile.temperature. All 177 existing tests still pass. | All existing tests pass with default CalibrationProfile (backward compatible) |
+| **GAE-CAL-2** | Update `learning.py` epsilon_vector construction from decay_class mapping. Update `contracts.py` SchemaContract to formalize decay_class field. | Per-factor decay rates match CalibrationProfile. Different decay classes produce different ε values. Test: two factors with different decay classes → epsilon_vector has different values. | Run 10-decision sequence, verify campaign-class factors decay faster than permanent-class |
+| **GAE-CAL-3** (if needed) | `gae/schema.py` (DomainSchemaSpec, FactorSpec, load_domain_schema). May be deferred to v5.0 if v4.5 can use SchemaContract.decay_class directly. | Schema file parses. get_factor_decay_classes() returns correct mapping. validate_against_contracts() catches mismatches. | Parse SOC schema → correct decay classes for all 6 factors |
+
+### 21.3 GAE v5.0 Prompts (Platform Breadth)
+
+| Prompt | Creates | Tests | Dependency |
+|---|---|---|---|
+| **GAE-EVAL-1** | `gae/evaluation.py` (EvaluationScenario, EvaluationResult, EvaluationReport, run_evaluation). | 3 SOC scenarios execute correctly. Report by_category and by_confidence_tier populated. | CalibrationProfile (GAE-CAL-1) |
+| **GAE-JUDG-1** | `gae/judgment.py` (InstitutionalJudgmentMetrics.compute). | Metrics compute from mock LearningState + evaluation results. judgment_score increases with more decisions. | GAE-EVAL-1 |
+| **GAE-ABL-1** | `gae/ablation.py` (AblationConfig, AblationReport, run_ablation). | 4 configs × 3 scenarios. Full system > flat learning > static. | GAE-EVAL-1, GAE-JUDG-1 |
+| **GAE-ENG-1** | API surface design: public exports in `__init__.py`, import lint rule, `EXPORTS.md`. | Lint rule catches any `from soc` or `from platform` import in gae/. | — |
+| **GAE-ENG-2** | `examples/minimal_domain/` — Hello World DomainConfig (~50 lines). | Example runs full loop: factor → score → learn → converge. No Neo4j. | GAE-CAL-1 |
+| **GAE-ENG-3** | Engine tests independent of SOC. Reorganize test suite so `pytest tests/` passes without SOC installed. | All 70 core tests pass in GAE repo alone. | GAE-ENG-1 |
+| **GAE-DOC-1** | `docs/users_guide.md` — Calibration guidance, domain extension patterns, convergence monitoring, equation-to-code map. | — | All above |
+
+### 21.4 GAE v5.5+ (Discovery + Evolution)
+
+| Module | Status | Dependency |
+|---|---|---|
+| `embeddings.py` | Designed (§9). EmbeddingProvider protocol (v6 update). | Phase C results |
+| `attention.py` | Designed (§10). | embeddings.py |
+| `discovery.py` | Designed (§10.4). | attention.py |
+
+
+## 22. Repository Structure (Consolidated)
+
+
+
+```
+graph-attention-engine/
+├── gae/
+│   ├── __init__.py              # Public API exports (updated: CalibrationProfile, evaluation)
+│   ├── calibration.py           # NEW: CalibrationProfile + convenience constructors
+│   ├── scoring.py               # UPDATED: accepts CalibrationProfile.temperature
+│   ├── learning.py              # UPDATED: accepts CalibrationProfile, builds epsilon_vector from decay classes
+│   ├── factors.py               # Unchanged
+│   ├── convergence.py           # Unchanged
+│   ├── contracts.py             # UPDATED: SchemaContract.decay_class formalized
+│   ├── primitives.py            # Unchanged
+│   ├── schema.py                # NEW: DomainSchemaSpec, FactorSpec, load_domain_schema
+│   ├── evaluation.py            # NEW: EvaluationScenario, EvaluationReport, run_evaluation
+│   ├── judgment.py              # NEW: InstitutionalJudgmentMetrics
+│   ├── ablation.py              # NEW: AblationConfig, AblationReport, run_ablation
+│   ├── embeddings.py            # Tier 4 (v5.5) — UPDATED: EmbeddingProvider protocol
+│   ├── attention.py             # Tier 5 (v5.5)
+│   ├── discovery.py             # Tier 5 (v5.5)
+│   ├── events.py                # Unchanged
+│   ├── store.py                 # Unchanged
+│   └── types.py                 # Unchanged
+├── tests/
+│   ├── test_calibration.py      # NEW
+│   ├── test_evaluation.py       # NEW (v5.0)
+│   ├── test_judgment.py         # NEW (v5.0)
+│   ├── test_ablation.py         # NEW (v5.0)
+│   ├── test_schema.py           # NEW
+│   ├── test_scoring.py          # Unchanged
+│   ├── test_learning.py         # UPDATED: tests with CalibrationProfile
+│   ├── test_contracts.py        # Unchanged
+│   └── ...
+├── examples/
+│   └── minimal_domain/          # NEW (v5.0: GAE-ENG-2)
+│       ├── config.py            # ~50-line DomainConfig
+│       ├── domain_schema.yaml   # Example schema
+│       └── run.py               # Full loop demo
+├── docs/
+│   ├── equations.md             # Unchanged
+│   ├── users_guide.md           # NEW (v5.0: GAE-DOC-1)
+│   └── EXPORTS.md               # NEW (v5.0: GAE-ENG-1)
+├── pyproject.toml               # Dependencies: numpy>=1.24.0 + optional [embeddings]
+├── LICENSE                      # Apache 2.0
+└── README.md                    # UPDATED: CalibrationProfile usage example
+```
+
+**Optional dependency (v5.5):**
+```toml
+[project.optional-dependencies]
+embeddings = ["sentence-transformers>=2.2.0", "torch>=2.0.0"]
+```
+
+
+## 23. Claude Code Prompt Sequence (GAE Repo Only)
 
 > SOC copilot prompts → soc_copilot_design_v1. Platform prompts → ci_platform_design_v1.
 > For the complete prompt sequence across all repos, see session_continuation_v17.
 
-### 16.1 v4.1 GAE Foundation (7 prompts — GAE REPO)
+### 23.1 v4.1 GAE Foundation (7 prompts — GAE REPO)
 
 | Prompt | Scope | Creates/Modifies | Test | Notes |
 |---|---|---|---|---|
@@ -2038,20 +3132,31 @@ class FreshnessFactor(FactorComputer):
 
 All prompts: Do NOT use debugger. Do NOT use git. No SOC knowledge. numpy-only.
 
-### 16.2 v5.0 GAE Additions (3-4 prompts — GAE REPO)
+### 23.2 v4.5 GAE Preamble (2-3 prompts — GAE REPO)
+
+| Prompt | Creates | Tests | Gate |
+|---|---|---|---|
+| **GAE-CAL-1** | `gae/calibration.py` (CalibrationProfile dataclass + convenience constructors + validation). Refactor `learning.py` to accept CalibrationProfile. Refactor `scoring.py` to accept temperature from profile. | Profile creates with defaults. SOC profile matches current behavior. LearningState.update() uses profile.learning_rate, profile.penalty_ratio. score_alert uses profile.temperature. All 177 existing tests still pass. | All existing tests pass with default CalibrationProfile (backward compatible) |
+| **GAE-CAL-2** | Update `learning.py` epsilon_vector construction from decay_class mapping. Update `contracts.py` SchemaContract to formalize decay_class field. | Per-factor decay rates match CalibrationProfile. Different decay classes produce different ε values. Test: two factors with different decay classes → epsilon_vector has different values. | Run 10-decision sequence, verify campaign-class factors decay faster than permanent-class |
+| **GAE-CAL-3** (if needed) | `gae/schema.py` (DomainSchemaSpec, FactorSpec, load_domain_schema). May be deferred to v5.0 if v4.5 can use SchemaContract.decay_class directly. | Schema file parses. get_factor_decay_classes() returns correct mapping. validate_against_contracts() catches mismatches. | Parse SOC schema → correct decay classes for all 6 factors |
+
+### 23.3 v5.0 GAE Additions (7 prompts — GAE REPO)
+
+| Prompt | Creates | Tests | Dependency |
+|---|---|---|---|
+| **GAE-EVAL-1** | `gae/evaluation.py` (EvaluationScenario, EvaluationResult, EvaluationReport, run_evaluation). | 3 SOC scenarios execute correctly. Report by_category and by_confidence_tier populated. | CalibrationProfile (GAE-CAL-1) |
+| **GAE-JUDG-1** | `gae/judgment.py` (InstitutionalJudgmentMetrics.compute). | Metrics compute from mock LearningState + evaluation results. judgment_score increases with more decisions. | GAE-EVAL-1 |
+| **GAE-ABL-1** | `gae/ablation.py` (AblationConfig, AblationReport, run_ablation). | 4 configs × 3 scenarios. Full system > flat learning > static. | GAE-EVAL-1, GAE-JUDG-1 |
+| **GAE-ENG-1** | API surface design: public exports in `__init__.py`, import lint rule, `EXPORTS.md`. | Lint rule catches any `from soc` or `from platform` import in gae/. | — |
+| **GAE-ENG-2** | `examples/minimal_domain/` — Hello World DomainConfig (~50 lines). | Example runs full loop: factor → score → learn → converge. No Neo4j. | GAE-CAL-1 |
+| **GAE-ENG-3** | Engine tests independent of SOC. Reorganize test suite so `pytest tests/` passes without SOC installed. | All 70 core tests pass in GAE repo alone. | GAE-ENG-1 |
+| **GAE-DOC-1** | `docs/users_guide.md` — Calibration guidance, domain extension patterns, convergence monitoring, equation-to-code map. | — | All above |
+
+### 23.4 v5.5 GAE Tiers 4-5 (7 prompts — GAE REPO)
 
 | Prompt | Scope | Creates/Modifies | Test |
 |---|---|---|---|
-| GAE-1f | Demand-side contracts: SchemaContract, EmbeddingContract, PropertySpec | `gae/contracts.py` | Contracts instantiate, describe() returns valid dict |
-| EVAL-1-engine | Evaluation scoring utility (framework only, no SOC scenarios) | `gae/eval_scorer.py` | Score synthetic scenarios |
-| ENG-2 | Example domain — Hello World | `examples/minimal_domain/` | processes 5 items, prints scores, updates weights |
-| B3-GATE | Embeddings-at-scale experiment harness | `tests/test_embedding_scale.py` | Framework for B3 gate check (SEED-2 data plugs in from copilot) |
-
-### 16.3 v5.5 GAE Tiers 4-5 (7 prompts — GAE REPO)
-
-| Prompt | Scope | Creates/Modifies | Test |
-|---|---|---|---|
-| EMB-1a | PropertyEmbedder + feature schema | `gae/embeddings.py` | Shapes match, L2 unit norm |
+| EMB-1a | PropertyEmbeddingProvider + feature schema | `gae/embeddings.py` | Shapes match, L2 unit norm |
 | EMB-1d | Embedding contracts + per-factor decay activation (A2) | `gae/contracts.py` extend | Coverage checks, decay_class per factor |
 | ATT-1a | `cross_attention()` + `multi_domain_attention()` (Eq. 6, 9) | `gae/attention.py` | 15 heads for 6 domains, shapes match |
 | ATT-1b | `extract_discoveries()` (Eq. 8a-8c) + soft expansion (A4) | `gae/discovery.py` | Threshold + top-K + margin filter chain |
@@ -2061,19 +3166,19 @@ All prompts: Do NOT use debugger. Do NOT use git. No SOC knowledge. numpy-only.
 
 **Post v5.5:** README, API reference, quickstart. Open-source release.
 
-### 16.4 Prompt Summary (GAE Repo Only)
+### 23.5 Prompt Summary (GAE Repo Only)
 
 | Version | GAE Prompts | Scope |
 |---|---|---|
 | v4.1 | 7 | Scoring, learning, persistence, primitives, events, factors protocol |
-| v5.0 | 3-4 | Contracts, eval framework, example domain, B3 harness |
+| v4.5 | 2-3 | CalibrationProfile, decay mapping, domain schema protocol |
+| v5.0 | 7 | Evaluation, judgment, ablation, API surface, example domain, docs |
 | v5.5 | 7 | Embeddings, attention, discovery, A1 activation |
-| **Total** | **17-18** | Complete Tiers 1-5 + open-source ready |
-
+| **Total** | **23-24** | Complete Tiers 1-5 + evaluation + open-source ready |
 
 ---
 
-## 17. Equation-to-Code Traceability Matrix
+## 24. Equation-to-Code Traceability Matrix
 
 | Equation | Blog Section | File | Function | Version | Scope |
 |---|---|---|---|---|---|
@@ -2095,7 +3200,7 @@ A technical reviewer can grep for any equation number and find the implementatio
 
 ---
 
-## 18. How GAE Transforms the Demo
+## 25. How GAE Transforms the Demo
 
 > Full demo flow specification → soc_copilot_design_v1.md
 
@@ -2129,7 +3234,9 @@ v7.0  [plan]     Multi-tenant, community domains, cross-tenant meta-graph
 
 ---
 
-## 19. Design Decisions Summary
+---
+
+## 26. Design Decisions Summary
 
 | Decision | Rationale | Version |
 |---|---|---|
@@ -2149,14 +3256,24 @@ v7.0  [plan]     Multi-tenant, community domains, cross-tenant meta-graph
 | Open-source GAE at v5.5, not v5.0 | At v5.0 GAE is just scoring + learning. At v5.5, discovery makes it distinctive | v5.5 |
 | Artifact evolution in platform, not GAE | Pipeline infrastructure, not core math. GAE provides scoring primitives | v6.0 |
 
+| CalibrationProfile replaces hardcoded constants | Multi-domain: SOC 20:1 ≠ S2P 5:1. Domain-configurable without touching GAE | v4.5 |
+| Three-layer decay (schema → profile → loop) | Single source of truth for factor metadata. New decay class = config change, not code | v4.5 |
+| EmbeddingProvider protocol (replaces PropertyEmbedder) | Design for Option B (property), test Option C (transformer). Community can contribute | v5.5 |
+| Evaluation framework in GAE (not copilot) | Shared format across EVAL-1, SEED-2, B3 consumers. Domain-agnostic scenarios | v5.0 |
+| Institutional judgment metrics in GAE | Abstract math metrics. Domain copilots translate to CISO/CPO language | v5.0 |
+| Ablation framework in GAE | Standard ML methodology. Four baselines prove each component's value | v5.0 |
+
 ---
 
-*Graph Attention Engine — Design & Architecture v5 | February 28, 2026*
+*Graph Attention Engine — Design & Architecture v7 | March 1, 2026*
+*Consolidated from v5 (Feb 28) + v6 addendum (Mar 1)*
 *Standalone library: `pip install graph-attention-engine` (Apache 2.0, numpy-only)*
 *Three-repo architecture: GAE (math) → ci-platform (infrastructure) → domain copilots (expertise)*
 *Requirements R1-R9 | 12 design principles (P1-P12) | Connectors C1-C5 in GAE, C6 in platform*
+*CalibrationProfile: domain-configurable hyperparameters (α, λ_neg, τ, ε)*
 *Hardening data structures: A1, A2, A4, C3 — present from v4.1, activated at v5.5-v6.0*
-*GAE prompts: v4.1 (7) + v5.0 (3-4) + v5.5 (7) = 17-18 total*
+*GAE prompts: v4.1 (7) + v4.5 (2-3) + v5.0 (7) + v5.5 (7) = 23-24 total*
 *Every equation → one function → one file → one prompt*
 *Companion repos: ci-platform (v4.5+), soc-copilot (v4.1+)*
-*Companion docs: soc_copilot_design_v1, ci_platform_design_v1, session_continuation_v17*
+*Companion docs: soc_copilot_design_v1, ci_platform_design_v1, design_decisions_v1, session_continuation_v17*
+*"The moat is the graph, not the model. The engine proves it."*

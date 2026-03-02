@@ -9,6 +9,13 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
+# Calibration — domain-configurable hyperparameters
+from gae.calibration import (
+    CalibrationProfile,
+    soc_calibration_profile,
+    s2p_calibration_profile,
+)
+
 # Tier 1 — primitives (Eq. 1)
 from gae.primitives import scaled_dot_product_attention, softmax
 
@@ -48,6 +55,10 @@ from gae.store import save_state, load_state
 
 __all__ = [
     "__version__",
+    # calibration
+    "CalibrationProfile",
+    "soc_calibration_profile",
+    "s2p_calibration_profile",
     # primitives
     "scaled_dot_product_attention",
     "softmax",

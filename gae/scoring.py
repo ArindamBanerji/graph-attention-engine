@@ -24,6 +24,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from gae.calibration import CalibrationProfile
 from gae.primitives import softmax
 
 
@@ -72,6 +73,7 @@ def score_entity(
     W: np.ndarray,
     actions: list[str],
     tau: float = 0.25,
+    profile: CalibrationProfile | None = None,
 ) -> ScoringResult:
     """
     Tier 2 scoring matrix — Eq. 4 from the math blog.
@@ -95,6 +97,9 @@ def score_entity(
     tau : float, default 0.25
         Temperature scalar τ > 0.
         Smaller τ sharpens the distribution toward a hard argmax.
+        Ignored when *profile* is provided.
+    profile : CalibrationProfile or None, default None
+        When provided, profile.temperature overrides *tau*.
 
     Returns
     -------
@@ -108,6 +113,9 @@ def score_entity(
     AssertionError
         On shape mismatches or empty action list.
     """
+    if profile is not None:
+        tau = profile.temperature
+
     if tau <= 0.0:
         raise ValueError(f"tau must be > 0, got {tau}")
 
