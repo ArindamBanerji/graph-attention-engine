@@ -1,28 +1,101 @@
 """
-Graph Attention Engine — public API surface.
+Graph Attention Engine (GAE) v5.0
+Public API surface.
 
-Equations implemented here are documented in docs/gae_design_v5.md and the
-companion blog post at dakshineshwari.net.
+Core scoring:
+  ProfileScorer, ScoringResult, KernelType, build_profile_scorer
+
+Oracle:
+  OracleProvider, GTAlignedOracle, BernoulliOracle, OracleResult
+
+Evaluation:
+  EvaluationScenario, EvaluationReport, compute_ece, run_evaluation
+
+Judgment:
+  JudgmentResult, compute_judgment, CONFIDENCE_HIGH, CONFIDENCE_MEDIUM
+
+Ablation:
+  AblationResult, AblationReport, run_ablation
+
+Calibration:
+  CalibrationProfile, soc_calibration_profile, s2p_calibration_profile
+
+Primitives (Tier 1):
+  scaled_dot_product_attention, softmax
+
+Learning (Tier 3):
+  LearningState, DimensionMetadata, PendingValidation, WeightUpdate,
+  ALPHA, EPSILON, LAMBDA_NEG, W_CLAMP
+
+Convergence:
+  get_convergence_metrics
+
+Infrastructure:
+  FactorComputedEvent, WeightsUpdatedEvent, ConvergenceEvent,
+  PropertySpec, EmbeddingContract, SchemaContract,
+  FactorComputer, assemble_factor_vector,
+  save_state, load_state
+
+Deprecated (TD-029 — remove in v6.0):
+  score_entity, score_alert, score_with_profile, ProfileScoringResult
 """
 
 from __future__ import annotations
 
 __version__ = "0.1.0"
 
-# Calibration — domain-configurable hyperparameters
+# ── Core Scoring ─────────────────────────────────────────────────────
+from gae.profile_scorer import (
+    ProfileScorer,
+    ScoringResult,
+    KernelType,
+    build_profile_scorer,
+)
+# Backward-compatible alias — ProfileScoringResult was the v4.x name
+ProfileScoringResult = ScoringResult
+
+# ── Oracle ───────────────────────────────────────────────────────────
+from gae.oracle import (
+    OracleProvider,
+    OracleResult,
+    GTAlignedOracle,
+    BernoulliOracle,
+)
+
+# ── Evaluation ───────────────────────────────────────────────────────
+from gae.evaluation import (
+    EvaluationScenario,
+    EvaluationReport,
+    compute_ece,
+    run_evaluation,
+)
+
+# ── Judgment ─────────────────────────────────────────────────────────
+from gae.judgment import (
+    JudgmentResult,
+    compute_judgment,
+    CONFIDENCE_HIGH,
+    CONFIDENCE_MEDIUM,
+)
+
+# ── Ablation ─────────────────────────────────────────────────────────
+from gae.ablation import (
+    AblationResult,
+    AblationReport,
+    run_ablation,
+)
+
+# ── Calibration ──────────────────────────────────────────────────────
 from gae.calibration import (
     CalibrationProfile,
     soc_calibration_profile,
     s2p_calibration_profile,
 )
 
-# Tier 1 — primitives (Eq. 1)
+# ── Primitives (Tier 1, Eq. 1) ───────────────────────────────────────
 from gae.primitives import scaled_dot_product_attention, softmax
 
-# Tier 2 — scoring matrix (Eq. 4)
-from gae.scoring import ScoringResult, score_entity, score_alert  # score_alert is alias
-
-# Tier 3 — weight learning (Eq. 4b, 4c)
+# ── Learning (Tier 3, Eq. 4b / 4c) ──────────────────────────────────
 from gae.learning import (
     ALPHA,
     EPSILON,
@@ -34,10 +107,10 @@ from gae.learning import (
     WeightUpdate,
 )
 
-# Convergence monitoring
+# ── Convergence ──────────────────────────────────────────────────────
 from gae.convergence import get_convergence_metrics
 
-# Infrastructure — events, contracts, factors
+# ── Infrastructure — events, contracts, factors ──────────────────────
 from gae.events import (
     FactorComputedEvent,
     WeightsUpdatedEvent,
@@ -50,43 +123,47 @@ from gae.contracts import (
 )
 from gae.factors import FactorComputer, assemble_factor_vector
 
-# Persistence (note: gae.store.LearningState is the simpler JSON-only state)
+# ── Persistence ──────────────────────────────────────────────────────
 from gae.store import save_state, load_state
 
-# ── v5.0 ProfileScorer API ──────────────────────────────────────────
-# Primary scoring path. Replaces score_alert() / ScoringMatrix (TD-029)
-from gae.profile_scorer import (
-    ProfileScorer,
-    KernelType,
-    ScoringResult as ProfileScoringResult,
-    build_profile_scorer,
-)
-from gae.scoring import score_with_profile
-# ────────────────────────────────────────────────────────────────────
-
-# ── v5.0 Oracle API ─────────────────────────────────────────────────
-from gae.oracle import (
-    OracleProvider,
-    OracleResult,
-    GTAlignedOracle,
-    BernoulliOracle,
-)
-# ────────────────────────────────────────────────────────────────────
+# ── Deprecated (TD-029 — remove in v6.0) ────────────────────────────
+from gae.scoring import score_entity, score_alert, score_with_profile
 
 __all__ = [
     "__version__",
-    # calibration
+    # Core scoring
+    "ProfileScorer",
+    "ScoringResult",
+    "KernelType",
+    "build_profile_scorer",
+    "ProfileScoringResult",       # backward-compat alias
+    # Oracle
+    "OracleProvider",
+    "OracleResult",
+    "GTAlignedOracle",
+    "BernoulliOracle",
+    # Evaluation
+    "EvaluationScenario",
+    "EvaluationReport",
+    "compute_ece",
+    "run_evaluation",
+    # Judgment
+    "JudgmentResult",
+    "compute_judgment",
+    "CONFIDENCE_HIGH",
+    "CONFIDENCE_MEDIUM",
+    # Ablation
+    "AblationResult",
+    "AblationReport",
+    "run_ablation",
+    # Calibration
     "CalibrationProfile",
     "soc_calibration_profile",
     "s2p_calibration_profile",
-    # primitives
+    # Primitives
     "scaled_dot_product_attention",
     "softmax",
-    # scoring
-    "ScoringResult",
-    "score_entity",
-    "score_alert",      # backward-compatible alias for score_entity
-    # learning
+    # Learning
     "ALPHA",
     "EPSILON",
     "LAMBDA_NEG",
@@ -95,31 +172,24 @@ __all__ = [
     "LearningState",
     "PendingValidation",
     "WeightUpdate",
-    # convergence
+    # Convergence
     "get_convergence_metrics",
-    # events
+    # Events
     "FactorComputedEvent",
     "WeightsUpdatedEvent",
     "ConvergenceEvent",
-    # contracts
+    # Contracts
     "PropertySpec",
     "EmbeddingContract",
     "SchemaContract",
-    # factors
+    # Factors
     "FactorComputer",
     "assemble_factor_vector",
-    # persistence
+    # Persistence
     "save_state",
     "load_state",
-    # v5.0 ProfileScorer
-    "ProfileScorer",
-    "KernelType",
-    "ProfileScoringResult",
-    "build_profile_scorer",
+    # Deprecated (TD-029 — remove in v6.0)
+    "score_entity",
+    "score_alert",
     "score_with_profile",
-    # v5.0 Oracle
-    "OracleProvider",
-    "OracleResult",
-    "GTAlignedOracle",
-    "BernoulliOracle",
 ]
