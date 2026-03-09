@@ -85,6 +85,12 @@ from gae.ablation import (
     run_ablation,
 )
 
+# ── Bootstrap ────────────────────────────────────────────────────────
+from gae.bootstrap import (
+    BootstrapResult,
+    bootstrap_calibration,
+)
+
 # ── Calibration ──────────────────────────────────────────────────────
 from gae.calibration import (
     CalibrationProfile,
@@ -188,6 +194,9 @@ __all__ = [
     # Persistence
     "save_state",
     "load_state",
+    # Bootstrap
+    "BootstrapResult",
+    "bootstrap_calibration",
     # Deprecated (TD-029 — remove in v6.0)
     "score_entity",
     "score_alert",
