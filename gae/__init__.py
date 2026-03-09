@@ -64,6 +64,15 @@ from gae.profile_scorer import (
 from gae.scoring import score_with_profile
 # ────────────────────────────────────────────────────────────────────
 
+# ── v5.0 Oracle API ─────────────────────────────────────────────────
+from gae.oracle import (
+    OracleProvider,
+    OracleResult,
+    GTAlignedOracle,
+    BernoulliOracle,
+)
+# ────────────────────────────────────────────────────────────────────
+
 __all__ = [
     "__version__",
     # calibration
@@ -108,4 +117,9 @@ __all__ = [
     "ProfileScoringResult",
     "build_profile_scorer",
     "score_with_profile",
+    # v5.0 Oracle
+    "OracleProvider",
+    "OracleResult",
+    "GTAlignedOracle",
+    "BernoulliOracle",
 ]
