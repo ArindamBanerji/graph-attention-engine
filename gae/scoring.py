@@ -20,12 +20,17 @@ Reference: docs/gae_design_v5.md §7; blog Eq. 4.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from gae.calibration import CalibrationProfile
 from gae.primitives import softmax
+
+if TYPE_CHECKING:
+    from gae.profile_scorer import ProfileScorer
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +83,10 @@ def score_entity(
     """
     Tier 2 scoring matrix — Eq. 4 from the math blog.
 
+    .. deprecated::
+        Use :class:`gae.profile_scorer.ProfileScorer` instead.
+        score_entity() will be removed in v6.0 (TD-029).
+
     Computes the action probability distribution for one entity given its
     factor vector and the current weight matrix:
 
@@ -113,6 +122,13 @@ def score_entity(
     AssertionError
         On shape mismatches or empty action list.
     """
+    warnings.warn(
+        "score_entity() is deprecated. Use ProfileScorer.score() instead. "
+        "score_entity() will be removed in v6.0 (TD-029).",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     if profile is not None:
         tau = profile.temperature
 
@@ -165,4 +181,30 @@ def score_entity(
 
 
 # Backward-compatible alias — existing callers using score_alert continue to work.
+# Deprecated: use ProfileScorer.score() instead (TD-029).
 score_alert = score_entity
+
+
+# ---------------------------------------------------------------------------
+# score_with_profile  (v5.0+ scoring path)
+# ---------------------------------------------------------------------------
+
+def score_with_profile(
+    scorer: "ProfileScorer",
+    f: np.ndarray,
+    category_index: int,
+):
+    """
+    Score factor vector f using ProfileScorer.
+
+    This is the v5.0+ scoring path. Replaces score_alert().
+    Returns ScoringResult from gae.profile_scorer.
+
+    Args:
+      scorer:         A ProfileScorer instance.
+      f:              Factor vector, shape (n_factors,).
+      category_index: Category index for routing.
+
+    Reference: docs/gae_design_v5.md §9.4; blog Eq. 4-final.
+    """
+    return scorer.score(f, category_index)

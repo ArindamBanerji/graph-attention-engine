@@ -53,6 +53,15 @@ from gae.factors import FactorComputer, assemble_factor_vector
 # Persistence (note: gae.store.LearningState is the simpler JSON-only state)
 from gae.store import save_state, load_state
 
+# v5.0 ProfileScorer — centroid-proximity scoring (replaces ScoringMatrix, TD-029)
+from gae.profile_scorer import (
+    ProfileScorer,
+    KernelType,
+    ScoringResult as ProfileScoringResult,
+    build_profile_scorer,
+)
+from gae.scoring import score_with_profile
+
 __all__ = [
     "__version__",
     # calibration
@@ -91,4 +100,10 @@ __all__ = [
     # persistence
     "save_state",
     "load_state",
+    # v5.0 ProfileScorer
+    "ProfileScorer",
+    "KernelType",
+    "ProfileScoringResult",
+    "build_profile_scorer",
+    "score_with_profile",
 ]
