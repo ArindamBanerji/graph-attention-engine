@@ -45,11 +45,14 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional, TYPE_CHECKING
 
 import numpy as np
 
 from gae.calibration import CalibrationProfile
+
+if TYPE_CHECKING:
+    from gae.profile_scorer import ProfileScorer
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +255,7 @@ class LearningState:
     epsilon_vector: np.ndarray | None = None
     dimension_metadata: list[DimensionMetadata] = field(default_factory=list)
     pending_validations: list[PendingValidation] = field(default_factory=list)
+    profile_scorer: Optional["ProfileScorer"] = None
 
     def __post_init__(self) -> None:
         assert isinstance(self.W, np.ndarray), (
@@ -324,6 +328,7 @@ class LearningState:
         f: np.ndarray,
         confidence_at_decision: float | None = None,
         decision_source: str = "analyst",
+        category_index: int = 0,
     ) -> WeightUpdate | None:
         """
         Apply one Hebbian update to the weight matrix.
@@ -389,6 +394,18 @@ class LearningState:
             ))
             return None
 
+        # v5.0 delegation path: if ProfileScorer is wired in, use it
+        if self.profile_scorer is not None:
+            self.profile_scorer.update(
+                f=f.flatten(),
+                category_index=category_index,
+                action_index=action_index,
+                correct=(outcome == +1),
+            )
+            return  # ProfileScorer owns the update — skip legacy W update
+
+        # Legacy path: existing W-matrix Hebbian update continues below
+        # (unchanged)
         W_before = self.W.copy()
 
         # Eq. 4b — asymmetric δ(t): correct=1.0, incorrect=profile.penalty_ratio
@@ -449,6 +466,30 @@ class LearningState:
         )
         self.history.append(record)
         return record
+
+    # ------------------------------------------------------------------
+    # ProfileScorer wiring — v5.0
+    # ------------------------------------------------------------------
+
+    def attach_profile_scorer(self, scorer: "ProfileScorer") -> None:
+        """
+        Wire a ProfileScorer into this LearningState.
+        After this call, update() delegates to scorer.update().
+        The legacy W-matrix update is bypassed.
+
+        Used by SOC-PROF-2 to switch from W-matrix to profile learning.
+
+        Reference: docs/gae_design_v5.md §9.5; GAE-PROF-3.
+        """
+        self.profile_scorer = scorer
+
+    @property
+    def is_profile_mode(self) -> bool:
+        """True if update() delegates to ProfileScorer.
+
+        Reference: docs/gae_design_v5.md §9.5; GAE-PROF-3.
+        """
+        return self.profile_scorer is not None
 
     # ------------------------------------------------------------------
     # expand_weight_matrix  — R5 + A4 hardening

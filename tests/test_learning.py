@@ -287,3 +287,66 @@ def test_task_verification_smoke():
 
     state.expand_weight_matrix("new_dim")
     assert state.W.shape == (4, 7)
+
+
+# ---------------------------------------------------------------------------
+# GAE-PROF-3: ProfileScorer delegation tests
+# ---------------------------------------------------------------------------
+
+def test_learning_state_profile_scorer_field_defaults_none():
+    """profile_scorer defaults to None; is_profile_mode is False."""
+    state = make_state()
+    assert state.profile_scorer is None
+    assert state.is_profile_mode is False
+
+
+def test_attach_profile_scorer_sets_profile_mode():
+    """attach_profile_scorer() wires scorer and sets is_profile_mode True."""
+    from gae.profile_scorer import ProfileScorer
+    state = make_state()
+    mu = np.full((2, 3, 4), 0.5)
+    scorer = ProfileScorer(mu=mu, actions=["a0", "a1", "a2"])
+    state.attach_profile_scorer(scorer)
+    assert state.is_profile_mode is True
+    assert state.profile_scorer is scorer
+
+
+def test_update_delegates_to_profile_scorer_when_attached():
+    """When profile_scorer is attached, update() calls scorer.update()
+    and the scorer's counts increment."""
+    from gae.profile_scorer import ProfileScorer
+    mu = np.full((2, 3, 4), 0.5)
+    scorer = ProfileScorer(mu=mu, actions=["a0", "a1", "a2"])
+
+    state = LearningState(
+        W=np.zeros((3, 4)),
+        n_actions=3,
+        n_factors=4,
+        factor_names=["f0", "f1", "f2", "f3"],
+        profile=CalibrationProfile(),
+    )
+    state.attach_profile_scorer(scorer)
+
+    assert scorer.counts[0, 0] == 0
+
+    f = np.ones((1, 4)) * 0.5
+    state.update(
+        action_index=0,
+        action_name="a0",
+        outcome=+1,
+        f=f,
+        category_index=0,
+    )
+
+    assert scorer.counts[0, 0] == 1, (
+        "ProfileScorer.update() should have been called, incrementing count"
+    )
+
+
+def test_legacy_path_unchanged_without_profile_scorer():
+    """Without a profile_scorer attached, update() behaves exactly as before."""
+    state = make_state()
+    assert state.is_profile_mode is False
+    u = state.update(0, "fp_close", +1, F)
+    assert isinstance(u, WeightUpdate)
+    assert state.decision_count == 1
