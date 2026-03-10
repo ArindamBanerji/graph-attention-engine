@@ -402,7 +402,24 @@ class LearningState:
                 action_index=action_index,
                 correct=(outcome == +1),
             )
-            return  # ProfileScorer owns the update — skip legacy W update
+            # Build a WeightUpdate record so history is populated (Charts A-D)
+            self.decision_count += 1
+            _zeros = np.zeros(self.n_factors)
+            record = WeightUpdate(
+                decision_number=self.decision_count,
+                timestamp=time.time(),
+                action_index=action_index,
+                action_name=action_name,
+                outcome=outcome,
+                factor_vector=f.copy(),
+                delta_applied=_zeros,
+                W_before=self.W.copy(),
+                W_after=self.W.copy(),
+                alpha_effective=self.profile.learning_rate,
+                confidence_at_decision=confidence_at_decision if confidence_at_decision is not None else 0.0,
+            )
+            self.history.append(record)
+            return record  # ProfileScorer owns the centroid update — W unchanged
 
         # Legacy path: existing W-matrix Hebbian update continues below
         # (unchanged)
