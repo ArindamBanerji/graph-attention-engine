@@ -42,7 +42,7 @@ Deprecated (TD-029 — remove in v6.0):
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.5.0"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
 from gae.profile_scorer import (
