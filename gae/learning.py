@@ -51,6 +51,8 @@ import numpy as np
 
 from gae.calibration import CalibrationProfile
 
+from gae.profile_scorer import CentroidUpdate
+
 if TYPE_CHECKING:
     from gae.profile_scorer import ProfileScorer
 
@@ -197,6 +199,7 @@ class WeightUpdate:
     W_after: np.ndarray
     alpha_effective: float
     confidence_at_decision: float
+    centroid_update: Optional[CentroidUpdate] = None
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +399,7 @@ class LearningState:
 
         # v5.0 delegation path: if ProfileScorer is wired in, use it
         if self.profile_scorer is not None:
-            self.profile_scorer.update(
+            cu: CentroidUpdate = self.profile_scorer.update(
                 f=f.flatten(),
                 category_index=category_index,
                 action_index=action_index,
@@ -417,6 +420,7 @@ class LearningState:
                 W_after=self.W.copy(),
                 alpha_effective=self.profile.learning_rate,
                 confidence_at_decision=confidence_at_decision if confidence_at_decision is not None else 0.0,
+                centroid_update=cu,
             )
             self.history.append(record)
             return record  # ProfileScorer owns the centroid update — W unchanged
