@@ -46,6 +46,7 @@ __version__ = "0.5.0"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
 from gae.profile_scorer import (
+    CentroidUpdate,
     ProfileScorer,
     ScoringResult,
     KernelType,
@@ -138,6 +139,7 @@ from gae.scoring import score_entity, score_alert, score_with_profile
 __all__ = [
     "__version__",
     # Core scoring
+    "CentroidUpdate",
     "ProfileScorer",
     "ScoringResult",
     "KernelType",

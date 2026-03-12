@@ -25,6 +25,25 @@ if TYPE_CHECKING:
     from gae.calibration import CalibrationProfile
 
 
+@dataclass
+class CentroidUpdate:
+    """
+    Return value from ProfileScorer.update().
+
+    Captures the magnitude of centroid movement for a single learning step.
+    Used for visualization, Neo4j persistence, and drift monitoring.
+
+    Reference: docs/gae_design_v5.md §9.5; IKS pipeline.
+    """
+
+    centroid_delta_norm: float   # ‖η*(f - μ[c,a,:])‖₂ before in-place update
+    category_index: int          # c — the alert category updated
+    action_index: int            # a — the verified action updated
+    category_name: str           # human-readable, for logging
+    action_name: str             # human-readable, for logging
+    decision_count: int          # total decisions in this ProfileScorer instance
+
+
 class KernelType(Enum):
     """
     Distance kernel for profile scoring.
@@ -105,6 +124,7 @@ class ProfileScorer:
         actions: List[str],
         kernel: KernelType = KernelType.L2,
         profile: Optional["CalibrationProfile"] = None,
+        categories: Optional[List[str]] = None,
     ) -> None:
         """
         Args:
@@ -126,10 +146,12 @@ class ProfileScorer:
 
         self.mu = mu.copy().astype(np.float64)
         self.actions = list(actions)
+        self.categories: Optional[List[str]] = list(categories) if categories is not None else None
         self.kernel = kernel
         self.n_categories: int = mu.shape[0]
         self.n_actions: int = mu.shape[1]
         self.n_factors: int = mu.shape[2]
+        self.decision_count: int = 0
 
         # Hyperparameters — from CalibrationProfile or validated defaults
         if profile is not None:
@@ -145,6 +167,7 @@ class ProfileScorer:
 
         # Per-(category, action) observation counts for learning rate decay
         self.counts = np.zeros((self.n_categories, self.n_actions), dtype=np.int64)
+        self._frozen: bool = False
         assert self.counts.shape == (self.n_categories, self.n_actions), (
             f"counts shape {self.counts.shape} != ({self.n_categories}, {self.n_actions})"
         )
@@ -290,6 +313,35 @@ class ProfileScorer:
             raise ValueError(f"Unknown kernel: {self.kernel}")
 
     # ------------------------------------------------------------------ #
+    # Name lookup helpers                                                 #
+    # ------------------------------------------------------------------ #
+
+    def _category_name(self, c: int) -> str:
+        """Return human-readable category name for index c."""
+        if self.categories is not None and c < len(self.categories):
+            return self.categories[c]
+        return f"cat_{c}"
+
+    def _action_name(self, a: int) -> str:
+        """Return human-readable action name for index a."""
+        if a < len(self.actions):
+            return self.actions[a]
+        return f"action_{a}"
+
+    def freeze(self) -> None:
+        """
+        Freeze all centroid learning. Subsequent update() calls return a
+        CentroidUpdate with centroid_delta_norm=0.0 and do not mutate mu.
+
+        Reference: docs/gae_design_v5.md §9.5.
+        """
+        self._frozen = True
+
+    def unfreeze(self) -> None:
+        """Re-enable centroid learning after a freeze() call."""
+        self._frozen = False
+
+    # ------------------------------------------------------------------ #
     # Learning                                                            #
     # ------------------------------------------------------------------ #
 
@@ -299,7 +351,7 @@ class ProfileScorer:
         category_index: int,
         action_index: int,
         correct: bool,
-    ) -> None:
+    ) -> CentroidUpdate:
         """
         Update profile centroids from observed outcome.
 
@@ -317,6 +369,9 @@ class ProfileScorer:
           action_index:   The action that was taken (recommended action).
           correct:        Whether the action was correct (matched GT).
 
+        Returns:
+          CentroidUpdate capturing the magnitude of centroid movement.
+
         Reference: docs/gae_design_v5.md §9.5; blog Eq. 4b-final; V2 (clipping).
         """
         f = np.asarray(f, dtype=np.float64)
@@ -326,9 +381,28 @@ class ProfileScorer:
         c = category_index
         a = action_index
 
+        if self._frozen:
+            self.decision_count += 1
+            return CentroidUpdate(
+                centroid_delta_norm=0.0,
+                category_index=c,
+                action_index=a,
+                category_name=self._category_name(c),
+                action_name=self._action_name(a),
+                decision_count=self.decision_count,
+            )
+
         count = self.counts[c, a]
         eta_eff     = self.eta     / (1.0 + self.decay * count)
         eta_neg_eff = self.eta_neg / (1.0 + self.decay * count)
+
+        # Compute delta BEFORE the in-place update — used for CentroidUpdate
+        if correct:
+            delta_vector = eta_eff * (f - self.mu[c, a, :])
+        else:
+            # Representative delta: displacement applied to the action centroid
+            delta_vector = -eta_neg_eff * (f - self.mu[c, a, :])
+        centroid_delta_norm = float(np.linalg.norm(delta_vector))
 
         if correct:
             # Pull centroid toward f (positive reinforcement)
@@ -343,6 +417,16 @@ class ProfileScorer:
 
         # Increment observation count for this (category, action) pair
         self.counts[c, a] += 1
+        self.decision_count += 1
+
+        return CentroidUpdate(
+            centroid_delta_norm=centroid_delta_norm,
+            category_index=c,
+            action_index=a,
+            category_name=self._category_name(c),
+            action_name=self._action_name(a),
+            decision_count=self.decision_count,
+        )
 
     # ------------------------------------------------------------------ #
     # Diagnostics                                                         #

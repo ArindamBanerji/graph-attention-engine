@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from gae.profile_scorer import (
+    CentroidUpdate,
     KernelType,
     ProfileScorer,
     ScoringResult,
@@ -311,3 +312,51 @@ def test_diagnostics_returns_expected_shape():
         assert "separation" in diag["per_category"][c]
         assert "min_dist"   in diag["per_category"][c]
         assert diag["per_category"][c]["separation"] >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# Helper for WIRING-1 tests — accepts dimensional args, not centroid dicts
+# ---------------------------------------------------------------------------
+
+def _make_scorer(n_categories: int, n_actions: int, n_factors: int) -> ProfileScorer:
+    """Build a ProfileScorer from dimensional args with random [0,1] centroids."""
+    mu = np.random.rand(n_categories, n_actions, n_factors)
+    actions = [f"action_{i}" for i in range(n_actions)]
+    categories = [f"cat_{i}" for i in range(n_categories)]
+    return ProfileScorer(mu=mu, actions=actions, categories=categories)
+
+
+# ---------------------------------------------------------------------------
+# TEST 13 — update() returns CentroidUpdate (GAE-WIRING-1)
+# ---------------------------------------------------------------------------
+
+def test_update_returns_centroid_update():
+    scorer = _make_scorer(n_categories=5, n_actions=5, n_factors=6)
+    f = np.random.rand(6)
+    result = scorer.update(f, category_index=0, action_index=1, correct=True)
+    assert isinstance(result, CentroidUpdate)
+    assert result.centroid_delta_norm >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# TEST 14 — frozen scorer returns delta_norm == 0.0 (GAE-WIRING-1)
+# ---------------------------------------------------------------------------
+
+def test_update_delta_norm_zero_on_frozen():
+    scorer = _make_scorer(n_categories=5, n_actions=5, n_factors=6)
+    scorer.freeze()
+    f = np.random.rand(6)
+    result = scorer.update(f, category_index=0, action_index=1, correct=True)
+    assert result.centroid_delta_norm == 0.0
+
+
+# ---------------------------------------------------------------------------
+# TEST 15 — centroid stays in [0.0, 1.0] after update with all-ones f
+# ---------------------------------------------------------------------------
+
+def test_centroid_clipped_after_update():
+    scorer = _make_scorer(n_categories=5, n_actions=5, n_factors=6)
+    f = np.ones(6)
+    scorer.update(f, category_index=0, action_index=0, correct=True)
+    assert np.all(scorer.mu[0, 0, :] <= 1.0)
+    assert np.all(scorer.mu[0, 0, :] >= 0.0)
