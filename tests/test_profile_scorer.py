@@ -360,3 +360,147 @@ def test_centroid_clipped_after_update():
     scorer.update(f, category_index=0, action_index=0, correct=True)
     assert np.all(scorer.mu[0, 0, :] <= 1.0)
     assert np.all(scorer.mu[0, 0, :] >= 0.0)
+
+
+# ---------------------------------------------------------------------------
+# TEST 16 — incorrect update pushes predicted centroid and pulls GT centroid
+# ---------------------------------------------------------------------------
+
+def test_update_incorrect_pushes_predicted_pulls_gt():
+    """When correct=False with gt_action_index, predicted is pushed and GT is pulled."""
+    np.random.seed(77)
+    scorer = _make_scorer(n_categories=3, n_actions=4, n_factors=6)
+    mu_before = scorer.mu.copy()
+    c, a_pred, a_gt = 0, 1, 2
+    f = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+
+    scorer.update(f, c, a_pred, correct=False, gt_action_index=a_gt)
+
+    # Predicted centroid must have moved
+    delta_pred = np.linalg.norm(scorer.mu[c, a_pred] - mu_before[c, a_pred])
+    assert delta_pred > 0, "Predicted centroid should move"
+
+    # GT centroid must have moved
+    delta_gt = np.linalg.norm(scorer.mu[c, a_gt] - mu_before[c, a_gt])
+    assert delta_gt > 0, "GT centroid should move toward f"
+
+    # All other centroids must be unchanged
+    for b in range(scorer.n_actions):
+        if b in (a_pred, a_gt):
+            continue
+        delta_other = np.linalg.norm(scorer.mu[c, b] - mu_before[c, b])
+        assert delta_other == 0.0, f"Action {b} should not move"
+
+
+# ---------------------------------------------------------------------------
+# TEST 17 — push/pull directions are correct
+# ---------------------------------------------------------------------------
+
+def test_update_incorrect_push_pull_directions():
+    """Predicted centroid moves away from f; GT centroid moves toward f."""
+    np.random.seed(88)
+    scorer = _make_scorer(n_categories=3, n_actions=4, n_factors=6)
+    c, a_pred, a_gt = 0, 1, 2
+    f = np.array([0.9, 0.9, 0.9, 0.9, 0.9, 0.9])
+
+    mu_pred_before = scorer.mu[c, a_pred].copy()
+    mu_gt_before   = scorer.mu[c, a_gt].copy()
+
+    scorer.update(f, c, a_pred, correct=False, gt_action_index=a_gt)
+
+    # Predicted centroid: distance to f must INCREASE (pushed away)
+    dist_pred_before = float(np.linalg.norm(f - mu_pred_before))
+    dist_pred_after  = float(np.linalg.norm(f - scorer.mu[c, a_pred]))
+    assert dist_pred_after > dist_pred_before, (
+        f"Predicted centroid should be farther from f: "
+        f"{dist_pred_before:.6f} -> {dist_pred_after:.6f}"
+    )
+
+    # GT centroid: distance to f must DECREASE (pulled toward)
+    dist_gt_before = float(np.linalg.norm(f - mu_gt_before))
+    dist_gt_after  = float(np.linalg.norm(f - scorer.mu[c, a_gt]))
+    assert dist_gt_after < dist_gt_before, (
+        f"GT centroid should be closer to f: "
+        f"{dist_gt_before:.6f} -> {dist_gt_after:.6f}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# TEST 18 — backward compat: no gt_action_index emits DeprecationWarning
+#           and only moves predicted centroid
+# ---------------------------------------------------------------------------
+
+def test_update_incorrect_backward_compat_warning():
+    """Without gt_action_index, emits DeprecationWarning and moves only predicted."""
+    import warnings as _warnings
+    np.random.seed(99)
+    scorer = _make_scorer(n_categories=3, n_actions=4, n_factors=6)
+    mu_before = scorer.mu.copy()
+    c, a_pred = 0, 1
+    f = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+
+    with _warnings.catch_warnings(record=True) as w:
+        _warnings.simplefilter("always")
+        scorer.update(f, c, a_pred, correct=False)
+
+    dep_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+    assert len(dep_warnings) == 1, f"Expected 1 DeprecationWarning, got {len(dep_warnings)}"
+    assert "gt_action_index" in str(dep_warnings[0].message)
+
+    # Only predicted centroid should have moved
+    delta_pred = np.linalg.norm(scorer.mu[c, a_pred] - mu_before[c, a_pred])
+    assert delta_pred > 0, "Predicted centroid should move"
+
+    for b in range(scorer.n_actions):
+        if b == a_pred:
+            continue
+        delta = np.linalg.norm(scorer.mu[c, b] - mu_before[c, b])
+        assert delta == 0.0, f"Action {b} should not move without gt_action_index"
+
+
+# ---------------------------------------------------------------------------
+# TEST 19 — exactly 2 centroids move when correct=False + gt_action_index
+# ---------------------------------------------------------------------------
+
+def test_update_incorrect_exactly_two_centroids_move():
+    """Regression: old bug pushed all n_actions centroids; fix touches exactly 2."""
+    np.random.seed(55)
+    scorer = _make_scorer(n_categories=3, n_actions=4, n_factors=6)
+    mu_before = scorer.mu.copy()
+    c, a_pred, a_gt = 0, 0, 3
+    f = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+
+    scorer.update(f, c, a_pred, correct=False, gt_action_index=a_gt)
+
+    moved = sum(
+        1 for b in range(scorer.n_actions)
+        if np.linalg.norm(scorer.mu[c, b] - mu_before[c, b]) > 1e-12
+    )
+    assert moved == 2, (
+        f"Expected exactly 2 centroids to move (predicted + GT), got {moved}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# TEST 20 — correct=True behavior unchanged by fix (only predicted moves toward f)
+# ---------------------------------------------------------------------------
+
+def test_update_correct_unchanged_by_fix():
+    """Verify correct=True still pulls only the predicted centroid toward f."""
+    np.random.seed(11)
+    scorer = _make_scorer(n_categories=3, n_actions=4, n_factors=6)
+    mu_before = scorer.mu.copy()
+    c, a = 0, 1
+    f = np.array([0.7, 0.7, 0.7, 0.7, 0.7, 0.7])
+
+    scorer.update(f, c, a, correct=True)
+
+    dist_before = float(np.linalg.norm(f - mu_before[c, a]))
+    dist_after  = float(np.linalg.norm(f - scorer.mu[c, a]))
+    assert dist_after < dist_before, "Correct update should pull centroid toward f"
+
+    for b in range(scorer.n_actions):
+        if b == a:
+            continue
+        delta = np.linalg.norm(scorer.mu[c, b] - mu_before[c, b])
+        assert delta == 0.0, f"Action {b} should not move on correct=True update"

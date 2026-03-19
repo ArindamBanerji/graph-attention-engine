@@ -36,12 +36,13 @@ class CentroidUpdate:
     Reference: docs/gae_design_v5.md §9.5; IKS pipeline.
     """
 
-    centroid_delta_norm: float   # ‖η*(f - μ[c,a,:])‖₂ before in-place update
+    centroid_delta_norm: float   # ‖η*(f - μ[c,a,:])‖₂ before in-place update (predicted push)
     category_index: int          # c — the alert category updated
     action_index: int            # a — the verified action updated
     category_name: str           # human-readable, for logging
     action_name: str             # human-readable, for logging
     decision_count: int          # total decisions in this ProfileScorer instance
+    gt_delta_norm: float = 0.0   # ‖η*(f - μ[c,gt,:])‖₂ for gt pull (0.0 if correct=True or no gt)
 
 
 class KernelType(Enum):
@@ -351,23 +352,28 @@ class ProfileScorer:
         category_index: int,
         action_index: int,
         correct: bool,
+        gt_action_index: Optional[int] = None,
     ) -> CentroidUpdate:
         """
         Update profile centroids from observed outcome.
 
         Implements Eq. 4b-final (pull/push centroid update):
           Correct:   μ[c,a,:]  += η_eff     * (f - μ[c,a,:])   [pull toward f]
-          Incorrect: μ[c,b,:]  -= η_neg_eff * (f - μ[c,b,:])   [push, all b]
+          Incorrect: μ[c,a,:]  -= η_neg_eff * (f - μ[c,a,:])   [push predicted away]
+                     μ[c,gt,:] += η_eff     * (f - μ[c,gt,:])  [pull GT toward f]
           All values clipped to [0.0, 1.0] after update (V2 requirement).
 
         Learning rate decays with experience:
           η_eff = η / (1 + decay * count[c, a])
 
         Args:
-          f:              Factor vector, shape (n_factors,).
-          category_index: Category index c.
-          action_index:   The action that was taken (recommended action).
-          correct:        Whether the action was correct (matched GT).
+          f:               Factor vector, shape (n_factors,).
+          category_index:  Category index c.
+          action_index:    The predicted (recommended) action index a.
+          correct:         Whether the action was correct (matched GT).
+          gt_action_index: Ground-truth action index. Required when correct=False
+                           to enable GT-pull learning. If omitted, falls back to
+                           push-predicted-only with a DeprecationWarning.
 
         Returns:
           CentroidUpdate capturing the magnitude of centroid movement.
@@ -390,27 +396,45 @@ class ProfileScorer:
                 category_name=self._category_name(c),
                 action_name=self._action_name(a),
                 decision_count=self.decision_count,
+                gt_delta_norm=0.0,
             )
 
         count = self.counts[c, a]
         eta_eff     = self.eta     / (1.0 + self.decay * count)
         eta_neg_eff = self.eta_neg / (1.0 + self.decay * count)
 
-        # Compute delta BEFORE the in-place update — used for CentroidUpdate
-        if correct:
-            delta_vector = eta_eff * (f - self.mu[c, a, :])
-        else:
-            # Representative delta: displacement applied to the action centroid
-            delta_vector = -eta_neg_eff * (f - self.mu[c, a, :])
-        centroid_delta_norm = float(np.linalg.norm(delta_vector))
+        gt_delta_norm = 0.0
 
         if correct:
-            # Pull centroid toward f (positive reinforcement)
-            self.mu[c, a, :] += eta_eff * (f - self.mu[c, a, :])
+            # Pull predicted centroid toward f (predicted == ground truth here)
+            delta_vector = eta_eff * (f - self.mu[c, a, :])
+            centroid_delta_norm = float(np.linalg.norm(delta_vector))
+            self.mu[c, a, :] += delta_vector
         else:
-            # Push ALL action centroids away from f (negative reinforcement)
-            for b in range(self.n_actions):
-                self.mu[c, b, :] -= eta_neg_eff * (f - self.mu[c, b, :])
+            if gt_action_index is None:
+                # Backward-compat: push predicted centroid only, no GT pull.
+                # Callers should provide gt_action_index for correct learning.
+                warnings.warn(
+                    "ProfileScorer.update() called with correct=False but no "
+                    "gt_action_index. Falling back to push-predicted-only. "
+                    "Pass gt_action_index for full push-predicted + pull-GT "
+                    "learning (Eq. 4b-final).",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                delta_vector = -eta_neg_eff * (f - self.mu[c, a, :])
+                centroid_delta_norm = float(np.linalg.norm(delta_vector))
+                self.mu[c, a, :] += delta_vector
+            else:
+                gt = gt_action_index
+                # Push predicted (wrong) centroid away from f
+                delta_vector = -eta_neg_eff * (f - self.mu[c, a, :])
+                centroid_delta_norm = float(np.linalg.norm(delta_vector))
+                self.mu[c, a, :] += delta_vector
+                # Pull ground-truth centroid toward f
+                gt_delta_vector = eta_eff * (f - self.mu[c, gt, :])
+                gt_delta_norm = float(np.linalg.norm(gt_delta_vector))
+                self.mu[c, gt, :] += gt_delta_vector
 
         # V2 requirement: clip ALL centroids after update to prevent escape
         self.mu[c, :, :] = np.clip(self.mu[c, :, :], 0.0, 1.0)
@@ -426,6 +450,7 @@ class ProfileScorer:
             category_name=self._category_name(c),
             action_name=self._action_name(a),
             decision_count=self.decision_count,
+            gt_delta_norm=gt_delta_norm,
         )
 
     # ------------------------------------------------------------------ #
