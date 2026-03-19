@@ -1,9 +1,20 @@
-"""Tests for gae.calibration — CalibrationProfile and domain factory functions."""
+"""Tests for gae.calibration — CalibrationProfile, factory functions, conservation law."""
 
 import numpy as np
 import pytest
 
-from gae.calibration import CalibrationProfile, s2p_calibration_profile, soc_calibration_profile
+from gae.calibration import (
+    CalibrationProfile,
+    ConservationCheck,
+    check_conservation,
+    check_meta_conservation,
+    compute_breach_window,
+    compute_optimal_tau,
+    compute_transfer_prior,
+    derive_theta_min,
+    s2p_calibration_profile,
+    soc_calibration_profile,
+)
 from gae.learning import LearningState
 from gae.scoring import score_entity
 
@@ -223,3 +234,132 @@ def test_default_profile_all_factors_get_standard_rate():
     standard_rate = profile.decay_class_rates["standard"]
     np.testing.assert_allclose(eps, np.full(3, standard_rate),
                                err_msg="All unmapped factors should get standard rate")
+
+
+# ---------------------------------------------------------------------------
+# Conservation law tests (research_note_v3)
+# ---------------------------------------------------------------------------
+
+class TestDeriveTheta:
+    def test_soc_default(self):
+        """SOC: η=0.05, N_half=13.51, T_max=21 → θ_min ≈ 0.434."""
+        theta = derive_theta_min(0.05, 13.51, 21.0)
+        assert abs(theta - 0.434) < 0.01
+
+    def test_s2p_lower_than_soc(self):
+        """S2P longer cycle → lower θ_min."""
+        theta_soc = derive_theta_min(0.05, 13.51, 21.0)
+        theta_s2p = derive_theta_min(0.05, 13.51, 26.0)
+        assert theta_s2p < theta_soc
+
+
+class TestCheckConservation:
+    _THETA = derive_theta_min(0.05, 13.51, 21.0)
+
+    def test_green(self):
+        """Healthy signal → GREEN."""
+        result = check_conservation(0.30, 0.80, 5.0, self._THETA)
+        assert result.status == 'GREEN'
+        assert result.passed is True
+        assert result.headroom > 2.0
+
+    def test_amber(self):
+        """Thinning signal → AMBER."""
+        result = check_conservation(0.15, 0.80, 5.0, self._THETA)
+        assert result.status == 'AMBER'
+        assert result.passed is True
+
+    def test_red(self):
+        """Breached signal → RED."""
+        result = check_conservation(0.05, 0.80, 5.0, self._THETA)
+        assert result.status == 'RED'
+        assert result.passed is False
+
+    def test_automation_complacency(self):
+        """α=0.09 (70% auto-approve) → signal 0.36 < θ_min → RED."""
+        result = check_conservation(0.09, 0.80, 5.0, self._THETA)
+        assert result.status == 'RED'
+        assert result.passed is False
+
+    def test_is_namedtuple(self):
+        """ConservationCheck is accessible by attribute name."""
+        result = check_conservation(0.30, 0.80, 5.0, self._THETA)
+        assert hasattr(result, 'signal')
+        assert hasattr(result, 'status')
+        assert hasattr(result, 'headroom')
+
+
+class TestComputeBreachWindow:
+    _THETA = derive_theta_min(0.05, 13.51, 21.0)
+
+    def test_healthy_signal_fast_detection(self):
+        """Healthy signal (well above θ_min): W < 5 days."""
+        W = compute_breach_window(0.05, 1.20, self._THETA)
+        assert W < 5.0
+
+    def test_marginal_signal_slow_detection(self):
+        """Marginal signal (barely above θ_min): W > 10 days."""
+        W = compute_breach_window(0.05, 0.50, self._THETA)
+        assert W > 10.0
+
+    def test_already_breaching_returns_inf(self):
+        """Signal below θ_min → inf (already breaching)."""
+        W = compute_breach_window(0.05, 0.30, self._THETA)
+        assert W == float('inf')
+
+
+class TestComputeOptimalTau:
+    def test_confident_yields_high_tau(self):
+        """Low covariance (confident) → high τ (sharp)."""
+        cov = np.eye(6) * 0.01
+        tau = compute_optimal_tau(cov)
+        assert tau > 0.15
+
+    def test_uncertain_yields_low_tau(self):
+        """High covariance (uncertain) → low τ (soft)."""
+        cov = np.eye(6) * 0.5
+        tau = compute_optimal_tau(cov)
+        assert tau < 0.10
+
+    def test_always_in_range(self):
+        """τ always within bounds."""
+        for tr_val in [0.01, 0.1, 0.5, 1.0, 2.0]:
+            cov = np.eye(6) * tr_val / 6
+            tau = compute_optimal_tau(cov, tau_range=(0.05, 0.20))
+            assert 0.05 <= tau <= 0.20
+
+
+class TestTransferPrior:
+    def test_shape(self):
+        """Prior mean and std match centroid shape."""
+        centroids = {
+            'cat1': np.random.rand(4, 6),
+            'cat2': np.random.rand(4, 6),
+            'cat3': np.random.rand(4, 6),
+        }
+        mean, std = compute_transfer_prior(centroids)
+        assert mean.shape == (4, 6)
+        assert std.shape == (4, 6)
+
+    def test_empty_returns_defaults(self):
+        """Empty centroids returns scalar defaults."""
+        mean, std = compute_transfer_prior({})
+        assert mean.shape == (1,)
+
+
+class TestMetaConservation:
+    def test_small_divergence_passes(self):
+        """Small divergence → passed."""
+        old = np.ones((4, 6)) * 0.5
+        new = old + 0.01
+        passed, details = check_meta_conservation(new, {}, old, epsilon=0.05)
+        assert passed is True
+        assert details['max_divergence'] < 0.05
+
+    def test_large_divergence_fails(self):
+        """Large divergence → failed with review_required."""
+        old = np.ones((4, 6)) * 0.5
+        new = old + 0.10
+        passed, details = check_meta_conservation(new, {}, old, epsilon=0.05)
+        assert passed is False
+        assert details['recommendation'] == 'review_required'

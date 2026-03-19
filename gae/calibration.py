@@ -10,6 +10,9 @@ Reference: docs/gae_design_v5.md §8; blog Eq. 4b, 4c.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Dict, Optional, Tuple, NamedTuple
+
+import numpy as np
 
 
 @dataclass
@@ -128,3 +131,277 @@ def s2p_calibration_profile() -> CalibrationProfile:
         penalty_ratio=5.0,
         temperature=0.4,
     )
+
+
+# ── Conservation law primitives ──────────────────────────────────────────────
+# Source: research_note_v3, three-judge validated (Borkar/Wu/Kazerouni),
+# Bridge B Phase C v3 (re-convergence compounding).
+
+
+class ConservationCheck(NamedTuple):
+    """Result of a conservation law check α·q·V ≥ θ_min."""
+
+    signal: float     # α·q·V current value
+    theta_min: float  # floor threshold
+    headroom: float   # signal / theta_min (>1 = healthy)
+    status: str       # 'GREEN' (≥2×θ), 'AMBER' (≥θ), 'RED' (<θ)
+    passed: bool      # signal ≥ theta_min
+
+
+def derive_theta_min(
+    eta: float = 0.05,
+    n_half: float = 13.51,
+    t_max_days: float = 21.0,
+) -> float:
+    """
+    Minimum conservation law signal for centroid convergence.
+
+    θ_min = η × N_half² / T_max
+
+    Ensures enough verified decisions flow through the system for
+    centroids to track within the convergence half-life.
+
+    SOC default: 0.05 × 13.51² / 21 ≈ 0.434 (research_note_v3).
+    S2P default: 0.05 × 13.51² / 26 ≈ 0.351 (longer cycle).
+
+    Reference: research_note_v3; N_half from math_synopsis_v9 §5.
+
+    Parameters
+    ----------
+    eta : float
+        Learning rate.
+    n_half : float
+        Convergence half-life in decisions.
+    t_max_days : float
+        Maximum acceptable convergence time in days.
+
+    Returns
+    -------
+    float
+        θ_min threshold.
+    """
+    assert t_max_days > 0, f"t_max_days must be positive, got {t_max_days}"
+    return float(eta * n_half ** 2 / t_max_days)
+
+
+def check_conservation(
+    alpha: float,
+    q: float,
+    V: float,
+    theta_min: float,
+) -> ConservationCheck:
+    """
+    Check conservation law: α·q·V ≥ θ_min.
+
+    Status levels (research_note_v3):
+        GREEN : signal ≥ 2 × θ_min — healthy, well above floor.
+        AMBER : θ_min ≤ signal < 2 × θ_min — thinning, monitor closely.
+        RED   : signal < θ_min — breach, learning signal insufficient.
+
+    Reference: research_note_v3; Bridge B Phase C v3.
+
+    Parameters
+    ----------
+    alpha : float
+        Override rate — fraction of decisions where analyst changed action.
+    q : float
+        Override quality — fraction of overrides that improved outcome.
+    V : float
+        Verified decisions per day.
+    theta_min : float
+        Floor threshold from derive_theta_min().
+
+    Returns
+    -------
+    ConservationCheck
+        Named tuple with signal, theta_min, headroom, status, passed.
+    """
+    signal = alpha * q * V
+    headroom = signal / theta_min if theta_min > 0 else float('inf')
+
+    if signal >= 2 * theta_min:
+        status = 'GREEN'
+    elif signal >= theta_min:
+        status = 'AMBER'
+    else:
+        status = 'RED'
+
+    return ConservationCheck(
+        signal=round(signal, 4),
+        theta_min=round(theta_min, 4),
+        headroom=round(headroom, 3),
+        status=status,
+        passed=bool(signal >= theta_min),
+    )
+
+
+def compute_breach_window(
+    signal_variance: float,
+    signal_mean: float,
+    theta_min: float,
+    delta: float = 0.05,
+) -> float:
+    """
+    Hoeffding-derived breach detection window in days.
+
+    How many days of observations are needed to detect that the true
+    signal has dropped below θ_min with confidence (1−δ)?
+
+    W = R² × ln(1/δ) / (2 × (μ − θ_min)²),  R = 4σ (sub-Gaussian range).
+
+    At healthy signal (μ >> θ_min): W is very small (fast detection).
+    At marginal signal (μ ≈ θ_min): W grows — the dangerous case.
+    Engineering choice W=14 is for the marginal case.
+
+    Reference: research_note_v3 §Hoeffding derivation.
+
+    Parameters
+    ----------
+    signal_variance : float
+        Variance of daily α·q·V signal.
+    signal_mean : float
+        Mean daily α·q·V signal.
+    theta_min : float
+        Conservation floor.
+    delta : float
+        Confidence parameter (default 0.05).
+
+    Returns
+    -------
+    float
+        Window in days. Returns float('inf') if signal_mean ≤ theta_min.
+    """
+    if signal_mean <= theta_min:
+        return float('inf')
+
+    R = 4.0 * float(np.sqrt(signal_variance))
+    gap = signal_mean - theta_min
+    W = R ** 2 * float(np.log(1.0 / delta)) / (2.0 * gap ** 2)
+    return max(1.0, W)
+
+
+def compute_optimal_tau(
+    centroid_covariance: np.ndarray,
+    tau_range: Tuple[float, float] = (0.05, 0.20),
+) -> float:
+    """
+    Gain-scheduled τ from centroid covariance matrix Σ_c.
+
+    τ_opt = τ_min + (τ_max − τ_min) × (1 − tr(Σ_c) / tr_max)
+
+    Higher Σ_c (uncertain centroids) → lower τ (softer decisions).
+    Lower Σ_c (confident centroids) → higher τ (sharper decisions).
+
+    Used by GainScheduler at v6.5. Math ships at v6.0.
+    Reference: research_note_v3 §gain-scheduling.
+
+    Parameters
+    ----------
+    centroid_covariance : np.ndarray
+        Σ_c matrix (d × d) from recent centroid updates.
+    tau_range : tuple
+        (τ_min, τ_max) bounds.
+
+    Returns
+    -------
+    float
+        Optimal τ value within tau_range.
+    """
+    assert centroid_covariance.ndim == 2, (
+        f"centroid_covariance must be 2-D, got shape {centroid_covariance.shape}"
+    )
+    tau_min, tau_max = tau_range
+    tr_sigma = float(np.trace(centroid_covariance))
+    tr_max = 1.0  # maximum expected trace
+    confidence = max(0.0, min(1.0, 1.0 - tr_sigma / tr_max))
+    return float(tau_min + (tau_max - tau_min) * confidence)
+
+
+def compute_transfer_prior(
+    calibrated_centroids: Dict[str, np.ndarray],
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Empirical Bayes prior from calibrated category centroids.
+
+    When a new category is added, initialize its centroids from the
+    population mean and variance of existing calibrated categories.
+    Better than uniform initialization.
+
+    Used by TransferPriorManager at v7.0. Math ships at v6.0.
+    Reference: research_note_v3 §transfer-prior.
+
+    Parameters
+    ----------
+    calibrated_centroids : dict
+        {category_name: centroid_array (A × d)} — only converged categories.
+
+    Returns
+    -------
+    (prior_mean, prior_std) : both shape (A, d).
+        prior_mean = mean across categories.
+        prior_std  = std across categories (uncertainty estimate).
+        Returns (zeros(1), ones(1)) when dict is empty.
+    """
+    if not calibrated_centroids:
+        return np.zeros(1), np.ones(1)
+
+    arrays = list(calibrated_centroids.values())
+    stacked = np.stack(arrays)  # shape: (n_categories, A, d)
+    assert stacked.ndim == 3, f"Expected 3-D stack, got shape {stacked.shape}"
+    prior_mean = np.mean(stacked, axis=0)
+    prior_std = np.std(stacked, axis=0)
+    return prior_mean, prior_std
+
+
+def check_meta_conservation(
+    new_prior: np.ndarray,
+    calibrated_centroids: Dict[str, np.ndarray],
+    old_prior: np.ndarray,
+    epsilon: float = 0.05,
+) -> Tuple[bool, Dict]:
+    """
+    Meta-conservation gate for transfer priors.
+
+    Ensures updating the prior from new calibrated data doesn't
+    destabilize already-calibrated categories. The new prior must not
+    diverge from the old prior by more than ε per component.
+
+    Used by TransferPriorManager at v7.0. Math ships at v6.0.
+    Reference: research_note_v3 §meta-conservation.
+
+    Parameters
+    ----------
+    new_prior : np.ndarray
+        Proposed new prior (A × d).
+    calibrated_centroids : dict
+        Currently calibrated category centroids (unused in gate math,
+        reserved for future directional checks).
+    old_prior : np.ndarray
+        Previous prior (A × d), same shape as new_prior.
+    epsilon : float
+        Maximum per-component divergence.
+
+    Returns
+    -------
+    (passed, details) : (bool, dict)
+        details keys: max_divergence, mean_divergence, affected_components,
+        total_components, epsilon, recommendation.
+    """
+    assert new_prior.shape == old_prior.shape, (
+        f"Prior shape mismatch: {new_prior.shape} vs {old_prior.shape}"
+    )
+    divergence = np.abs(new_prior - old_prior)
+    max_div = float(np.max(divergence))
+    mean_div = float(np.mean(divergence))
+    affected = int(np.sum(divergence > epsilon))
+    total = divergence.size
+    passed = bool(max_div <= epsilon)
+
+    return passed, {
+        'max_divergence': round(max_div, 4),
+        'mean_divergence': round(mean_div, 4),
+        'affected_components': affected,
+        'total_components': total,
+        'epsilon': epsilon,
+        'recommendation': 'safe_to_update' if passed else 'review_required',
+    }
