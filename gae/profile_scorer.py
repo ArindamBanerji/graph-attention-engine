@@ -43,6 +43,7 @@ class CentroidUpdate:
     action_name: str             # human-readable, for logging
     decision_count: int          # total decisions in this ProfileScorer instance
     gt_delta_norm: float = 0.0   # ‖η*(f - μ[c,gt,:])‖₂ for gt pull (0.0 if correct=True or no gt)
+    outcome: str = 'applied'     # 'applied', 'gated_low_confidence', or 'frozen'
 
 
 class KernelType(Enum):
@@ -126,15 +127,26 @@ class ProfileScorer:
         kernel: KernelType = KernelType.L2,
         profile: Optional["CalibrationProfile"] = None,
         categories: Optional[List[str]] = None,
+        min_confidence: float = 0.0,
     ) -> None:
         """
         Args:
-          mu:      Initial profile centroids, shape (n_categories, n_actions, n_factors).
-                   Values should be in [0.0, 1.0]. Copied — caller's array not mutated.
-          actions: Ordered action names. len(actions) == mu.shape[1].
-          kernel:  Distance kernel. L2 is validated default.
-          profile: CalibrationProfile for hyperparameters. If None, uses validated
-                   defaults: τ=0.1, η=0.05, η_neg=0.05, decay=0.001.
+          mu:             Initial profile centroids, shape (n_categories, n_actions, n_factors).
+                          Values should be in [0.0, 1.0]. Copied — caller's array not mutated.
+          actions:        Ordered action names. len(actions) == mu.shape[1].
+          kernel:         Distance kernel. L2 is validated default.
+          profile:        CalibrationProfile for hyperparameters. If None, uses validated
+                          defaults: τ=0.1, η=0.05, η_neg=0.05, decay=0.001.
+          min_confidence: Minimum system confidence for centroid update. If the system's
+                          confidence in its original decision was below this threshold,
+                          the update is skipped (gated). Prevents noisy corrections from
+                          low-confidence decisions degrading centroids.
+
+                          Default: 0.0 (all updates fire — backward compatible).
+                          Recommended production value: 0.30–0.50.
+
+                          Source: Block 5B Proxy persona testing. 9 LLM-judge personas
+                          showed 13–27pp accuracy degradation over 60 days without gate.
 
         Reference: docs/gae_design_v5.md §9.3; V3B (τ), V2 (clipping).
         """
@@ -165,6 +177,12 @@ class ProfileScorer:
             self.eta     = 0.05
             self.eta_neg = 0.05
             self.decay   = 0.001
+
+        self.min_confidence: float = min_confidence
+
+        # Gate statistics (Block 5B Proxy — min_confidence gate)
+        self._gated_count: int = 0
+        self._applied_count: int = 0
 
         # Per-(category, action) observation counts for learning rate decay
         self.counts = np.zeros((self.n_categories, self.n_actions), dtype=np.int64)
@@ -342,6 +360,26 @@ class ProfileScorer:
         """Re-enable centroid learning after a freeze() call."""
         self._frozen = False
 
+    @property
+    def update_gate_stats(self) -> Dict:
+        """
+        Gate statistics for the min_confidence filter.
+
+        Returns counts of applied vs gated updates and the overall gate rate.
+        Source: Block 5B Proxy persona testing (min_confidence gate).
+
+        Returns
+        -------
+        dict with keys: gated, applied, total, gate_rate
+        """
+        total = self._gated_count + self._applied_count
+        return {
+            'gated': self._gated_count,
+            'applied': self._applied_count,
+            'total': total,
+            'gate_rate': self._gated_count / max(total, 1),
+        }
+
     # ------------------------------------------------------------------ #
     # Learning                                                            #
     # ------------------------------------------------------------------ #
@@ -353,6 +391,7 @@ class ProfileScorer:
         action_index: int,
         correct: bool,
         gt_action_index: Optional[int] = None,
+        confidence: Optional[float] = None,
     ) -> CentroidUpdate:
         """
         Update profile centroids from observed outcome.
@@ -374,9 +413,14 @@ class ProfileScorer:
           gt_action_index: Ground-truth action index. Required when correct=False
                            to enable GT-pull learning. If omitted, falls back to
                            push-predicted-only with a DeprecationWarning.
+          confidence:      System's confidence in its original decision (0–1).
+                           If provided and below min_confidence, update is skipped
+                           (gated) and centroids are not modified. If None, the
+                           gate is bypassed entirely (backward compatible).
 
         Returns:
           CentroidUpdate capturing the magnitude of centroid movement.
+          outcome='gated_low_confidence' when the gate fires (centroid_delta_norm=0.0).
 
         Reference: docs/gae_design_v5.md §9.5; blog Eq. 4b-final; V2 (clipping).
         """
@@ -386,6 +430,21 @@ class ProfileScorer:
         )
         c = category_index
         a = action_index
+
+        # Min-confidence gate (Block 5B Proxy — bypassed when confidence=None)
+        if confidence is not None and confidence < self.min_confidence:
+            self._gated_count += 1
+            self.decision_count += 1
+            return CentroidUpdate(
+                centroid_delta_norm=0.0,
+                category_index=c,
+                action_index=a,
+                category_name=self._category_name(c),
+                action_name=self._action_name(a),
+                decision_count=self.decision_count,
+                gt_delta_norm=0.0,
+                outcome='gated_low_confidence',
+            )
 
         if self._frozen:
             self.decision_count += 1
@@ -442,6 +501,7 @@ class ProfileScorer:
         # Increment observation count for this (category, action) pair
         self.counts[c, a] += 1
         self.decision_count += 1
+        self._applied_count += 1
 
         return CentroidUpdate(
             centroid_delta_norm=centroid_delta_norm,

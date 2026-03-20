@@ -504,3 +504,97 @@ def test_update_correct_unchanged_by_fix():
             continue
         delta = np.linalg.norm(scorer.mu[c, b] - mu_before[c, b])
         assert delta == 0.0, f"Action {b} should not move on correct=True update"
+
+
+# ---------------------------------------------------------------------------
+# TEST 21-27 — min_confidence gate (Block 5B Proxy — P0 BLOCKER fix)
+# ---------------------------------------------------------------------------
+
+def _make_gated_scorer(min_confidence: float = 0.50) -> tuple:
+    """Return (scorer, mu_6x4x6, factors_6) with min_confidence set."""
+    np.random.seed(42)
+    mu = np.random.uniform(0.25, 0.75, (6, 4, 6))
+    actions = ["escalate", "suppress", "investigate", "close"]
+    scorer = ProfileScorer(mu=mu, actions=actions, min_confidence=min_confidence)
+    f = np.random.uniform(0.0, 1.0, 6)
+    return scorer, mu, f
+
+
+def test_min_confidence_gate_blocks_low_confidence():
+    """Update with confidence below threshold: centroids unchanged, delta_norm=0."""
+    scorer, mu, f = _make_gated_scorer(min_confidence=0.50)
+    mu_before = scorer.mu.copy()
+
+    result = scorer.update(f, 0, 1, correct=True, confidence=0.30)
+
+    assert np.allclose(scorer.mu, mu_before), "Centroids must not change when gated"
+    assert result.centroid_delta_norm == 0.0
+    assert result.outcome == 'gated_low_confidence'
+
+
+def test_min_confidence_gate_passes_high_confidence():
+    """Update with confidence above threshold applies normally (delta_norm > 0)."""
+    scorer, _, f = _make_gated_scorer(min_confidence=0.50)
+
+    result = scorer.update(f, 0, 1, correct=True, confidence=0.80)
+
+    assert result.centroid_delta_norm > 0.0
+    assert result.outcome == 'applied'
+
+
+def test_min_confidence_default_zero_backward_compatible():
+    """Default min_confidence=0.0 means all updates fire regardless of confidence."""
+    np.random.seed(7)
+    mu = np.random.uniform(0.25, 0.75, (3, 4, 6))
+    scorer = ProfileScorer(mu=mu, actions=["a", "b", "c", "d"])
+    assert scorer.min_confidence == 0.0
+
+    f = np.random.uniform(0.0, 1.0, 6)
+    result = scorer.update(f, 0, 1, correct=True, confidence=0.01)
+
+    assert result.centroid_delta_norm > 0.0, "Should apply even at 1% confidence"
+
+
+def test_min_confidence_none_bypasses_gate():
+    """confidence=None bypasses the gate entirely (backward compatible)."""
+    scorer, _, f = _make_gated_scorer(min_confidence=0.50)
+
+    # No confidence kwarg — gate not invoked
+    result = scorer.update(f, 0, 1, correct=True)
+
+    assert result.centroid_delta_norm > 0.0
+    assert result.outcome == 'applied'
+
+
+def test_update_gate_stats_tracked():
+    """Gate stats correctly track applied vs gated counts and gate_rate."""
+    scorer, _, f = _make_gated_scorer(min_confidence=0.50)
+
+    scorer.update(f, 0, 1, correct=True, confidence=0.80)  # applied
+    scorer.update(f, 0, 1, correct=True, confidence=0.30)  # gated
+    scorer.update(f, 0, 1, correct=True, confidence=0.60)  # applied
+
+    stats = scorer.update_gate_stats
+    assert stats['applied'] == 2
+    assert stats['gated'] == 1
+    assert stats['total'] == 3
+    assert abs(stats['gate_rate'] - 1 / 3) < 0.01
+
+
+def test_existing_update_without_confidence_still_works():
+    """Calling update() without confidence arg works as before (backward compat)."""
+    scorer, _, f = _make_gated_scorer(min_confidence=0.50)
+
+    result = scorer.update(f, 0, 1, correct=True)
+
+    assert result.centroid_delta_norm > 0.0
+
+
+def test_gate_stats_zero_at_init():
+    """Gate stats start at zero before any updates."""
+    scorer, _, _ = _make_gated_scorer(min_confidence=0.50)
+    stats = scorer.update_gate_stats
+    assert stats['applied'] == 0
+    assert stats['gated'] == 0
+    assert stats['total'] == 0
+    assert stats['gate_rate'] == 0.0
