@@ -353,6 +353,48 @@ def compute_transfer_prior(
     return prior_mean, prior_std
 
 
+def compute_eta_override(
+    eta_confirm: float = 0.05,
+    mean_quality: float = 0.75,
+    quality_variance: float = 0.03,
+    safety_margin: float = 0.5,
+) -> float:
+    """
+    Compute optimal override learning rate from analyst quality distribution.
+
+    Derived from signal-to-noise optimization:
+        η_override* ∝ (2q̄−1) / (2σ²_q + (2q̄−1))
+
+    Theoretical prediction validated against Q5 sweep on 9 personas.
+    Formula matches the empirical optimum within one sweep step.
+    Empirical default: 0.01 (captures 80%+ of gain across all personas).
+
+    Parameters
+    ----------
+    eta_confirm : float
+        Confirmation learning rate (default 0.05).
+    mean_quality : float
+        Mean analyst override quality ∈ (0, 1). Values ≤ 0.5 return the floor.
+    quality_variance : float
+        Variance of analyst quality distribution.
+    safety_margin : float
+        Conservative multiplier (0.5 recommended by Q5 sweep).
+
+    Returns
+    -------
+    float
+        Recommended η_override value. Floored at 0.005 when signal ≤ 0.
+
+    Source: Q5 sweep (9 personas × 6 η values), roadmap session formula.
+    """
+    signal = 2.0 * mean_quality - 1.0
+    noise = 2.0 * quality_variance
+    if signal <= 0:
+        return 0.005  # floor: near-zero learning from overrides
+    ratio = signal / max(noise + signal, 0.01)
+    return round(eta_confirm * ratio * safety_margin, 4)
+
+
 def check_meta_conservation(
     new_prior: np.ndarray,
     calibrated_centroids: Dict[str, np.ndarray],

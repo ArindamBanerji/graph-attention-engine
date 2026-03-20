@@ -128,6 +128,7 @@ class ProfileScorer:
         profile: Optional["CalibrationProfile"] = None,
         categories: Optional[List[str]] = None,
         min_confidence: float = 0.0,
+        eta_override: Optional[float] = None,
     ) -> None:
         """
         Args:
@@ -147,6 +148,15 @@ class ProfileScorer:
 
                           Source: Block 5B Proxy persona testing. 9 LLM-judge personas
                           showed 13–27pp accuracy degradation over 60 days without gate.
+          eta_override:   Learning rate for analyst overrides (correct=False path).
+                          If None, uses eta_neg for push and eta for GT pull (backward
+                          compatible — same as before). When set, both the push-away and
+                          GT-pull operations use eta_override, applying an attenuated
+                          rate that reflects the lower signal quality of overrides.
+
+                          Recommended production value: 0.01 (Q5 validated).
+                          Source: Q5 sweep (9 personas × 6 η values). +2–6pp improvement
+                          for high-quality teams, zero regression for low-quality teams.
 
         Reference: docs/gae_design_v5.md §9.3; V3B (τ), V2 (clipping).
         """
@@ -179,6 +189,7 @@ class ProfileScorer:
             self.decay   = 0.001
 
         self.min_confidence: float = min_confidence
+        self.eta_override: Optional[float] = eta_override  # None = use eta/eta_neg
 
         # Gate statistics (Block 5B Proxy — min_confidence gate)
         self._gated_count: int = 0
@@ -418,6 +429,11 @@ class ProfileScorer:
                            (gated) and centroids are not modified. If None, the
                            gate is bypassed entirely (backward compatible).
 
+        Note:
+          When ProfileScorer is constructed with eta_override, the override path
+          (correct=False) uses eta_override for both push-away and GT-pull operations.
+          The confirm path (correct=True) always uses self.eta unchanged (Q5 validated).
+
         Returns:
           CentroidUpdate capturing the magnitude of centroid movement.
           outcome='gated_low_confidence' when the gate fires (centroid_delta_norm=0.0).
@@ -462,14 +478,25 @@ class ProfileScorer:
         eta_eff     = self.eta     / (1.0 + self.decay * count)
         eta_neg_eff = self.eta_neg / (1.0 + self.decay * count)
 
+        # Asymmetric η (Q5 validated): override path uses attenuated rate
+        # for both push-away and GT-pull. None = backward compatible.
+        if not correct and self.eta_override is not None:
+            eta_override_eff = self.eta_override / (1.0 + self.decay * count)
+        else:
+            eta_override_eff = None
+
         gt_delta_norm = 0.0
 
         if correct:
-            # Pull predicted centroid toward f (predicted == ground truth here)
+            # Confirmation path — clean signal, full learning rate (unchanged)
             delta_vector = eta_eff * (f - self.mu[c, a, :])
             centroid_delta_norm = float(np.linalg.norm(delta_vector))
             self.mu[c, a, :] += delta_vector
         else:
+            # Override path — select attenuated rate when eta_override is set
+            push_rate = eta_override_eff if eta_override_eff is not None else eta_neg_eff
+            pull_rate = eta_override_eff if eta_override_eff is not None else eta_eff
+
             if gt_action_index is None:
                 # Backward-compat: push predicted centroid only, no GT pull.
                 # Callers should provide gt_action_index for correct learning.
@@ -481,17 +508,17 @@ class ProfileScorer:
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                delta_vector = -eta_neg_eff * (f - self.mu[c, a, :])
+                delta_vector = -push_rate * (f - self.mu[c, a, :])
                 centroid_delta_norm = float(np.linalg.norm(delta_vector))
                 self.mu[c, a, :] += delta_vector
             else:
                 gt = gt_action_index
                 # Push predicted (wrong) centroid away from f
-                delta_vector = -eta_neg_eff * (f - self.mu[c, a, :])
+                delta_vector = -push_rate * (f - self.mu[c, a, :])
                 centroid_delta_norm = float(np.linalg.norm(delta_vector))
                 self.mu[c, a, :] += delta_vector
                 # Pull ground-truth centroid toward f
-                gt_delta_vector = eta_eff * (f - self.mu[c, gt, :])
+                gt_delta_vector = pull_rate * (f - self.mu[c, gt, :])
                 gt_delta_norm = float(np.linalg.norm(gt_delta_vector))
                 self.mu[c, gt, :] += gt_delta_vector
 

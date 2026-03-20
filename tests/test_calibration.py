@@ -9,6 +9,7 @@ from gae.calibration import (
     check_conservation,
     check_meta_conservation,
     compute_breach_window,
+    compute_eta_override,
     compute_optimal_tau,
     compute_transfer_prior,
     derive_theta_min,
@@ -363,3 +364,38 @@ class TestMetaConservation:
         passed, details = check_meta_conservation(new, {}, old, epsilon=0.05)
         assert passed is False
         assert details['recommendation'] == 'review_required'
+
+
+class TestComputeEtaOverride:
+    def test_mixed_team_in_expected_range(self):
+        """Mixed team (q̄=0.75, σ²=0.03) gives η_override in [0.005, 0.03]."""
+        eta = compute_eta_override(0.05, 0.75, 0.03)
+        assert 0.005 <= eta <= 0.03
+
+    def test_lower_quality_gives_lower_eta(self):
+        """Junior-heavy team → lower η_override than mixed team."""
+        eta_mixed = compute_eta_override(0.05, 0.75, 0.03)
+        eta_junior = compute_eta_override(0.05, 0.65, 0.05)
+        assert eta_junior < eta_mixed
+
+    def test_higher_quality_gives_higher_eta(self):
+        """High-quality team → higher η_override than mixed team."""
+        eta_mixed = compute_eta_override(0.05, 0.75, 0.03)
+        eta_perfect = compute_eta_override(0.05, 0.95, 0.01)
+        assert eta_perfect > eta_mixed
+
+    def test_zero_signal_returns_floor(self):
+        """mean_quality ≤ 0.5 → returns floor 0.005."""
+        assert compute_eta_override(0.05, 0.45, 0.05) == 0.005
+        assert compute_eta_override(0.05, 0.50, 0.05) == 0.005
+
+    def test_result_is_rounded(self):
+        """Result is rounded to 4 decimal places."""
+        eta = compute_eta_override(0.05, 0.75, 0.03)
+        assert eta == round(eta, 4)
+
+    def test_safety_margin_scales_result(self):
+        """Higher safety_margin → higher η_override."""
+        eta_half = compute_eta_override(0.05, 0.75, 0.03, safety_margin=0.5)
+        eta_full = compute_eta_override(0.05, 0.75, 0.03, safety_margin=1.0)
+        assert eta_full > eta_half

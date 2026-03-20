@@ -598,3 +598,76 @@ def test_gate_stats_zero_at_init():
     assert stats['gated'] == 0
     assert stats['total'] == 0
     assert stats['gate_rate'] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# TEST 28-32 — asymmetric η (eta_override, Q5 validated)
+# ---------------------------------------------------------------------------
+
+def _make_asym_scorers(eta_override: float = 0.01) -> tuple:
+    """Return (scorer_default, scorer_asym, factors_6) with identical centroids.
+    Both scorers use defaults eta=0.05, eta_neg=0.05. scorer_asym adds eta_override.
+    """
+    np.random.seed(42)
+    mu = np.random.uniform(0.25, 0.75, (3, 4, 6))
+    actions = ["a", "b", "c", "d"]
+    # Default scorer: no profile → eta=0.05, eta_neg=0.05
+    scorer_default = ProfileScorer(mu.copy(), actions)
+    scorer_asym    = ProfileScorer(mu.copy(), actions, eta_override=eta_override)
+    f = np.random.uniform(0.0, 1.0, 6)
+    return scorer_default, scorer_asym, f
+
+
+def test_eta_override_attenuates_override_path():
+    """Override path uses eta_override → smaller centroid_delta_norm than eta_neg."""
+    import warnings as _w
+    scorer_default, scorer_asym, f = _make_asym_scorers()
+    with _w.catch_warnings(record=True):
+        _w.simplefilter("always")
+        r_default = scorer_default.update(f, 0, 1, correct=False)
+        r_asym    = scorer_asym.update(f, 0, 1, correct=False)
+    assert r_asym.centroid_delta_norm < r_default.centroid_delta_norm
+    assert r_asym.centroid_delta_norm > 0.0, "Override still moves centroid (just less)"
+
+
+def test_eta_override_none_backward_compat():
+    """eta_override=None stores None and uses eta_neg as before."""
+    import warnings as _w
+    np.random.seed(7)
+    mu = np.random.uniform(0.25, 0.75, (3, 4, 6))
+    scorer = ProfileScorer(mu, ["a", "b", "c", "d"])
+    assert scorer.eta_override is None
+    with _w.catch_warnings(record=True):
+        _w.simplefilter("always")
+        r = scorer.update(np.random.uniform(0.0, 1.0, 6), 0, 1, correct=False)
+    assert r.centroid_delta_norm > 0.0
+
+
+def test_confirm_path_unaffected_by_eta_override():
+    """Confirmation (correct=True) uses self.eta regardless of eta_override."""
+    scorer_default, scorer_asym, f = _make_asym_scorers()
+    r_default = scorer_default.update(f, 0, 0, correct=True)
+    r_asym    = scorer_asym.update(f, 0, 0, correct=True)
+    assert abs(r_default.centroid_delta_norm - r_asym.centroid_delta_norm) < 1e-10
+
+
+def test_eta_override_applies_to_gt_pull():
+    """With eta_override, GT-pull delta is attenuated relative to default."""
+    np.random.seed(55)
+    mu = np.random.uniform(0.25, 0.75, (3, 4, 6))
+    actions = ["a", "b", "c", "d"]
+    f = np.random.uniform(0.0, 1.0, 6)
+    scorer_default = ProfileScorer(mu.copy(), actions)
+    scorer_asym    = ProfileScorer(mu.copy(), actions, eta_override=0.01)
+    r_default = scorer_default.update(f, 0, 1, correct=False, gt_action_index=2)
+    r_asym    = scorer_asym.update(f, 0, 1, correct=False, gt_action_index=2)
+    assert r_asym.gt_delta_norm < r_default.gt_delta_norm
+    assert r_asym.gt_delta_norm > 0.0
+
+
+def test_eta_override_stored_on_scorer():
+    """eta_override is accessible as an attribute."""
+    np.random.seed(1)
+    mu = np.random.uniform(0.25, 0.75, (2, 3, 4))
+    scorer = ProfileScorer(mu, ["x", "y", "z"], eta_override=0.01)
+    assert scorer.eta_override == 0.01
