@@ -1,0 +1,210 @@
+"""
+Unit tests for gae/kernels.py — L2Kernel, DiagonalKernel, ScoringKernel protocol.
+
+Reference: docs/gae_design_v5.md §9; v6.0 kernel roadmap.
+"""
+
+import numpy as np
+import pytest
+
+from gae.kernels import L2Kernel, DiagonalKernel, ScoringKernel
+
+
+# ------------------------------------------------------------------ #
+# ScoringKernel protocol                                              #
+# ------------------------------------------------------------------ #
+
+class TestScoringKernelProtocol:
+    def test_l2kernel_is_protocol_instance(self):
+        assert isinstance(L2Kernel(), ScoringKernel)
+
+    def test_diagonal_kernel_is_protocol_instance(self):
+        weights = np.ones(4)
+        assert isinstance(DiagonalKernel(weights), ScoringKernel)
+
+    def test_custom_class_satisfies_protocol(self):
+        class MyKernel:
+            def compute_distance(self, f, mu):
+                return np.zeros(mu.shape[0])
+
+            def compute_gradient(self, f, mu):
+                return f - mu
+
+        assert isinstance(MyKernel(), ScoringKernel)
+
+
+# ------------------------------------------------------------------ #
+# L2Kernel                                                            #
+# ------------------------------------------------------------------ #
+
+class TestL2KernelDistance:
+    def test_zero_distance_at_centroid(self):
+        k = L2Kernel()
+        f = np.array([0.2, 0.5, 0.8])
+        mu = np.array([[0.2, 0.5, 0.8], [0.0, 0.0, 0.0]])
+        d = k.compute_distance(f, mu)
+        assert d[0] == pytest.approx(0.0)
+
+    def test_output_shape(self):
+        k = L2Kernel()
+        f = np.zeros(6)
+        mu = np.zeros((4, 6))
+        d = k.compute_distance(f, mu)
+        assert d.shape == (4,)
+
+    def test_positive_distances(self):
+        k = L2Kernel()
+        f = np.array([0.1, 0.9])
+        mu = np.array([[0.5, 0.5], [0.9, 0.1], [0.1, 0.9]])
+        d = k.compute_distance(f, mu)
+        assert np.all(d >= 0.0)
+
+    def test_known_value(self):
+        k = L2Kernel()
+        f = np.array([1.0, 0.0])
+        mu = np.array([[0.0, 1.0]])
+        d = k.compute_distance(f, mu)
+        # (1-0)^2 + (0-1)^2 = 2.0
+        assert d[0] == pytest.approx(2.0)
+
+    def test_single_action(self):
+        k = L2Kernel()
+        f = np.array([0.3, 0.7, 0.5])
+        mu = np.array([[0.3, 0.7, 0.5]])
+        d = k.compute_distance(f, mu)
+        assert d.shape == (1,)
+        assert d[0] == pytest.approx(0.0)
+
+    def test_symmetry(self):
+        k = L2Kernel()
+        f = np.array([0.2, 0.4, 0.6])
+        mu = np.array([[0.8, 0.6, 0.4]])
+        d1 = k.compute_distance(f, mu)
+        # Reverse: distance from mu[0] to f should be identical
+        d2 = k.compute_distance(mu[0], f.reshape(1, -1))
+        assert d1[0] == pytest.approx(d2[0])
+
+
+class TestL2KernelGradient:
+    def test_gradient_direction(self):
+        k = L2Kernel()
+        f = np.array([0.8, 0.2, 0.5])
+        mu = np.array([0.3, 0.7, 0.5])
+        g = k.compute_gradient(f, mu)
+        expected = np.array([0.5, -0.5, 0.0])
+        np.testing.assert_allclose(g, expected)
+
+    def test_gradient_output_shape(self):
+        k = L2Kernel()
+        f = np.zeros(6)
+        mu = np.ones(6)
+        g = k.compute_gradient(f, mu)
+        assert g.shape == (6,)
+
+    def test_gradient_zero_at_centroid(self):
+        k = L2Kernel()
+        f = np.array([0.5, 0.5])
+        mu = np.array([0.5, 0.5])
+        g = k.compute_gradient(f, mu)
+        np.testing.assert_allclose(g, np.zeros(2))
+
+    def test_gradient_equals_f_minus_mu(self):
+        k = L2Kernel()
+        rng = np.random.default_rng(42)
+        f = rng.random(8)
+        mu = rng.random(8)
+        g = k.compute_gradient(f, mu)
+        np.testing.assert_allclose(g, f - mu)
+
+
+# ------------------------------------------------------------------ #
+# DiagonalKernel                                                      #
+# ------------------------------------------------------------------ #
+
+class TestDiagonalKernelInit:
+    def test_weights_stored(self):
+        w = np.array([1.0, 2.0, 0.5])
+        k = DiagonalKernel(w)
+        np.testing.assert_array_equal(k.weights, w)
+
+    def test_weights_converted_to_float64(self):
+        w = np.array([1, 2, 3], dtype=np.int32)
+        k = DiagonalKernel(w)
+        assert k.weights.dtype == np.float64
+
+    def test_weights_must_be_1d(self):
+        with pytest.raises(AssertionError):
+            DiagonalKernel(np.ones((3, 3)))
+
+
+class TestDiagonalKernelDistance:
+    def test_unit_weights_equals_l2(self):
+        l2 = L2Kernel()
+        diag = DiagonalKernel(np.ones(4))
+        f = np.array([0.1, 0.4, 0.7, 0.9])
+        mu = np.array([[0.5, 0.5, 0.5, 0.5], [0.1, 0.4, 0.7, 0.9]])
+        np.testing.assert_allclose(
+            l2.compute_distance(f, mu),
+            diag.compute_distance(f, mu),
+        )
+
+    def test_zero_weight_ignores_dimension(self):
+        k = DiagonalKernel(np.array([1.0, 0.0]))
+        f = np.array([0.0, 0.9])   # second dim differs but weight=0
+        mu = np.array([[0.0, 0.1]])  # second dim would be large L2
+        d = k.compute_distance(f, mu)
+        assert d[0] == pytest.approx(0.0)
+
+    def test_known_weighted_value(self):
+        k = DiagonalKernel(np.array([2.0, 0.5]))
+        f = np.array([1.0, 0.0])
+        mu = np.array([[0.0, 1.0]])
+        # 2*(1-0)^2 + 0.5*(0-1)^2 = 2 + 0.5 = 2.5
+        d = k.compute_distance(f, mu)
+        assert d[0] == pytest.approx(2.5)
+
+    def test_output_shape(self):
+        k = DiagonalKernel(np.ones(5))
+        f = np.zeros(5)
+        mu = np.zeros((3, 5))
+        d = k.compute_distance(f, mu)
+        assert d.shape == (3,)
+
+    def test_higher_weight_increases_distance(self):
+        f = np.array([1.0, 0.0])
+        mu = np.array([[0.0, 0.0]])
+        k1 = DiagonalKernel(np.array([1.0, 1.0]))
+        k2 = DiagonalKernel(np.array([4.0, 1.0]))
+        assert k2.compute_distance(f, mu)[0] > k1.compute_distance(f, mu)[0]
+
+
+class TestDiagonalKernelGradient:
+    def test_unit_weights_equals_l2_gradient(self):
+        l2 = L2Kernel()
+        diag = DiagonalKernel(np.ones(5))
+        f = np.random.default_rng(7).random(5)
+        mu = np.random.default_rng(8).random(5)
+        np.testing.assert_allclose(
+            l2.compute_gradient(f, mu),
+            diag.compute_gradient(f, mu),
+        )
+
+    def test_zero_weight_zeros_gradient_component(self):
+        k = DiagonalKernel(np.array([1.0, 0.0, 1.0]))
+        f = np.array([0.5, 0.9, 0.3])
+        mu = np.array([0.1, 0.1, 0.1])
+        g = k.compute_gradient(f, mu)
+        assert g[1] == pytest.approx(0.0)
+
+    def test_gradient_scaled_by_weight(self):
+        k = DiagonalKernel(np.array([3.0, 1.0]))
+        f = np.array([1.0, 1.0])
+        mu = np.array([0.0, 0.0])
+        g = k.compute_gradient(f, mu)
+        assert g[0] == pytest.approx(3.0)
+        assert g[1] == pytest.approx(1.0)
+
+    def test_gradient_output_shape(self):
+        k = DiagonalKernel(np.ones(6))
+        g = k.compute_gradient(np.zeros(6), np.ones(6))
+        assert g.shape == (6,)

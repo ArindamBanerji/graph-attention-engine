@@ -130,6 +130,7 @@ class ProfileScorer:
         min_confidence: float = 0.0,
         eta_override: Optional[float] = None,
         factor_mask: Optional[np.ndarray] = None,
+        scoring_kernel=None,
     ) -> None:
         """
         Args:
@@ -149,6 +150,14 @@ class ProfileScorer:
 
                           Source: Block 5B Proxy persona testing. 9 LLM-judge personas
                           showed 13–27pp accuracy degradation over 60 days without gate.
+          scoring_kernel: ScoringKernel instance (L2Kernel, DiagonalKernel, …).
+                          If None, defaults to L2Kernel (identical v5.5 behavior).
+                          Only active when the KernelType is L2 (the validated path).
+                          COSINE/DOT/MAHALANOBIS still use _compute_distances().
+
+                          v6.0: L2Kernel (default) + DiagonalKernel.
+                          v6.5: ShrinkageKernel (auto from CovarianceEstimator).
+                          Source: v6.0 kernel roadmap.
           factor_mask:    np.ndarray of shape (n_factors,) with 1.0 (include) and 0.0
                           (exclude). If None, all factors are active (backward compatible).
                           When set, score() uses only unmasked dimensions for distance,
@@ -198,6 +207,10 @@ class ProfileScorer:
 
         self.min_confidence: float = min_confidence
         self.eta_override: Optional[float] = eta_override  # None = use eta/eta_neg
+
+        # v6.0 pluggable scoring kernel (L2 path only; COSINE/DOT/MAH use _compute_distances)
+        from gae.kernels import L2Kernel as _L2Kernel
+        self.scoring_kernel = scoring_kernel if scoring_kernel is not None else _L2Kernel()
 
         # Factor quarantine mask (v6.0 binary; None = all active)
         if factor_mask is not None:
@@ -279,7 +292,12 @@ class ProfileScorer:
             f = f * self.factor_mask                   # (n_factors,)
             mu_c = mu_c * self.factor_mask             # (n_actions, n_factors) broadcast
 
-        distances = self._compute_distances(f, mu_c, category_index)
+        # v6.0 kernel dispatch: scoring_kernel active on L2 path only.
+        # COSINE/DOT/MAHALANOBIS still go through _compute_distances.
+        if self.kernel == KernelType.L2:
+            distances = self.scoring_kernel.compute_distance(f, mu_c)
+        else:
+            distances = self._compute_distances(f, mu_c, category_index)
         assert distances.shape == (self.n_actions,), (
             f"distances.shape={distances.shape} != ({self.n_actions},)"
         )
@@ -426,6 +444,26 @@ class ProfileScorer:
     # Learning                                                            #
     # ------------------------------------------------------------------ #
 
+    def _compute_gradient(self, f: np.ndarray, mu_single: np.ndarray) -> np.ndarray:
+        """
+        Gradient direction for centroid update.
+
+        Uses scoring_kernel on the L2 path; falls back to (f − μ) for
+        COSINE/DOT/MAHALANOBIS (those kernels are not differentiable here).
+
+        Parameters
+        ----------
+        f : shape (n_factors,)
+        mu_single : shape (n_factors,)
+
+        Returns
+        -------
+        shape (n_factors,)
+        """
+        if self.kernel == KernelType.L2:
+            return self.scoring_kernel.compute_gradient(f, mu_single)
+        return f - mu_single
+
     def update(
         self,
         f: np.ndarray,
@@ -520,7 +558,7 @@ class ProfileScorer:
 
         if correct:
             # Confirmation path — clean signal, full learning rate (unchanged)
-            delta_vector = eta_eff * (f - self.mu[c, a, :])
+            delta_vector = eta_eff * self._compute_gradient(f, self.mu[c, a, :])
             if self.factor_mask is not None:
                 delta_vector = delta_vector * self.factor_mask
             centroid_delta_norm = float(np.linalg.norm(delta_vector))
@@ -541,7 +579,7 @@ class ProfileScorer:
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                delta_vector = -push_rate * (f - self.mu[c, a, :])
+                delta_vector = -push_rate * self._compute_gradient(f, self.mu[c, a, :])
                 if self.factor_mask is not None:
                     delta_vector = delta_vector * self.factor_mask
                 centroid_delta_norm = float(np.linalg.norm(delta_vector))
@@ -549,13 +587,13 @@ class ProfileScorer:
             else:
                 gt = gt_action_index
                 # Push predicted (wrong) centroid away from f
-                delta_vector = -push_rate * (f - self.mu[c, a, :])
+                delta_vector = -push_rate * self._compute_gradient(f, self.mu[c, a, :])
                 if self.factor_mask is not None:
                     delta_vector = delta_vector * self.factor_mask
                 centroid_delta_norm = float(np.linalg.norm(delta_vector))
                 self.mu[c, a, :] += delta_vector
                 # Pull ground-truth centroid toward f
-                gt_delta_vector = pull_rate * (f - self.mu[c, gt, :])
+                gt_delta_vector = pull_rate * self._compute_gradient(f, self.mu[c, gt, :])
                 if self.factor_mask is not None:
                     gt_delta_vector = gt_delta_vector * self.factor_mask
                 gt_delta_norm = float(np.linalg.norm(gt_delta_vector))

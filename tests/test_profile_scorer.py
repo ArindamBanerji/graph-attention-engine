@@ -768,3 +768,104 @@ def test_factor_mask_shape_mismatch_raises():
     mu = np.random.uniform(0.25, 0.75, (2, 3, 6))
     with pytest.raises(AssertionError):
         ProfileScorer(mu, ["a", "b", "c"], factor_mask=np.ones(4))  # wrong: 4 ≠ 6
+
+
+# ---------------------------------------------------------------------------
+# scoring_kernel integration tests (v6.0)
+# ---------------------------------------------------------------------------
+
+from gae.kernels import L2Kernel, DiagonalKernel
+
+
+def _make_kernel_scorer(scoring_kernel=None, factor_mask=None):
+    np.random.seed(42)
+    mu = np.random.uniform(0.2, 0.8, (2, 3, 4))
+    actions = ["act0", "act1", "act2"]
+    return ProfileScorer(mu, actions, scoring_kernel=scoring_kernel, factor_mask=factor_mask), mu
+
+
+class TestScoringKernelIntegration:
+    def test_l2kernel_produces_identical_scores_to_default(self):
+        """scoring_kernel=L2Kernel() must produce identical results to no kernel."""
+        scorer_default, _ = _make_kernel_scorer(scoring_kernel=None)
+        scorer_l2, _ = _make_kernel_scorer(scoring_kernel=L2Kernel())
+        f = np.array([0.3, 0.6, 0.1, 0.9])
+        r_default = scorer_default.score(f, 0)
+        r_l2 = scorer_l2.score(f, 0)
+        np.testing.assert_allclose(r_default.probabilities, r_l2.probabilities)
+        np.testing.assert_allclose(r_default.distances, r_l2.distances)
+        assert r_default.action_index == r_l2.action_index
+
+    def test_diagonal_kernel_unit_weights_equals_l2(self):
+        """DiagonalKernel(ones) must produce same scores as L2Kernel()."""
+        scorer_l2, _ = _make_kernel_scorer(scoring_kernel=L2Kernel())
+        scorer_diag, _ = _make_kernel_scorer(scoring_kernel=DiagonalKernel(np.ones(4)))
+        f = np.array([0.5, 0.5, 0.5, 0.5])
+        r_l2 = scorer_l2.score(f, 1)
+        r_diag = scorer_diag.score(f, 1)
+        np.testing.assert_allclose(r_l2.probabilities, r_diag.probabilities)
+
+    def test_diagonal_kernel_zero_weight_dimension_ignored(self):
+        """DiagonalKernel with a zero-weight dim must be insensitive to that dim."""
+        np.random.seed(1)
+        mu = np.random.uniform(0.2, 0.8, (1, 3, 4))
+        w = np.array([1.0, 1.0, 1.0, 0.0])
+        scorer = ProfileScorer(mu, ["a", "b", "c"], scoring_kernel=DiagonalKernel(w))
+        f1 = np.array([0.3, 0.6, 0.1, 0.0])
+        f2 = np.array([0.3, 0.6, 0.1, 0.9])  # only last dim differs
+        r1 = scorer.score(f1, 0)
+        r2 = scorer.score(f2, 0)
+        np.testing.assert_allclose(r1.probabilities, r2.probabilities)
+
+    def test_scoring_kernel_stored_on_instance(self):
+        scorer, _ = _make_kernel_scorer(scoring_kernel=L2Kernel())
+        assert isinstance(scorer.scoring_kernel, L2Kernel)
+
+    def test_default_scoring_kernel_is_l2(self):
+        scorer, _ = _make_kernel_scorer(scoring_kernel=None)
+        assert isinstance(scorer.scoring_kernel, L2Kernel)
+
+    def test_l2kernel_update_identical_to_default(self):
+        """Centroid update with L2Kernel must equal update without kernel."""
+        scorer_default, mu = _make_kernel_scorer(scoring_kernel=None)
+        scorer_l2, _ = _make_kernel_scorer(scoring_kernel=L2Kernel())
+        f = np.array([0.4, 0.7, 0.2, 0.8])
+        scorer_default.update(f, 0, 1, correct=True)
+        scorer_l2.update(f, 0, 1, correct=True)
+        np.testing.assert_allclose(scorer_default.mu, scorer_l2.mu)
+
+    def test_factor_mask_and_kernel_work_together(self):
+        """factor_mask + scoring_kernel must both apply: masked dims have no effect."""
+        np.random.seed(3)
+        mu = np.random.uniform(0.2, 0.8, (1, 2, 4))
+        mask = np.array([1.0, 1.0, 0.0, 0.0])
+        scorer = ProfileScorer(
+            mu, ["a", "b"],
+            scoring_kernel=DiagonalKernel(np.ones(4)),
+            factor_mask=mask,
+        )
+        f_a = np.array([0.5, 0.5, 0.1, 0.1])
+        f_b = np.array([0.5, 0.5, 0.9, 0.9])  # only masked dims differ
+        r_a = scorer.score(f_a, 0)
+        r_b = scorer.score(f_b, 0)
+        np.testing.assert_allclose(r_a.probabilities, r_b.probabilities)
+
+    def test_diagonal_kernel_high_weight_changes_ranking(self):
+        """Amplifying an informative dimension should change action ranking."""
+        np.random.seed(77)
+        mu = np.zeros((1, 2, 3))
+        mu[0, 0, :] = [0.9, 0.5, 0.5]   # action 0: high in dim 0
+        mu[0, 1, :] = [0.1, 0.5, 0.5]   # action 1: low  in dim 0
+        f = np.array([0.95, 0.5, 0.5])   # close to action 0
+
+        scorer_l2 = ProfileScorer(mu, ["a0", "a1"], scoring_kernel=L2Kernel())
+        scorer_boosted = ProfileScorer(
+            mu, ["a0", "a1"],
+            scoring_kernel=DiagonalKernel(np.array([100.0, 1.0, 1.0])),
+        )
+        r_l2 = scorer_l2.score(f, 0)
+        r_boosted = scorer_boosted.score(f, 0)
+        # Both should prefer action 0, but boosted should have higher confidence
+        assert r_l2.action_index == 0
+        assert r_boosted.action_index == 0
+        assert r_boosted.probabilities[0] >= r_l2.probabilities[0]
