@@ -227,6 +227,10 @@ class TestRecommend:
         sel.scores["diagonal"].agreements = 80
         sel.scores["shrinkage"].total_decisions = 100
         sel.scores["shrinkage"].agreements = 75
+        # Rolling buffers must match so recommend() uses rolling rates
+        sel._buffers["l2"] = [True] * 60 + [False] * 40
+        sel._buffers["diagonal"] = [True] * 80 + [False] * 20
+        sel._buffers["shrinkage"] = [True] * 75 + [False] * 25
         rec = sel.recommend()
         assert rec.recommended_kernel == "diagonal"
         assert rec.confidence > 0.0
@@ -239,8 +243,12 @@ class TestRecommend:
         sel.scores["diagonal"].agreements = 80
         sel.scores["shrinkage"].total_decisions = 100
         sel.scores["shrinkage"].agreements = 75
+        # Rolling buffers must match so recommend() uses rolling rates
+        sel._buffers["l2"] = [True] * 60 + [False] * 40
+        sel._buffers["diagonal"] = [True] * 80 + [False] * 20
+        sel._buffers["shrinkage"] = [True] * 75 + [False] * 25
         rec = sel.recommend()
-        # diagonal(0.80) - shrinkage(0.75) = 0.05
+        # diagonal rolling(0.80) - shrinkage rolling(0.75) = 0.05
         assert rec.confidence == pytest.approx(0.05, abs=1e-9)
 
     def test_reason_contains_winner_name(self, hetero_sigma):
@@ -251,6 +259,9 @@ class TestRecommend:
         sel.scores["diagonal"].agreements = 70
         sel.scores["shrinkage"].total_decisions = 100
         sel.scores["shrinkage"].agreements = 60
+        sel._buffers["l2"] = [True] * 55 + [False] * 45
+        sel._buffers["diagonal"] = [True] * 70 + [False] * 30
+        sel._buffers["shrinkage"] = [True] * 60 + [False] * 40
         rec = sel.recommend()
         assert "diagonal" in rec.reason
 
@@ -382,3 +393,85 @@ class TestResetComparison:
         sel.reset_comparison()
         sel.record_comparison(rng.random(6), 0, mu, 0, ["a", "b", "c", "d"])
         assert all(s.total_decisions == 1 for s in sel.scores.values())
+
+    def test_reset_clears_buffers(self, hetero_sigma, mu):
+        """reset_comparison() must also clear rolling buffers."""
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
+        rng = np.random.default_rng(42)
+        for _ in range(30):
+            sel.record_comparison(rng.random(6), 0, mu, 0, ["a", "b", "c", "d"])
+        sel.reset_comparison()
+        assert all(len(buf) == 0 for buf in sel._buffers.values())
+
+
+# ------------------------------------------------------------------ #
+# Rolling window tests                                                #
+# ------------------------------------------------------------------ #
+
+class TestRollingWindow:
+    def test_window_size_configurable(self, hetero_sigma):
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma, window_size=50)
+        assert sel.window_size == 50
+
+    def test_default_window_size(self, hetero_sigma):
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
+        assert sel.window_size == 100
+
+    def test_buffer_capped_at_window_size(self, hetero_sigma, mu):
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma, window_size=20)
+        rng = np.random.default_rng(1)
+        for _ in range(50):
+            sel.record_comparison(rng.random(6), 0, mu, 0, ["a", "b", "c", "d"])
+        assert all(len(buf) == 20 for buf in sel._buffers.values())
+
+    def test_buffer_grows_before_cap(self, hetero_sigma, mu):
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma, window_size=50)
+        rng = np.random.default_rng(2)
+        for _ in range(30):
+            sel.record_comparison(rng.random(6), 0, mu, 0, ["a", "b", "c", "d"])
+        assert all(len(buf) == 30 for buf in sel._buffers.values())
+
+    def test_rolling_beats_cumulative_on_improving_kernel(self, hetero_sigma):
+        """Kernel B wins recently but A leads cumulatively. Rolling picks B."""
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
+        # Cumulative: l2 wins (110 vs 100 agreements)
+        sel.scores["l2"].total_decisions = 200
+        sel.scores["l2"].agreements = 110
+        sel.scores["diagonal"].total_decisions = 200
+        sel.scores["diagonal"].agreements = 100
+        sel.scores["shrinkage"].total_decisions = 200
+        sel.scores["shrinkage"].agreements = 95
+        # Rolling: diagonal wins recently (70% vs l2 40%)
+        sel._buffers["l2"] = [True] * 40 + [False] * 60
+        sel._buffers["diagonal"] = [True] * 70 + [False] * 30
+        sel._buffers["shrinkage"] = [True] * 65 + [False] * 35
+        rec = sel.recommend()
+        assert rec.recommended_kernel == "diagonal"
+
+    def test_rolling_summary_includes_both_rates(self, hetero_sigma, mu):
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
+        rng = np.random.default_rng(42)
+        for _ in range(50):
+            sel.record_comparison(rng.random(6), 0, mu, rng.integers(4),
+                                  ["a", "b", "c", "d"])
+        summary = sel.get_comparison_summary()
+        for v in summary.values():
+            assert "rolling_agreement_rate" in v
+            assert "agreement_rate" in v
+
+    def test_rolling_rate_reflects_recent_decisions(self, hetero_sigma):
+        """Rolling rate matches manual sum of buffer."""
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma, window_size=10)
+        sel._buffers["l2"] = [True, False, True, True, False, True, True, True, False, True]
+        summary = sel.get_comparison_summary()
+        expected = 7 / 10
+        assert summary["l2"]["rolling_agreement_rate"] == pytest.approx(expected)
+
+    def test_rolling_rate_zero_when_buffer_empty(self, hetero_sigma):
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
+        summary = sel.get_comparison_summary()
+        assert all(v["rolling_agreement_rate"] == 0.0 for v in summary.values())
+
+    def test_invalid_window_size_raises(self, hetero_sigma):
+        with pytest.raises(AssertionError):
+            KernelSelector(d=6, sigma_per_factor=hetero_sigma, window_size=0)

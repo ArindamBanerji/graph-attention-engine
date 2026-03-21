@@ -95,6 +95,7 @@ class KernelSelector:
         d: int,
         sigma_per_factor: np.ndarray,
         correlation_max: float = 0.0,
+        window_size: int = 100,
     ) -> None:
         """
         Parameters
@@ -106,20 +107,30 @@ class KernelSelector:
         correlation_max : float
             Maximum absolute off-diagonal correlation |ρ| from Phase 2.
             0.0 when no covariance estimate is available yet.
+        window_size : int
+            Rolling window length for agreement tracking (default 100).
+            recommend() uses the last window_size decisions to pick the
+            winner, avoiding cold-start bias from early cumulative counts.
         """
         assert d > 0, f"d must be positive, got {d}"
         sigma_per_factor = np.asarray(sigma_per_factor, dtype=np.float64)
         assert sigma_per_factor.shape == (d,), (
             f"sigma_per_factor.shape={sigma_per_factor.shape} must be ({d},)"
         )
+        assert window_size > 0, f"window_size must be positive, got {window_size}"
 
         self.d = d
         self.sigma = sigma_per_factor
         self.correlation_max = float(correlation_max)
+        self.window_size: int = window_size
 
         self.kernels: Dict = self._build_kernels()
         self.scores: Dict[str, KernelScore] = {
             name: KernelScore(kernel_name=name) for name in self.kernels
+        }
+        # Rolling agreement buffers — list of bool, capped at window_size
+        self._buffers: Dict[str, List[bool]] = {
+            name: [] for name in self.kernels
         }
 
     # ------------------------------------------------------------------ #
@@ -261,13 +272,21 @@ class KernelSelector:
             confidence = float(probs[action_idx])
             predictions[name] = action_idx
 
+            agreed = action_idx == analyst_action_index
+
             score = self.scores[name]
             score.total_decisions += 1
             score.cumulative_confidence += confidence
-            if action_idx == analyst_action_index:
+            if agreed:
                 score.agreements += 1
             else:
                 score.disagreements += 1
+
+            # Rolling window: keep only the last window_size decisions
+            buf = self._buffers[name]
+            buf.append(agreed)
+            if len(buf) > self.window_size:
+                buf.pop(0)
 
         return predictions
 
@@ -302,19 +321,23 @@ class KernelSelector:
             )
             return prelim
 
-        best_name = max(self.scores, key=lambda k: self.scores[k].agreement_rate)
+        def _rolling_rate(name: str) -> float:
+            buf = self._buffers[name]
+            return sum(buf) / max(len(buf), 1)
+
+        best_name = max(self.scores, key=_rolling_rate)
         best_score = self.scores[best_name]
 
         others = {k: v for k, v in self.scores.items() if k != best_name}
-        runner_up = max(others, key=lambda k: others[k].agreement_rate)
-        margin = best_score.agreement_rate - self.scores[runner_up].agreement_rate
+        runner_up = max(others, key=_rolling_rate)
+        margin = _rolling_rate(best_name) - _rolling_rate(runner_up)
 
         reason = (
-            f"{best_name} had highest analyst agreement: "
-            f"{best_score.agreement_rate:.1%} "
-            f"({best_score.agreements}/{best_score.total_decisions}). "
+            f"{best_name} had highest rolling agreement: "
+            f"{_rolling_rate(best_name):.1%} "
+            f"(last {len(self._buffers[best_name])} decisions). "
             f"Runner-up {runner_up}: "
-            f"{self.scores[runner_up].agreement_rate:.1%}. "
+            f"{_rolling_rate(runner_up):.1%}. "
             f"Margin: {margin:+.1%}."
         )
 
@@ -337,6 +360,9 @@ class KernelSelector:
         return {
             name: {
                 "agreement_rate": s.agreement_rate,
+                "rolling_agreement_rate": (
+                    sum(self._buffers[name]) / max(len(self._buffers[name]), 1)
+                ),
                 "mean_confidence": s.mean_confidence,
                 "total_decisions": s.total_decisions,
                 "agreements": s.agreements,
@@ -404,6 +430,7 @@ class KernelSelector:
         self.scores = {
             name: KernelScore(kernel_name=name) for name in self.kernels
         }
+        self._buffers = {name: [] for name in self.kernels}
 
     # ------------------------------------------------------------------ #
     # Internal                                                            #
