@@ -243,9 +243,9 @@ def test_default_profile_all_factors_get_standard_rate():
 
 class TestDeriveTheta:
     def test_soc_default(self):
-        """SOC: η=0.05, N_half=13.51, T_max=21 → θ_min ≈ 0.434."""
-        theta = derive_theta_min(0.05, 13.51, 21.0)
-        assert abs(theta - 0.434) < 0.01
+        """SOC: η=0.05, N_half=14, T_max=21 → θ_min ≈ 0.467."""
+        theta = derive_theta_min(0.05, 14.0, 21.0)
+        assert abs(theta - 0.467) < 0.01
 
     def test_s2p_lower_than_soc(self):
         """S2P longer cycle → lower θ_min."""

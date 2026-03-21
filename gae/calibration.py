@@ -150,7 +150,7 @@ class ConservationCheck(NamedTuple):
 
 def derive_theta_min(
     eta: float = 0.05,
-    n_half: float = 13.51,
+    n_half: float = 14.0,
     t_max_days: float = 21.0,
 ) -> float:
     """
@@ -161,8 +161,8 @@ def derive_theta_min(
     Ensures enough verified decisions flow through the system for
     centroids to track within the convergence half-life.
 
-    SOC default: 0.05 × 13.51² / 21 ≈ 0.434 (research_note_v3).
-    S2P default: 0.05 × 13.51² / 26 ≈ 0.351 (longer cycle).
+    SOC default: 0.05 × 14² / 21 ≈ 0.467 (T_max=21 days canonical).
+    S2P default: 0.05 × 14² / 26 ≈ 0.377 (longer cycle).
 
     Reference: research_note_v3; N_half from math_synopsis_v9 §5.
 
