@@ -131,6 +131,7 @@ class ProfileScorer:
         eta_override: Optional[float] = None,
         factor_mask: Optional[np.ndarray] = None,
         scoring_kernel=None,
+        auto_pause_on_amber: bool = False,
     ) -> None:
         """
         Args:
@@ -174,6 +175,12 @@ class ProfileScorer:
                           Recommended production value: 0.01 (Q5 validated).
                           Source: Q5 sweep (9 personas × 6 η values). +2–6pp improvement
                           for high-quality teams, zero regression for low-quality teams.
+          auto_pause_on_amber: If True, centroid updates are blocked whenever the
+                          conservation monitor reports AMBER or RED status. Learning
+                          resumes automatically when status returns to GREEN.
+                          Default: False (backward compatible).
+                          Call set_conservation_status() to update.
+                          Source: G6a three-judge consensus (v6.0 blunt freeze).
 
         Reference: docs/gae_design_v5.md §9.3; V3B (τ), V2 (clipping).
         """
@@ -219,6 +226,11 @@ class ProfileScorer:
                 f"factor_mask.shape={factor_mask.shape} must be ({self.n_factors},)"
             )
         self.factor_mask: Optional[np.ndarray] = factor_mask
+
+        # AMBER auto-pause (G6a three-judge consensus — v6.0 blunt freeze)
+        self.auto_pause_on_amber: bool = auto_pause_on_amber
+        self._conservation_status: str = 'GREEN'
+        self._paused_by_conservation: bool = False
 
         # Gate statistics (Block 5B Proxy — min_confidence gate)
         self._gated_count: int = 0
@@ -440,6 +452,37 @@ class ProfileScorer:
             'gate_rate': self._gated_count / max(total, 1),
         }
 
+    def set_conservation_status(self, status: str) -> None:
+        """
+        Update conservation monitor status and adjust learning pause state.
+
+        Called by the ConservationMonitor when the signal crosses a threshold.
+        Only has effect when auto_pause_on_amber=True.
+
+        Parameters
+        ----------
+        status : str
+            One of 'GREEN', 'AMBER', 'RED', 'CALIBRATING'.
+            AMBER/RED → freeze learning. GREEN → resume learning.
+
+        Reference: G6a three-judge consensus; docs/gae_design_v5.md §9.6.
+        """
+        self._conservation_status = status
+        if self.auto_pause_on_amber and status in ('AMBER', 'RED'):
+            self._paused_by_conservation = True
+        elif status == 'GREEN':
+            self._paused_by_conservation = False
+
+    @property
+    def conservation_status(self) -> str:
+        """Current conservation monitor status string ('GREEN', 'AMBER', 'RED', …)."""
+        return self._conservation_status
+
+    @property
+    def is_paused(self) -> bool:
+        """True when learning is paused due to conservation AMBER/RED signal."""
+        return self._paused_by_conservation
+
     # ------------------------------------------------------------------ #
     # Learning                                                            #
     # ------------------------------------------------------------------ #
@@ -515,6 +558,21 @@ class ProfileScorer:
         )
         c = category_index
         a = action_index
+
+        # Conservation auto-pause (G6a — AMBER/RED blocks all centroid updates)
+        if self._paused_by_conservation:
+            self._gated_count += 1
+            self.decision_count += 1
+            return CentroidUpdate(
+                centroid_delta_norm=0.0,
+                category_index=c,
+                action_index=a,
+                category_name=self._category_name(c),
+                action_name=self._action_name(a),
+                decision_count=self.decision_count,
+                gt_delta_norm=0.0,
+                outcome='paused_conservation',
+            )
 
         # Min-confidence gate (Block 5B Proxy — bypassed when confidence=None)
         if confidence is not None and confidence < self.min_confidence:

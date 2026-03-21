@@ -869,3 +869,95 @@ class TestScoringKernelIntegration:
         assert r_l2.action_index == 0
         assert r_boosted.action_index == 0
         assert r_boosted.probabilities[0] >= r_l2.probabilities[0]
+
+
+# ---------------------------------------------------------------------------
+# AMBER auto-pause tests (G6a three-judge consensus)
+# ---------------------------------------------------------------------------
+
+def _make_pause_scorer(auto_pause_on_amber: bool = True) -> tuple:
+    np.random.seed(55)
+    mu = np.random.uniform(0.2, 0.8, (2, 3, 4))
+    actions = ["act0", "act1", "act2"]
+    factors = np.array([0.3, 0.6, 0.1, 0.9])
+    scorer = ProfileScorer(mu, actions, auto_pause_on_amber=auto_pause_on_amber)
+    return scorer, mu.copy(), factors
+
+
+def test_auto_pause_disabled_by_default():
+    """auto_pause_on_amber=False by default; scorer starts unpaused."""
+    np.random.seed(1)
+    mu = np.random.uniform(0.2, 0.8, (2, 3, 4))
+    scorer = ProfileScorer(mu, ["a", "b", "c"])
+    assert scorer.auto_pause_on_amber is False
+    assert scorer.is_paused is False
+
+
+def test_auto_pause_blocks_on_amber():
+    """AMBER status blocks centroid update; delta_norm==0, outcome contains 'paused'."""
+    scorer, mu_orig, factors = _make_pause_scorer()
+    scorer.set_conservation_status('AMBER')
+    assert scorer.is_paused is True
+    mu_before = scorer.centroids.copy()
+    result = scorer.update(factors, 0, 1, True)
+    assert result.centroid_delta_norm == 0.0
+    assert 'paused' in result.outcome
+    np.testing.assert_array_equal(mu_before, scorer.centroids)
+
+
+def test_auto_pause_blocks_on_red():
+    """RED status also triggers pause."""
+    scorer, _, _ = _make_pause_scorer()
+    scorer.set_conservation_status('RED')
+    assert scorer.is_paused is True
+
+
+def test_auto_pause_resumes_on_green():
+    """GREEN after AMBER clears pause; next update applies normally."""
+    scorer, _, factors = _make_pause_scorer()
+    scorer.set_conservation_status('AMBER')
+    assert scorer.is_paused is True
+    scorer.set_conservation_status('GREEN')
+    assert scorer.is_paused is False
+    result = scorer.update(factors, 0, 1, True)
+    assert result.centroid_delta_norm > 0.0
+
+
+def test_auto_pause_false_does_not_block():
+    """auto_pause_on_amber=False: AMBER status does NOT freeze learning."""
+    scorer, _, factors = _make_pause_scorer(auto_pause_on_amber=False)
+    scorer.set_conservation_status('AMBER')
+    assert scorer.is_paused is False
+    result = scorer.update(factors, 0, 1, True)
+    assert result.centroid_delta_norm > 0.0
+
+
+def test_conservation_status_tracking():
+    """conservation_status property reflects the last set_conservation_status call."""
+    scorer, _, _ = _make_pause_scorer()
+    assert scorer.conservation_status == 'GREEN'
+    scorer.set_conservation_status('AMBER')
+    assert scorer.conservation_status == 'AMBER'
+    scorer.set_conservation_status('RED')
+    assert scorer.conservation_status == 'RED'
+    scorer.set_conservation_status('GREEN')
+    assert scorer.conservation_status == 'GREEN'
+
+
+def test_paused_updates_counted_in_gate_stats():
+    """Paused updates increment gate_stats['gated']."""
+    scorer, _, factors = _make_pause_scorer()
+    scorer.set_conservation_status('AMBER')
+    scorer.update(factors, 0, 1, True)
+    scorer.update(factors, 0, 1, True)
+    stats = scorer.update_gate_stats
+    assert stats['gated'] == 2
+
+
+def test_calibrating_status_does_not_pause():
+    """CALIBRATING is not AMBER or RED; auto_pause must not fire for it."""
+    scorer, _, factors = _make_pause_scorer()
+    scorer.set_conservation_status('CALIBRATING')
+    assert scorer.is_paused is False
+    result = scorer.update(factors, 0, 1, True)
+    assert result.centroid_delta_norm > 0.0
