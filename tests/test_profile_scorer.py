@@ -671,3 +671,100 @@ def test_eta_override_stored_on_scorer():
     mu = np.random.uniform(0.25, 0.75, (2, 3, 4))
     scorer = ProfileScorer(mu, ["x", "y", "z"], eta_override=0.01)
     assert scorer.eta_override == 0.01
+
+
+# ---------------------------------------------------------------------------
+# TEST 33-39 — factor quarantine mask (v6.0 binary mask)
+# ---------------------------------------------------------------------------
+
+def _make_mask_scorer(mask_arr=None, seed=42):
+    """Return (scorer, mu_6cat_4act_6fac, f_6) with optional factor mask."""
+    np.random.seed(seed)
+    mu = np.random.uniform(0.25, 0.75, (6, 4, 6))
+    actions = ["a", "b", "c", "d"]
+    scorer = ProfileScorer(mu.copy(), actions, factor_mask=mask_arr)
+    f = np.random.uniform(0.0, 1.0, 6)
+    return scorer, mu, f
+
+
+def test_factor_mask_none_backward_compat():
+    """mask=None → all factors active, scorer.factor_mask is None."""
+    scorer, _, f = _make_mask_scorer()
+    assert scorer.factor_mask is None
+    r = scorer.score(f, 0)
+    assert r.confidence > 0
+    assert 0 <= r.action_index < 4
+
+
+def test_factor_mask_changes_scores():
+    """Masking factors changes score output vs no mask."""
+    np.random.seed(7)
+    mu = np.random.uniform(0.25, 0.75, (6, 4, 6))
+    actions = ["a", "b", "c", "d"]
+    mask = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 1.0])   # exclude dims 3,4
+
+    scorer_full   = ProfileScorer(mu.copy(), actions)
+    scorer_masked = ProfileScorer(mu.copy(), actions, factor_mask=mask)
+
+    f = np.random.uniform(0.0, 1.0, 6)
+    r_full   = scorer_full.score(f, 0)
+    r_masked = scorer_masked.score(f, 0)
+
+    # Both valid
+    assert 0 <= r_full.action_index < 4
+    assert 0 <= r_masked.action_index < 4
+    assert r_masked.confidence > 0
+    # At least one distance should differ
+    assert not np.allclose(r_full.distances, r_masked.distances)
+
+
+def test_factor_mask_update_frozen_dims():
+    """Update must not change masked centroid dimensions."""
+    mask = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 1.0])   # freeze dims 3,4
+    scorer, _, f = _make_mask_scorer(mask_arr=mask, seed=11)
+
+    mu_before = scorer.centroids.copy()
+    scorer.update(f, 0, 1, correct=True)
+    mu_after = scorer.centroids
+
+    # Masked dims must be unchanged across ALL actions for category 0
+    assert np.allclose(mu_before[0, :, 3], mu_after[0, :, 3])
+    assert np.allclose(mu_before[0, :, 4], mu_after[0, :, 4])
+    # Updated action's unmasked dims must change
+    assert not np.allclose(mu_before[0, 1, [0, 1, 2, 5]], mu_after[0, 1, [0, 1, 2, 5]])
+
+
+def test_factor_mask_all_zeros_produces_zero_distances():
+    """All-zero mask → all distances equal → uniform probabilities."""
+    np.random.seed(3)
+    mu = np.random.uniform(0.0, 1.0, (2, 3, 4))
+    mask = np.zeros(4)
+    scorer = ProfileScorer(mu, ["x", "y", "z"], factor_mask=mask)
+    f = np.random.uniform(0.0, 1.0, 4)
+    r = scorer.score(f, 0)
+    # All distances 0 → uniform softmax → equal probabilities
+    np.testing.assert_allclose(r.probabilities, np.ones(3) / 3, atol=1e-6)
+
+
+def test_factor_mask_stored_as_float64():
+    """factor_mask is stored as float64 array."""
+    mask = np.array([1, 1, 0, 0, 1, 1], dtype=np.int32)
+    np.random.seed(5)
+    mu = np.random.uniform(0.25, 0.75, (2, 3, 6))
+    scorer = ProfileScorer(mu, ["a", "b", "c"], factor_mask=mask)
+    assert scorer.factor_mask.dtype == np.float64
+    assert scorer.factor_mask.shape == (6,)
+
+
+def test_centroids_property_alias():
+    """centroids property returns same object as mu."""
+    scorer, _, _ = _make_mask_scorer()
+    assert scorer.centroids is scorer.mu
+
+
+def test_factor_mask_shape_mismatch_raises():
+    """Wrong mask shape raises AssertionError."""
+    np.random.seed(9)
+    mu = np.random.uniform(0.25, 0.75, (2, 3, 6))
+    with pytest.raises(AssertionError):
+        ProfileScorer(mu, ["a", "b", "c"], factor_mask=np.ones(4))  # wrong: 4 ≠ 6

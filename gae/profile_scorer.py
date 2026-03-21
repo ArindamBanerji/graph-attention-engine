@@ -129,6 +129,7 @@ class ProfileScorer:
         categories: Optional[List[str]] = None,
         min_confidence: float = 0.0,
         eta_override: Optional[float] = None,
+        factor_mask: Optional[np.ndarray] = None,
     ) -> None:
         """
         Args:
@@ -148,6 +149,13 @@ class ProfileScorer:
 
                           Source: Block 5B Proxy persona testing. 9 LLM-judge personas
                           showed 13–27pp accuracy degradation over 60 days without gate.
+          factor_mask:    np.ndarray of shape (n_factors,) with 1.0 (include) and 0.0
+                          (exclude). If None, all factors are active (backward compatible).
+                          When set, score() uses only unmasked dimensions for distance,
+                          and update() only modifies unmasked centroid dimensions.
+
+                          v6.0: binary mask. v6.5: continuous W weighting (Adjustment A).
+                          Source: Three-judge consensus.
           eta_override:   Learning rate for analyst overrides (correct=False path).
                           If None, uses eta_neg for push and eta for GT pull (backward
                           compatible — same as before). When set, both the push-away and
@@ -190,6 +198,14 @@ class ProfileScorer:
 
         self.min_confidence: float = min_confidence
         self.eta_override: Optional[float] = eta_override  # None = use eta/eta_neg
+
+        # Factor quarantine mask (v6.0 binary; None = all active)
+        if factor_mask is not None:
+            factor_mask = np.asarray(factor_mask, dtype=np.float64)
+            assert factor_mask.shape == (self.n_factors,), (
+                f"factor_mask.shape={factor_mask.shape} must be ({self.n_factors},)"
+            )
+        self.factor_mask: Optional[np.ndarray] = factor_mask
 
         # Gate statistics (Block 5B Proxy — min_confidence gate)
         self._gated_count: int = 0
@@ -256,6 +272,12 @@ class ProfileScorer:
         assert mu_c.shape == (self.n_actions, self.n_factors), (
             f"mu_c.shape={mu_c.shape} != ({self.n_actions}, {self.n_factors})"
         )
+
+        # Factor quarantine mask: zero out excluded dimensions in both f and mu_c
+        # so masked dimensions contribute 0 to distance regardless of their values.
+        if self.factor_mask is not None:
+            f = f * self.factor_mask                   # (n_factors,)
+            mu_c = mu_c * self.factor_mask             # (n_actions, n_factors) broadcast
 
         distances = self._compute_distances(f, mu_c, category_index)
         assert distances.shape == (self.n_actions,), (
@@ -370,6 +392,15 @@ class ProfileScorer:
     def unfreeze(self) -> None:
         """Re-enable centroid learning after a freeze() call."""
         self._frozen = False
+
+    @property
+    def centroids(self) -> np.ndarray:
+        """
+        Profile centroid tensor, shape (n_categories, n_actions, n_factors).
+
+        Alias for self.mu — use for read access and diagnostics.
+        """
+        return self.mu
 
     @property
     def update_gate_stats(self) -> Dict:
@@ -490,6 +521,8 @@ class ProfileScorer:
         if correct:
             # Confirmation path — clean signal, full learning rate (unchanged)
             delta_vector = eta_eff * (f - self.mu[c, a, :])
+            if self.factor_mask is not None:
+                delta_vector = delta_vector * self.factor_mask
             centroid_delta_norm = float(np.linalg.norm(delta_vector))
             self.mu[c, a, :] += delta_vector
         else:
@@ -509,16 +542,22 @@ class ProfileScorer:
                     stacklevel=2,
                 )
                 delta_vector = -push_rate * (f - self.mu[c, a, :])
+                if self.factor_mask is not None:
+                    delta_vector = delta_vector * self.factor_mask
                 centroid_delta_norm = float(np.linalg.norm(delta_vector))
                 self.mu[c, a, :] += delta_vector
             else:
                 gt = gt_action_index
                 # Push predicted (wrong) centroid away from f
                 delta_vector = -push_rate * (f - self.mu[c, a, :])
+                if self.factor_mask is not None:
+                    delta_vector = delta_vector * self.factor_mask
                 centroid_delta_norm = float(np.linalg.norm(delta_vector))
                 self.mu[c, a, :] += delta_vector
                 # Pull ground-truth centroid toward f
                 gt_delta_vector = pull_rate * (f - self.mu[c, gt, :])
+                if self.factor_mask is not None:
+                    gt_delta_vector = gt_delta_vector * self.factor_mask
                 gt_delta_norm = float(np.linalg.norm(gt_delta_vector))
                 self.mu[c, gt, :] += gt_delta_vector
 

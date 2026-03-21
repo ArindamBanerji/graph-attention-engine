@@ -10,7 +10,7 @@ Reference: docs/gae_design_v5.md §8; blog Eq. 4b, 4c.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple, NamedTuple
+from typing import Dict, List, Optional, Tuple, NamedTuple
 
 import numpy as np
 
@@ -447,3 +447,80 @@ def check_meta_conservation(
         'epsilon': epsilon,
         'recommendation': 'safe_to_update' if passed else 'review_required',
     }
+
+
+# ── Factor quarantine mask ────────────────────────────────────────────────────
+# v6.0: binary mask (simple, auditable, CISO-explainable).
+# v6.5: replaced by continuous W weighting (Adjustment A).
+# Source: Three-judge consensus (Judge 1 proposed, Gemini + Opus approved).
+
+_SOC_FACTOR_ORDER: List[str] = [
+    'travel_match', 'asset_criticality', 'threat_intel_enrichment',
+    'time_anomaly', 'pattern_history', 'device_trust',
+]
+
+
+def compute_factor_mask(
+    sigma_per_factor: Dict[str, float],
+    threshold: float = 0.20,
+) -> Dict[str, bool]:
+    """
+    Binary mask: include clean factors, exclude noisy ones.
+
+    v6.0: binary (simple, auditable, CISO-explainable).
+    v6.5: replaced by continuous W weighting (Adjustment A).
+
+    Factors with σ ≥ threshold are masked out (False); factors below threshold
+    are included (True).
+
+    Parameters
+    ----------
+    sigma_per_factor : dict
+        Per-factor noise estimate from DeploymentQualifier.
+        E.g., {'travel_match': 0.12, 'device_trust': 0.28, ...}
+    threshold : float
+        Factors with σ ≥ threshold are excluded. Default 0.20.
+
+    Returns
+    -------
+    Dict[str, bool]
+        True = include, False = exclude.
+
+    Example
+    -------
+    >>> compute_factor_mask({'device_trust': 0.28, 'travel_match': 0.12}, 0.20)
+    {'device_trust': False, 'travel_match': True}
+
+    Source: Three-judge consensus (Judge 1 proposed, Gemini + Opus approved).
+    """
+    return {factor: sigma < threshold for factor, sigma in sigma_per_factor.items()}
+
+
+def mask_to_array(
+    mask: Dict[str, bool],
+    factor_names: Optional[List[str]] = None,
+) -> np.ndarray:
+    """
+    Convert factor mask dict to numpy array (1.0 = include, 0.0 = exclude).
+
+    Parameters
+    ----------
+    mask : dict
+        From compute_factor_mask().
+    factor_names : list of str, optional
+        Ordered factor names. If None, uses SOC default order:
+        [travel_match, asset_criticality, threat_intel_enrichment,
+         time_anomaly, pattern_history, device_trust]
+
+    Returns
+    -------
+    np.ndarray, shape (d,)
+        1.0 for included factors, 0.0 for excluded factors.
+    """
+    if factor_names is None:
+        factor_names = _SOC_FACTOR_ORDER
+    arr = np.array([1.0 if mask.get(f, True) else 0.0 for f in factor_names])
+    assert arr.shape == (len(factor_names),), (
+        f"mask array shape {arr.shape} != ({len(factor_names)},)"
+    )
+    return arr

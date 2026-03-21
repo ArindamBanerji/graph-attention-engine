@@ -10,9 +10,11 @@ from gae.calibration import (
     check_meta_conservation,
     compute_breach_window,
     compute_eta_override,
+    compute_factor_mask,
     compute_optimal_tau,
     compute_transfer_prior,
     derive_theta_min,
+    mask_to_array,
     s2p_calibration_profile,
     soc_calibration_profile,
 )
@@ -399,3 +401,56 @@ class TestComputeEtaOverride:
         eta_half = compute_eta_override(0.05, 0.75, 0.03, safety_margin=0.5)
         eta_full = compute_eta_override(0.05, 0.75, 0.03, safety_margin=1.0)
         assert eta_full > eta_half
+
+
+class TestComputeFactorMask:
+    def test_basic_threshold(self):
+        """σ < threshold → True (include); σ ≥ threshold → False (exclude)."""
+        mask = compute_factor_mask({'a': 0.15, 'b': 0.25, 'c': 0.08}, 0.20)
+        assert mask == {'a': True, 'b': False, 'c': True}
+
+    def test_all_clean(self):
+        """All σ below threshold → all True."""
+        mask = compute_factor_mask({'a': 0.05, 'b': 0.10}, 0.20)
+        assert all(mask.values())
+
+    def test_all_noisy(self):
+        """All σ above threshold → all False."""
+        mask = compute_factor_mask({'a': 0.25, 'b': 0.30}, 0.20)
+        assert not any(mask.values())
+
+    def test_at_threshold_excluded(self):
+        """σ == threshold is excluded (strict less-than)."""
+        mask = compute_factor_mask({'a': 0.20}, 0.20)
+        assert mask['a'] is False
+
+    def test_empty_input(self):
+        """Empty dict returns empty dict."""
+        assert compute_factor_mask({}) == {}
+
+
+class TestMaskToArray:
+    def test_shape_and_values(self):
+        """Array shape (6,) with correct 1.0/0.0 for SOC default order."""
+        mask = {
+            'travel_match': True, 'asset_criticality': True,
+            'threat_intel_enrichment': True, 'time_anomaly': False,
+            'pattern_history': True, 'device_trust': False,
+        }
+        arr = mask_to_array(mask)
+        assert arr.shape == (6,)
+        assert arr[0] == 1.0   # travel_match
+        assert arr[3] == 0.0   # time_anomaly
+        assert arr[5] == 0.0   # device_trust
+
+    def test_custom_order(self):
+        """Custom factor_names respected."""
+        mask = {'x': True, 'y': False, 'z': True}
+        arr = mask_to_array(mask, factor_names=['x', 'y', 'z'])
+        np.testing.assert_array_equal(arr, [1.0, 0.0, 1.0])
+
+    def test_missing_key_defaults_to_include(self):
+        """Factor absent from mask dict defaults to 1.0 (include)."""
+        mask = {'travel_match': False}  # device_trust missing
+        arr = mask_to_array(mask)
+        assert arr[5] == 1.0   # device_trust absent → include
