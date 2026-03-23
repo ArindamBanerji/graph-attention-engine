@@ -1,5 +1,5 @@
 """
-Graph Attention Engine (GAE) v5.0
+Graph Attention Engine (GAE) v0.7.1
 Public API surface.
 
 Core scoring:
@@ -36,15 +36,31 @@ Infrastructure:
   FactorComputer, assemble_factor_vector,
   save_state, load_state
 
+Kernels:
+  L2Kernel, DiagonalKernel, CovarianceEstimator, KernelSelector
+
+Referral:
+  ReferralEngine, ReferralRule, ReferralDecision, ReferralReason, OverrideDetector
+
 Deprecated (TD-029 — remove in v6.0):
   score_entity, score_alert, score_with_profile, ProfileScoringResult
 """
 
 from __future__ import annotations
 
-__version__ = "0.5.0"
+__version__ = "0.7.1"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
+from gae.kernels import L2Kernel, DiagonalKernel
+from gae.covariance import CovarianceEstimator
+from gae.kernel_selector import KernelSelector, KernelRecommendation
+from gae.referral import (
+    ReferralEngine,
+    ReferralRule,
+    ReferralDecision,
+    ReferralReason,
+    OverrideDetector,
+)
 from gae.profile_scorer import (
     CentroidUpdate,
     ProfileScorer,
@@ -199,6 +215,18 @@ __all__ = [
     # Bootstrap
     "BootstrapResult",
     "bootstrap_calibration",
+    # Kernels
+    "L2Kernel",
+    "DiagonalKernel",
+    "CovarianceEstimator",
+    "KernelSelector",
+    "KernelRecommendation",
+    # Referral
+    "ReferralEngine",
+    "ReferralRule",
+    "ReferralDecision",
+    "ReferralReason",
+    "OverrideDetector",
     # Deprecated (TD-029 — remove in v6.0)
     "score_entity",
     "score_alert",
