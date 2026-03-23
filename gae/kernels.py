@@ -165,3 +165,29 @@ class DiagonalKernel:
         shape (d,)
         """
         return self.weights * (f - mu)
+
+    def refresh_weights(self, sigma_per_factor: np.ndarray) -> "DiagonalKernel":
+        """
+        Return a NEW DiagonalKernel with weights updated from fresh sigma estimates.
+        Does NOT mutate self — returns a new instance (immutable kernel design).
+
+        Weights are computed as 1 / σ², where σ is clipped to ≥ 1e-6 to prevent
+        division by zero. Higher σ (noisier factor) → lower weight.
+
+        Args:
+            sigma_per_factor: array of shape (d,) — per-factor noise estimates
+                              from CovarianceEstimator.get_per_factor_sigma().
+
+        Returns:
+            New DiagonalKernel with weights = 1 / sigma_per_factor**2
+
+        Reference: V-CGA-FROZEN gap closure; docs/gae_design_v5.md §9.
+        """
+        sigma_per_factor = np.asarray(sigma_per_factor, dtype=np.float64)
+        assert sigma_per_factor.shape == self.weights.shape, (
+            f"sigma_per_factor.shape={sigma_per_factor.shape} must match "
+            f"weights.shape={self.weights.shape}"
+        )
+        clipped = np.maximum(sigma_per_factor, 1e-6)
+        new_weights = 1.0 / clipped ** 2
+        return DiagonalKernel(new_weights)

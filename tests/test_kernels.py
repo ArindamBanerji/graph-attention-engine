@@ -208,3 +208,94 @@ class TestDiagonalKernelGradient:
         k = DiagonalKernel(np.ones(6))
         g = k.compute_gradient(np.zeros(6), np.ones(6))
         assert g.shape == (6,)
+
+
+# ------------------------------------------------------------------ #
+# KernelWeightRefresh — DiagonalKernel + CovarianceEstimator + ProfileScorer
+# ------------------------------------------------------------------ #
+
+class TestKernelWeightRefresh:
+    """Tests for the V-CGA-FROZEN gap closure: refresh_weights / kernel_weight_refresh."""
+
+    def _make_scorer(self, use_diagonal=True):
+        """Helper: ProfileScorer with DiagonalKernel (or L2Kernel) and 1 category, 3 actions, 4 factors."""
+        mu = np.full((1, 3, 4), 0.5)
+        actions = ["a0", "a1", "a2"]
+        from gae.kernels import DiagonalKernel, L2Kernel
+        from gae.profile_scorer import ProfileScorer
+        kernel = DiagonalKernel(np.ones(4)) if use_diagonal else L2Kernel()
+        return ProfileScorer(mu=mu, actions=actions, scoring_kernel=kernel)
+
+    def _make_estimator_with_n(self, d, n):
+        """Helper: CovarianceEstimator fed with n uniform observations."""
+        from gae.covariance import CovarianceEstimator
+        est = CovarianceEstimator(d=d)
+        rng = np.random.default_rng(42)
+        for _ in range(n):
+            est.update(rng.uniform(0.1, 0.9, size=d))
+        return est
+
+    def test_kernel_weight_refresh_updates_weights(self):
+        """refresh_weights() produces new DiagonalKernel with 1/σ² weights; original unchanged."""
+        from gae.covariance import CovarianceEstimator
+        est = self._make_estimator_with_n(d=4, n=100)
+        sigma = est.get_per_factor_sigma()
+        assert sigma is not None, "Expected sigma with 100 samples"
+        assert sigma.shape == (4,)
+
+        original_weights = np.ones(4)
+        k_orig = DiagonalKernel(original_weights.copy())
+        k_new = k_orig.refresh_weights(sigma)
+
+        # New instance returned — not the same object
+        assert k_new is not k_orig
+
+        # Original weights unchanged (immutable design)
+        np.testing.assert_array_equal(k_orig.weights, original_weights)
+
+        # New weights = 1 / σ², clipped at 1e-6
+        expected = 1.0 / np.maximum(sigma, 1e-6) ** 2
+        np.testing.assert_allclose(k_new.weights, expected, rtol=1e-9)
+
+    def test_kernel_weight_refresh_safe_during_freeze(self):
+        """kernel_weight_refresh() returns True and updates kernel even when frozen."""
+        scorer = self._make_scorer(use_diagonal=True)
+        scorer.freeze()
+        assert scorer._frozen is True
+
+        mu_before = scorer.mu.copy()
+        est = self._make_estimator_with_n(d=4, n=100)
+
+        result = scorer.kernel_weight_refresh(est)
+        assert result is True
+
+        # Centroid tensor must not change — kernel refresh only
+        np.testing.assert_array_equal(scorer.mu, mu_before)
+
+        # Kernel weights must have changed (were all-ones, now 1/σ²)
+        sigma = est.get_per_factor_sigma()
+        expected_weights = 1.0 / np.maximum(sigma, 1e-6) ** 2
+        np.testing.assert_allclose(scorer.scoring_kernel.weights, expected_weights, rtol=1e-9)
+
+    def test_kernel_weight_refresh_insufficient_data(self):
+        """get_per_factor_sigma() returns None with < 50 observations; refresh returns False."""
+        from gae.covariance import CovarianceEstimator
+        est = self._make_estimator_with_n(d=4, n=10)   # below MIN_SAMPLES_FOR_SIGMA
+
+        sigma = est.get_per_factor_sigma()
+        assert sigma is None, "Expected None for n=10 < 50"
+
+        scorer = self._make_scorer(use_diagonal=True)
+        original_weights = scorer.scoring_kernel.weights.copy()
+        result = scorer.kernel_weight_refresh(est)
+
+        assert result is False
+        np.testing.assert_array_equal(scorer.scoring_kernel.weights, original_weights)
+
+    def test_kernel_weight_refresh_l2_noop(self):
+        """kernel_weight_refresh() returns False for L2Kernel without raising."""
+        scorer = self._make_scorer(use_diagonal=False)
+        est = self._make_estimator_with_n(d=4, n=100)
+
+        result = scorer.kernel_weight_refresh(est)
+        assert result is False  # L2Kernel has no weights to refresh

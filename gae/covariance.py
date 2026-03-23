@@ -55,6 +55,12 @@ class CovarianceEstimator:
     """
     Online covariance estimator with Ledoit-Wolf optimal shrinkage.
 
+    Class attributes
+    ----------------
+    MIN_SAMPLES_FOR_SIGMA : int
+        Minimum number of observations required before get_per_factor_sigma()
+        returns reliable estimates. Below this threshold it returns None.
+
     Accumulates exponentially-weighted statistics. The decay parameter
     downweights old observations so the estimator tracks regime shifts.
 
@@ -70,6 +76,8 @@ class CovarianceEstimator:
 
     Reference: docs/gae_design_v5.md §9; Ledoit & Wolf (2004).
     """
+
+    MIN_SAMPLES_FOR_SIGMA: int = 50
 
     def __init__(self, d: int, half_life_decisions: int = 300) -> None:
         """
@@ -225,6 +233,30 @@ class CovarianceEstimator:
         lam = max(lam, sample_correction)
 
         return float(np.clip(lam, 0.0, 1.0))
+
+    def get_per_factor_sigma(self) -> Optional[np.ndarray]:
+        """
+        Return current per-factor sigma (std dev) estimates, shape (d,).
+
+        Computes sqrt of per-factor variance from the accumulated covariance
+        snapshot diagonal. Returns None when fewer than MIN_SAMPLES_FOR_SIGMA
+        observations have been collected — estimates are unreliable below this
+        threshold and callers must not use them for weight updates.
+
+        Returns
+        -------
+        np.ndarray of shape (d,), or None if insufficient data.
+
+        Reference: V-CGA-FROZEN gap closure; DiagonalKernel.refresh_weights().
+        """
+        if self.n_samples < self.MIN_SAMPLES_FOR_SIGMA:
+            return None
+        snapshot = self.get_snapshot()
+        variance = snapshot.per_factor_sigma   # shape (d,) — diagonal of Σ̂
+        assert variance.shape == (self.d,), (
+            f"variance.shape={variance.shape} must be ({self.d},)"
+        )
+        return np.sqrt(variance)
 
     def get_change_rate(self, previous_snapshot: CovarianceSnapshot) -> float:
         """

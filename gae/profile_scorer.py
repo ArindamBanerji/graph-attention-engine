@@ -423,6 +423,58 @@ class ProfileScorer:
         """Re-enable centroid learning after a freeze() call."""
         self._frozen = False
 
+    def set_kernel(self, kernel) -> None:
+        """
+        Replace the active scoring kernel.
+
+        Safe to call at any time, including during a frozen window. Only
+        affects the scoring_kernel used on the L2 path (KernelType.L2).
+        The centroid tensor μ is never modified.
+
+        Parameters
+        ----------
+        kernel : ScoringKernel
+            New kernel instance (L2Kernel, DiagonalKernel, …).
+
+        Reference: docs/gae_design_v5.md §9; V-CGA-FROZEN gap closure.
+        """
+        self.scoring_kernel = kernel
+
+    def kernel_weight_refresh(self, covariance_estimator) -> bool:
+        """
+        Refresh DiagonalKernel weights from accumulated CovarianceEstimator data.
+
+        Safe to call during a frozen window (learning_enabled=False / _frozen=True).
+        The centroid tensor μ is never modified — only the scoring kernel's weights
+        are updated. This closes the gap identified in V-CGA-FROZEN: sigma reduction
+        from graph enrichment now flows into the kernel geometry even during frozen
+        periods.
+
+        Parameters
+        ----------
+        covariance_estimator : CovarianceEstimator
+            Estimator with accumulated factor observations.
+
+        Returns
+        -------
+        bool — True if weights were updated, False if:
+            - current scoring_kernel is not a DiagonalKernel (L2 has no weights), or
+            - covariance_estimator has fewer than MIN_SAMPLES_FOR_SIGMA observations.
+
+        Reference: V-CGA-FROZEN gap closure; docs/gae_design_v5.md §9.
+        """
+        from gae.kernels import DiagonalKernel as _DiagonalKernel
+        if not isinstance(self.scoring_kernel, _DiagonalKernel):
+            return False
+
+        sigma = covariance_estimator.get_per_factor_sigma()
+        if sigma is None:
+            return False
+
+        updated_kernel = self.scoring_kernel.refresh_weights(sigma)
+        self.set_kernel(updated_kernel)
+        return True
+
     @property
     def centroids(self) -> np.ndarray:
         """
