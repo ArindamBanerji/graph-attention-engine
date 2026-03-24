@@ -538,38 +538,108 @@ class TestEnrichedBootstrapPrior:
         assert np.all(mu >= 0.0), f"μ₀ contains values < 0.0: min={mu.min()}"
         assert np.all(mu <= 1.0), f"μ₀ contains values > 1.0: max={mu.max()}"
 
-    def test_enriched_bootstrap_differs_from_standard(self):
+    def test_enriched_bootstrap_gradient_not_vector_scaling(self):
         """
-        With heterogeneous σ (ratio > 2×), μ₀_enriched != μ₀_uniform.
-        The enriched prior diverges from the uniform-weight result.
-        """
-        cfg = self._make_config()
-        decisions = self._make_decisions(n=30)
+        Proves the fix: W_normalized multiplies (f - mu), NOT f.
 
-        # Heterogeneous σ: 4× ratio — should produce different result
-        sigma_het = {"threat_intel": 0.05, "pattern_history": 0.20}
-        mu_enriched = compute_enriched_bootstrap_prior(
+        Setup: mu_start = [0.5, 0.5], f = [0.8, 0.2], W_normalized = [2.0, 0.5]
+        eta = 0.05 (_ETA_CONFIRM)
+
+        WRONG result (old code): update = eta * (W*f - mu)
+          = 0.05 * ([1.6, 0.1] - [0.5, 0.5])
+          = 0.05 * [1.1, -0.4]
+          mu_wrong = [0.555, 0.480]   <- dim 0 shoots above 0.53 (f distorted)
+
+        CORRECT result: update = eta * W * (f - mu)
+          = 0.05 * [2.0, 0.5] * [0.3, -0.3]
+          = 0.05 * [0.6, -0.15]
+          mu_correct = [0.530, 0.4925]  <- both move toward f; reliable dim faster
+        """
+        # Reverse-engineer sigma so W_raw mean gives W_norm = [2.0, 0.5]
+        # W_norm = W_raw / W_raw.mean() = [2.0, 0.5]  → W_raw = k*[2.0, 0.5]
+        # Choose k=1.25 → W_raw=[2.5, 0.625], mean=1.5625... recalculate:
+        # mean([2.5,0.625]) = 1.5625 → W_norm=[1.6, 0.4].  Not [2.0,0.5].
+        # Correct: W_norm=[2,0.5] requires W_raw proportional to [2,0.5].
+        # W_raw = [2,0.5] (any k): mean=1.25, W_norm=[1.6, 0.4]. Still no.
+        # The only way W_norm=[2.0,0.5] is if W_raw=[2.0,0.5] AND mean=1.0,
+        # i.e., W_raw must already sum to 2 with mean=1.25... let's use [4.0,1.0]:
+        # mean([4,1])=2.5, W_norm=[1.6,0.4]. Still not [2.0,0.5].
+        # W_norm=[2.0,0.5] means W_raw=[2a, 0.5a], mean=1.25a, norm=[1.6,0.4].
+        # Impossible with 2 elements. Use W_raw that normalises to exactly [2.0,0.5]:
+        # Need mean=1 so W_raw=W_norm → W_raw=[2.0,0.5], mean=1.25 → W_norm=[1.6,0.4].
+        # Use a 4-element case instead: W_raw=[4,1,1,1] mean=1.75→norm=[2.286,...]
+        # Simplest: directly assert on a known sigma pair where ratio is exact.
+        # sigma_r / sigma_n = sqrt(4) = 2 → W_r/W_n = 4.
+        # Let sigma_r=0.1, sigma_n=0.2 → W_r=100, W_n=25, mean=62.5 → W_norm=[1.6,0.4]
+        # Exact result: mu[0] = 0.5 + 0.05*1.6*(0.8-0.5) = 0.5+0.024 = 0.524
+        #               mu[1] = 0.5 + 0.05*0.4*(0.2-0.5) = 0.5-0.006 = 0.494
+        # Wrong result: 0.5 + 0.05*(1.6*0.8 - 0.5) = 0.5+0.05*0.78 = 0.539
+        #               0.5 + 0.05*(0.4*0.2 - 0.5) = 0.5+0.05*(-0.42) = 0.479
+
+        @dataclass
+        class _Cfg2:
+            factor_names: list
+            n_cat: int = 1
+            n_act: int = 1
+
+        cfg = _Cfg2(factor_names=["reliable", "noisy"])
+        sigma = {"reliable": 0.1, "noisy": 0.2}
+
+        # Verify W_normalized used internally
+        W_raw  = np.array([1/0.1**2, 1/0.2**2])    # [100, 25]
+        W_norm = W_raw / W_raw.mean()               # [1.6, 0.4]
+        np.testing.assert_allclose(W_norm, [1.6, 0.4], atol=1e-10)
+
+        decisions = [(0, 0, np.array([0.8, 0.2]))]
+        mu_out = compute_enriched_bootstrap_prior(
             historical_decisions=decisions,
-            measured_sigma=sigma_het,
+            measured_sigma=sigma,
             domain_config=cfg,
-            n_cat=cfg.n_cat,
-            n_act=cfg.n_act,
-            n_factors=len(cfg.factor_names),
+            n_cat=1,
+            n_act=1,
+            n_factors=2,
         )
 
-        # Homogeneous σ: both same — enrichment is neutral, closer to uniform
-        sigma_uniform = {"threat_intel": 0.10, "pattern_history": 0.10}
-        mu_uniform = compute_enriched_bootstrap_prior(
+        # Correct: eta * W_norm * (f - mu_start)
+        #   dim 0: 0.5 + 0.05 * 1.6 * (0.8 - 0.5) = 0.5 + 0.024 = 0.524
+        #   dim 1: 0.5 + 0.05 * 0.4 * (0.2 - 0.5) = 0.5 - 0.006 = 0.494
+        np.testing.assert_allclose(mu_out[0, 0, 0], 0.524, atol=1e-10,
+            err_msg="dim 0: correct gradient eq gives 0.524; wrong f-scaling gives 0.539")
+        np.testing.assert_allclose(mu_out[0, 0, 1], 0.494, atol=1e-10,
+            err_msg="dim 1: correct gradient eq gives 0.494; wrong f-scaling gives 0.479")
+
+    def test_enriched_bootstrap_reliable_factors_converge_faster(self):
+        """
+        With σ_reliable=0.05 and σ_noisy=0.20 (W ratio 16:1), after 100 decisions
+        where both factors signal 0.9, mu[reliable_dim] is closer to 0.9.
+        Proves reliable factors converge faster; f is never distorted.
+        """
+        @dataclass
+        class _Cfg2:
+            factor_names: list
+            n_cat: int = 1
+            n_act: int = 1
+
+        cfg = _Cfg2(factor_names=["reliable", "noisy"])
+        sigma = {"reliable": 0.05, "noisy": 0.20}
+
+        decisions = [(0, 0, np.array([0.9, 0.9])) for _ in range(100)]
+
+        mu_out = compute_enriched_bootstrap_prior(
             historical_decisions=decisions,
-            measured_sigma=sigma_uniform,
+            measured_sigma=sigma,
             domain_config=cfg,
-            n_cat=cfg.n_cat,
-            n_act=cfg.n_act,
-            n_factors=len(cfg.factor_names),
+            n_cat=1,
+            n_act=1,
+            n_factors=2,
         )
 
-        assert not np.allclose(mu_enriched, mu_uniform), (
-            "μ₀_enriched should differ from μ₀_uniform when σ is heterogeneous"
+        dist_reliable = abs(mu_out[0, 0, 0] - 0.9)
+        dist_noisy    = abs(mu_out[0, 0, 1] - 0.9)
+
+        assert dist_reliable < dist_noisy, (
+            f"Reliable dim (σ=0.05) should be closer to 0.9 than noisy dim (σ=0.20). "
+            f"dist_reliable={dist_reliable:.4f}, dist_noisy={dist_noisy:.4f}"
         )
 
     def test_bootstrap_enriched_prior_writes_anchor_once(self, tmp_path):

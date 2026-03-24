@@ -515,7 +515,7 @@ def compute_enriched_bootstrap_prior(
     Never called again. The result is stored via write_iks_bootstrap_anchor()
     which enforces write-once semantics.
 
-    Blog Eq. 4b (enriched prior variant): μ₀ ← η·(f_enriched − μ₀).
+    Blog Eq. 4b (enriched prior variant): μ₀ ← μ₀ + η·W·(f − μ₀).
 
     Args:
         historical_decisions: list of (category_idx, action_idx, factor_vector)
@@ -534,8 +534,9 @@ def compute_enriched_bootstrap_prior(
         1. Build weight vector W = 1/σ² per factor (same as DiagonalKernel).
         2. Normalize: W_normalized = W / W.mean() — preserves scale.
         3. For each historical decision (c, a, f):
-           Apply enrichment weighting: f_enriched = f * W_normalized.
-           Update prior: μ[c,a,:] += η * (f_enriched − μ[c,a,:]).
+           Compute kernel-weighted gradient: gradient = W_normalized * (f − μ[c,a,:]).
+           Update prior: μ[c,a,:] += η * gradient.
+           f is NEVER modified — W enters through the gradient, not by scaling f.
            Clip μ[c,a,:] to [0.0, 1.0] after each update (invariant).
         4. Return final μ₀_enriched.
 
@@ -584,12 +585,12 @@ def compute_enriched_bootstrap_prior(
         assert 0 <= c < n_cat, f"category_idx={c} out of range [0, {n_cat})"
         assert 0 <= a < n_act, f"action_idx={a} out of range [0, {n_act})"
 
-        f_enriched = f * W_normalized
-        assert f_enriched.shape == (n_factors,), (
-            f"f_enriched.shape={f_enriched.shape} != ({n_factors},)"
+        gradient = f - mu[c, a, :]                         # standard residual, f unchanged
+        assert gradient.shape == (n_factors,), (
+            f"gradient.shape={gradient.shape} != ({n_factors},)"
         )
 
-        mu[c, a, :] += _ETA_CONFIRM * (f_enriched - mu[c, a, :])
+        mu[c, a, :] += _ETA_CONFIRM * W_normalized * gradient  # kernel-weighted correction
         mu[c, a, :] = np.clip(mu[c, a, :], 0.0, 1.0)
 
     return mu
