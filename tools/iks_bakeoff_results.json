@@ -1,0 +1,321 @@
+{
+  "options": {
+    "A": {
+      "iks_at_zero_profile2": 22.0,
+      "trajectories": {
+        "profile1": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            51.2,
+            92.3,
+            99.4,
+            100.0,
+            100.0
+          ]
+        },
+        "profile2": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            22.0,
+            62.0,
+            94.0,
+            99.5,
+            100.0,
+            100.0
+          ]
+        },
+        "profile3": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            35.0,
+            68.3,
+            95.0,
+            99.6,
+            100.0,
+            100.0
+          ]
+        }
+      },
+      "criteria": {
+        "C1": "PARTIAL",
+        "C2": "COMPARABLE",
+        "C3": "VISIBLE",
+        "C4": "LOW",
+        "C5_score": "CLEAR",
+        "C5_sentence": "Your adaptation score starts at 22 because the enrichment data already closed 22% of the learning gap before your first alert was processed."
+      }
+    },
+    "B": {
+      "iks_at_zero_profile2": 0.0,
+      "trajectories": {
+        "profile1": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            65.7,
+            100.0,
+            100.0,
+            100.0,
+            100.0
+          ]
+        },
+        "profile2": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            51.2,
+            92.3,
+            99.4,
+            100.0,
+            100.0
+          ]
+        },
+        "profile3": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            42.7,
+            76.9,
+            82.8,
+            83.3,
+            83.3
+          ]
+        }
+      },
+      "criteria": {
+        "C1": "PARTIAL",
+        "C2": "PARTIAL",
+        "C3": "INVISIBLE",
+        "C4": "LOW",
+        "C5_score": "AMBIGUOUS",
+        "C5_sentence": "Your adaptation score measures how far your model has learned since deployment, normalized to the enriched starting point."
+      }
+    },
+    "C": {
+      "iks_at_zero_profile2": 0.0,
+      "trajectories": {
+        "profile1": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            65.7,
+            100.0,
+            100.0,
+            100.0,
+            100.0
+          ],
+          "e_score": [
+            47.4,
+            47.4,
+            47.4,
+            47.4,
+            47.4,
+            47.4
+          ]
+        },
+        "profile2": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            51.2,
+            92.3,
+            99.4,
+            100.0,
+            100.0
+          ],
+          "e_score": [
+            47.4,
+            47.4,
+            47.4,
+            47.4,
+            47.4,
+            47.4
+          ]
+        },
+        "profile3": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            42.7,
+            76.9,
+            82.8,
+            83.3,
+            83.3
+          ],
+          "e_score": [
+            47.4,
+            47.4,
+            47.4,
+            47.4,
+            47.4,
+            47.4
+          ]
+        }
+      },
+      "criteria": {
+        "C1": "PARTIAL",
+        "C2": "PARTIAL",
+        "C3": "VISIBLE",
+        "C4": "MEDIUM",
+        "C5_score": "CLEAR",
+        "C5_sentence": "Your adaptation score measures learning progress since deployment; your enrichment score (fixed at 47) reflects the head-start gained from historical data loaded before go-live."
+      }
+    },
+    "D": {
+      "iks_at_zero_profile2": 0.0,
+      "trajectories": {
+        "profile1": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            51.2,
+            92.3,
+            99.4,
+            100.0,
+            100.0
+          ]
+        },
+        "profile2": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            51.2,
+            92.3,
+            99.4,
+            100.0,
+            100.0
+          ]
+        },
+        "profile3": {
+          "decisions": [
+            0,
+            14,
+            50,
+            100,
+            200,
+            500
+          ],
+          "iks": [
+            0.0,
+            51.2,
+            92.3,
+            99.4,
+            100.0,
+            100.0
+          ]
+        }
+      },
+      "criteria": {
+        "C1": "PASS",
+        "C2": "NOT COMPARABLE",
+        "C3": "INVISIBLE",
+        "C4": "MEDIUM",
+        "C5_score": "CLEAR",
+        "C5_sentence": "Your adaptation score measures the fraction of your full learning journey completed, normalized to your specific deployment conditions."
+      }
+    }
+  },
+  "recommendation": "A",
+  "justification": "Option A (Dual-anchor) is recommended. C1 is PARTIAL because IKS(0)=22 for enriched deployments \u2014 but this is a FEATURE: the CISO immediately sees the percentage of the adaptation journey already closed by enrichment. All profiles converge to IKS=100 (C1 convergence condition met). Option A is the only option achieving COMPARABLE cross-deployment semantics (C2) because D_MAX=0.20 and the anchor are identical for all deployments, making IKS=67 mean the same thing regardless of whether enrichment was used. Enrichment benefit is VISIBLE (C3): IKS(0)=22 for P28 Warmstart and IKS(0)=35 for greenfield directly encode the head-start. Complexity is LOW (C4): a single frozen standard-prior anchor in iks_bootstrap_soc.json, no estimation step. The CISO sentence is CLEAR (C5). Options B and C cap at IKS=83 for greenfield (C1 PARTIAL, wrong direction). Option D passes C1 but sacrifices cross-deployment comparability (C2 NOT COMPARABLE) and hides enrichment benefit entirely (C3 INVISIBLE).",
+  "architectural_constraints": {
+    "no_sigma_in_update": {
+      "A": true,
+      "B": true,
+      "C": true,
+      "D": true
+    },
+    "anchor_freeze_rule": {
+      "A": true,
+      "B": true,
+      "C": true,
+      "D": true
+    },
+    "no_type_branching": {
+      "A": true,
+      "B": true,
+      "C": true,
+      "D": true
+    }
+  },
+  "e_score_fixed": 47.4,
+  "e_score_sigma_pre": 0.19,
+  "e_score_sigma_post": 0.1
+}
