@@ -197,12 +197,16 @@ class TestDiagonalKernelGradient:
         assert g[1] == pytest.approx(0.0)
 
     def test_gradient_scaled_by_weight(self):
+        # After w_max normalisation: g = (W / w_max) * (f - mu).
+        # w_max=3.0 → g[0]=(3/3)*1=1.0, g[1]=(1/3)*1=0.333.
+        # Reliable factor (w=3) still learns faster than noisy factor (w=1).
         k = DiagonalKernel(np.array([3.0, 1.0]))
         f = np.array([1.0, 1.0])
         mu = np.array([0.0, 0.0])
         g = k.compute_gradient(f, mu)
-        assert g[0] == pytest.approx(3.0)
-        assert g[1] == pytest.approx(1.0)
+        assert g[0] == pytest.approx(1.0)            # w_max factor: full step
+        assert g[1] == pytest.approx(1.0 / 3.0)     # noisier factor: proportionally smaller
+        assert g[0] > g[1]                           # reliable still learns faster
 
     def test_gradient_output_shape(self):
         k = DiagonalKernel(np.ones(6))
@@ -416,4 +420,96 @@ class TestClaim60SigmaReductionAccuracy:
             f"CLAIM-60 not validated: acc_low_noise={acc_low:.3f}, "
             f"acc_high_noise={acc_high:.3f}, delta={delta_pp:.1f}pp (need >= 3pp). "
             f"DiagonalKernel σ-reweighting should favour informative factors."
+        )
+
+
+# ------------------------------------------------------------------ #
+# Gradient normalisation fix — V-CLAIM60-S2P oscillation regression  #
+# ------------------------------------------------------------------ #
+
+class TestDiagonalGradientNormalisation:
+    """
+    Tests for the w_max normalisation fix in DiagonalKernel.compute_gradient().
+    Before fix: return self.weights * (f - mu)  → η*W*(f-mu) up to 13.9*(f-mu)
+    After fix:  return (self.weights/w_max) * (f - mu) → bounded by η*(f-mu)
+    """
+
+    def test_diagonal_gradient_bounded_by_eta(self):
+        """
+        Max step = η × max|G| must not exceed η regardless of weight magnitude.
+        SOC asset_criticality W=277.8 was the worst offender before fix.
+        """
+        eta = 0.05
+        kernel = DiagonalKernel(np.array([277.8, 44.4]))
+        f  = np.array([0.9, 0.9])
+        mu = np.array([0.1, 0.1])
+        G = kernel.compute_gradient(f, mu)
+        max_step = eta * np.max(np.abs(G))
+        assert max_step <= eta + 1e-9, (
+            f"Max step {max_step:.6f} exceeds η={eta}. "
+            f"Gradient normalisation fix not applied. G={G}"
+        )
+
+    def test_diagonal_gradient_reliable_learns_faster(self):
+        """
+        After normalisation the gradient ratio equals the weight ratio.
+        Reliable factor (high W) gets proportionally larger gradient than noisy factor.
+        """
+        kernel = DiagonalKernel(np.array([277.8, 44.4]))
+        f  = np.array([0.8, 0.8])
+        mu = np.array([0.5, 0.5])
+        G = kernel.compute_gradient(f, mu)
+        assert G[0] > G[1], (
+            f"Reliable factor (W=277.8) gradient {G[0]:.6f} should exceed "
+            f"noisy factor (W=44.4) gradient {G[1]:.6f}"
+        )
+        expected_ratio = 277.8 / 44.4
+        actual_ratio   = G[0] / G[1]
+        assert abs(actual_ratio - expected_ratio) < 1e-6, (
+            f"Gradient ratio {actual_ratio:.6f} should equal weight ratio "
+            f"{expected_ratio:.6f} (proportional learning speed preserved)"
+        )
+
+    def test_diagonal_no_oscillation_after_many_updates(self):
+        """
+        200 update() calls with SOC-like high weights must NOT produce centroid
+        oscillation. Before fix: centroids slammed to 0/1 boundary every step.
+        After fix: centroids converge smoothly.
+        """
+        from gae.profile_scorer import ProfileScorer
+
+        sigma = np.array([0.06, 0.07, 0.20])   # SOC-like: asset_crit, time_anomaly, pattern
+        W = 1.0 / sigma ** 2                    # [277.8, 204.1, 25.0]
+
+        mu_init = np.full((1, 1, 3), 0.5)
+        scorer = ProfileScorer(
+            mu=mu_init,
+            actions=["escalate"],
+            scoring_kernel=DiagonalKernel(W),
+        )
+
+        f = np.array([0.8, 0.7, 0.6])
+        centroid_history = []
+
+        for _ in range(200):
+            scorer.update(f, category_index=0, action_index=0, correct=True)
+            centroid_history.append(scorer.mu[0, 0, :].copy())
+
+        final_centroid = scorer.mu[0, 0, :]
+
+        # No dimension stuck at hard boundary
+        assert not np.any(final_centroid == 0.0), (
+            f"Centroid dimension(s) stuck at 0.0 after 200 updates: {final_centroid}"
+        )
+        assert not np.any(final_centroid == 1.0), (
+            f"Centroid dimension(s) stuck at 1.0 after 200 updates: {final_centroid}"
+        )
+
+        # Final 20 steps converged — variance < 0.01 (not oscillating)
+        last_20 = np.array(centroid_history[-20:])  # shape (20, 3)
+        var_per_dim = np.var(last_20, axis=0)
+        assert np.all(var_per_dim < 0.01), (
+            f"Centroid oscillating in final 20 steps. "
+            f"Per-dim variance: {var_per_dim} (threshold 0.01). "
+            f"Final centroid: {final_centroid}"
         )

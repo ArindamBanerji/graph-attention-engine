@@ -153,7 +153,16 @@ class DiagonalKernel:
 
     def compute_gradient(self, f: np.ndarray, mu: np.ndarray) -> np.ndarray:
         """
-        Weighted gradient: W ⊙ (f − μ).
+        Normalised weighted gradient: (W / w_max) ⊙ (f − μ).
+
+        Weights are normalised by their maximum before multiplying the residual.
+        This preserves directional preference (reliable factors learn proportionally
+        faster) without gradient amplification.
+
+        Max step = η × 1.0 × max|f−μ| = η — identical bound to L2Kernel.
+        Noisier factors: step = η × (w_j / w_max) × |f−μ| < η — correctly slower.
+
+        compute_distance() is NOT affected — scoring uses full self.weights.
 
         Parameters
         ----------
@@ -164,7 +173,8 @@ class DiagonalKernel:
         -------
         shape (d,)
         """
-        return self.weights * (f - mu)
+        w_max = max(self.weights.max(), 1e-9)
+        return (self.weights / w_max) * (f - mu)
 
     def refresh_weights(self, sigma_per_factor: np.ndarray) -> "DiagonalKernel":
         """
