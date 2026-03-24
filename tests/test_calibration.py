@@ -769,3 +769,154 @@ class TestEnrichedBootstrapPrior:
             mu_original, mu_delta, atol=1e-12,
             err_msg="When sigma_before == sigma_after, Δσ scheme must equal original scheme."
         )
+
+
+# ── V-BOOTSTRAP-GEOM tests ────────────────────────────────────────────────────
+
+from gae.calibration import (
+    compute_dominant_axis,
+    compute_enriched_bootstrap_prior_geom,
+)
+from dataclasses import dataclass as _dc2
+
+
+@_dc2
+class _Cfg6:
+    """6-factor SOC-like domain config stub."""
+    factor_names: list
+    n_cat: int = 2
+    n_act: int = 2
+
+
+def _make_cfg6():
+    return _Cfg6(
+        factor_names=['travel_match', 'asset_criticality', 'threat_intel',
+                      'time_anomaly', 'pattern_history', 'device_trust'],
+    )
+
+
+class TestVBootstrapGeom:
+    def test_geom_attenuates_discriminating_factors(self):
+        """
+        threat_intel has high centroid variance (discriminating) →
+        dominant_axis high → W_geom attenuated.
+        device_trust has low centroid variance (non-discriminating) →
+        dominant_axis low → W_geom full.
+        Both enriched equally. Assert W_geom[device_trust] > 2× W_geom[threat_intel].
+        """
+        cfg = _make_cfg6()
+        n_factors = 6
+        # threat_intel (idx 2): large spread across centroid positions
+        # device_trust (idx 5): small spread (near 0.50 everywhere)
+        mu = np.full((2, 2, n_factors), 0.5)
+        mu[:, 0, 2] = 0.9;  mu[:, 1, 2] = 0.1   # threat_intel: high variance
+        mu[:, :, 5] = 0.5 + np.array([[0.02, -0.02], [-0.01, 0.01]])  # device_trust: low
+
+        # Equal enrichment for both factors (sigma_before/after ratio = 2.0)
+        sigma_after  = {f: 0.10 for f in cfg.factor_names}
+        sigma_before = {f: 0.20 for f in cfg.factor_names}
+
+        sa = np.array([sigma_after[f]  for f in cfg.factor_names])
+        sb = np.array([sigma_before[f] for f in cfg.factor_names])
+        enrichment_ratio = (sb / sa) ** 2          # all equal = 4.0
+        dom = compute_dominant_axis(mu)
+        W_geom = np.clip(enrichment_ratio * (1.0 - dom), 1e-6, None)
+
+        ti_idx = 2; dt_idx = 5
+        assert W_geom[dt_idx] > 2.0 * W_geom[ti_idx], (
+            f"device_trust W_geom={W_geom[dt_idx]:.6f} should be >2x "
+            f"threat_intel W_geom={W_geom[ti_idx]:.6f} (B1 attenuation check)"
+        )
+
+    def test_geom_uniform_mu_uses_enrichment_ratio_only(self):
+        """
+        When mu is uniform (all positions identical), dominant_axis = zeros.
+        W_geom = enrichment_ratio * (1 - 0) = enrichment_ratio = (sb/sa)².
+        The function uses pure enrichment-benefit weighting — geometry plays no role.
+
+        Verified analytically: one decision, compute expected mu from
+        W_norm = enrichment_ratio / mean(enrichment_ratio).
+        """
+        from dataclasses import dataclass as _dc3
+
+        @_dc3
+        class _Cfg2u:
+            factor_names: list
+            n_cat: int = 1
+            n_act: int = 1
+
+        cfg = _Cfg2u(factor_names=["f0", "f1"])
+        n_factors = 2
+        mu_uniform = np.full((1, 1, n_factors), 0.5)
+
+        # dominant_axis must be zeros for uniform mu
+        dom = compute_dominant_axis(mu_uniform)
+        np.testing.assert_array_equal(dom, np.zeros(n_factors),
+            err_msg="Uniform mu must produce zero dominant_axis scores")
+
+        # sigma values — f0 enriched 3×, f1 enriched 1× (unchanged)
+        sigma_after  = {"f0": 0.10, "f1": 0.15}
+        sigma_before = {"f0": 0.30, "f1": 0.15}
+
+        # Expected W = enrichment_ratio = (sb/sa)²
+        sa = np.array([0.10, 0.15])
+        sb = np.array([0.30, 0.15])
+        er = (sb / sa) ** 2           # [9.0, 1.0]
+        W_norm = er / er.mean()       # [1.8, 0.2]
+
+        # One decision: f = [0.8, 0.4]
+        f = np.array([0.8, 0.4])
+        # Expected: mu = 0.5 + 0.05 * W_norm * (f - 0.5)
+        expected = np.clip(0.5 + 0.05 * W_norm * (f - 0.5), 0.0, 1.0)
+
+        mu_geom = compute_enriched_bootstrap_prior_geom(
+            historical_decisions=[(0, 0, f)],
+            measured_sigma=sigma_after,
+            sigma_before=sigma_before,
+            mu_current=mu_uniform,
+            domain_config=cfg,
+            n_cat=1, n_act=1, n_factors=n_factors,
+        )
+
+        np.testing.assert_allclose(
+            mu_geom[0, 0, :], expected, atol=1e-12,
+            err_msg=(
+                "With uniform mu (dom_axis=0), W_geom = enrichment_ratio. "
+                f"Expected {expected}, got {mu_geom[0, 0, :]}"
+            ),
+        )
+
+    def test_geom_clips_weights_above_zero(self):
+        """
+        A perfectly discriminating factor (dominant_axis = 1.0) produces
+        W_geom = enrichment_ratio * 0.0 = 0, clipped to 1e-6.
+        All W_geom values must be >= 1e-6.
+        """
+        cfg = _make_cfg6()
+        n_factors = 6
+        # Make one factor perfectly discriminating: constant 0 or 1 across all positions
+        mu = np.full((2, 2, n_factors), 0.5)
+        mu[0, 0, 0] = 1.0; mu[0, 1, 0] = 0.0   # factor 0: max variance
+        mu[1, 0, 0] = 1.0; mu[1, 1, 0] = 0.0
+
+        sigma_after  = {f: 0.10 for f in cfg.factor_names}
+        sigma_before = {f: 0.20 for f in cfg.factor_names}
+
+        sa = np.array([sigma_after[f]  for f in cfg.factor_names])
+        sb = np.array([sigma_before[f] for f in cfg.factor_names])
+        enrichment_ratio = (sb / sa) ** 2
+        dom = compute_dominant_axis(mu)
+
+        # Factor 0 should be the dominant axis (normalized to 1.0)
+        assert dom[0] == pytest.approx(1.0), (
+            f"Factor 0 has max variance; dominant_axis[0] should be 1.0, got {dom[0]}"
+        )
+
+        W_geom = np.clip(enrichment_ratio * (1.0 - dom), 1e-6, None)
+        assert np.all(W_geom >= 1e-6), (
+            f"All W_geom must be >= 1e-6. Min={W_geom.min():.2e}"
+        )
+        # The perfectly discriminating factor must be exactly at the clip floor
+        assert W_geom[0] == pytest.approx(1e-6), (
+            f"Dominant factor (axis=1.0) must be clipped to 1e-6, got {W_geom[0]:.2e}"
+        )

@@ -619,6 +619,152 @@ def compute_enriched_bootstrap_prior(
     return mu
 
 
+def compute_dominant_axis(mu: np.ndarray) -> np.ndarray:
+    """
+    Per-factor centroid-separation score from variance across all (cat, act) pairs.
+
+    For each factor dimension j, computes variance of μ[:,:,j] across all
+    (category, action) positions. High variance means this factor drives centroid
+    separation (discriminating). Low variance means this factor is not discriminating.
+
+    Result is normalized to [0, 1] so scores are comparable across deployments.
+
+    Parameters
+    ----------
+    mu : np.ndarray, shape (n_cat, n_act, n_factors)
+        Current centroid tensor. In enriched bootstrap context: μ₀ from standard
+        bootstrap (before enrichment pass).
+
+    Returns
+    -------
+    np.ndarray, shape (n_factors,)
+        Score in [0, 1] per factor. 1.0 = dominant separator, 0.0 = non-discriminating.
+        All zeros when all factors have identical variance (uniform μ).
+
+    Reference: V-BOOTSTRAP-GEOM design §4.5; B1 ceiling fix.
+    """
+    assert mu.ndim == 3, f"mu must be 3-D (n_cat, n_act, n_factors), got shape {mu.shape}"
+    n_factors = mu.shape[-1]
+    # Flatten (n_cat, n_act) → (n_positions,) for each factor
+    flat = mu.reshape(-1, n_factors)          # shape (n_cat*n_act, n_factors)
+    assert flat.shape[1] == n_factors, (
+        f"flat.shape={flat.shape}, expected (:, {n_factors})"
+    )
+    per_factor_variance = np.var(flat, axis=0)  # shape (n_factors,)
+    assert per_factor_variance.shape == (n_factors,), (
+        f"per_factor_variance.shape={per_factor_variance.shape} != ({n_factors},)"
+    )
+    max_var = per_factor_variance.max()
+    if max_var > 0:
+        return per_factor_variance / max_var
+    return np.zeros(n_factors, dtype=float)
+
+
+def compute_enriched_bootstrap_prior_geom(
+    historical_decisions: list,
+    measured_sigma: Dict[str, float],
+    sigma_before: Dict[str, float],
+    mu_current: np.ndarray,
+    domain_config,
+    n_cat: int,
+    n_act: int,
+    n_factors: int,
+) -> np.ndarray:
+    """
+    Geometry-aware Empirical Bayes bootstrap (V-BOOTSTRAP-GEOM).
+
+    Combines enrichment benefit (Δσ) with centroid geometry awareness:
+      W_boot_j = enrichment_ratio_j × (1 − dominant_axis_j)
+
+    Where:
+      enrichment_ratio_j = (σ_before_j / σ_after_j)²
+        High when factor j benefited most from graph enrichment.
+      dominant_axis_j = per-factor centroid-separation score from compute_dominant_axis()
+        High when factor j drives the primary centroid separations.
+
+    B1 deployment fix: in B1 geometries, enriched factors ARE the primary
+    discriminators. Without geometry awareness the bootstrap gradient competes
+    with the dominant structure → d≈0.21–0.23 ceiling. This scheme attenuates
+    those factors' bootstrap weight, allowing other factors to guide the prior.
+
+    B0 deployment: dominant_axis ≈ 0 → W_geom ≈ enrichment_ratio → reduces to
+    Δσ scheme. When μ is uniform, compute_dominant_axis() returns zeros and
+    this function is exactly equivalent to compute_enriched_bootstrap_prior()
+    with sigma_before provided.
+
+    W_geom clipped to ≥ 1e-6 to prevent zero or negative weights.
+
+    Args:
+        historical_decisions: list of (category_idx, action_idx, factor_vector).
+        measured_sigma: dict factor_name → σ_after (post-enrichment).
+        sigma_before: dict factor_name → σ_before (pre-enrichment). Required.
+        mu_current: centroid tensor shape (n_cat, n_act, n_factors). Used to
+                    compute dominant axis. Typically μ₀ from standard bootstrap.
+        domain_config: object with .factor_names list attribute.
+        n_cat, n_act, n_factors: tensor dimensions.
+
+    Returns:
+        μ₀_geom: np.ndarray shape (n_cat, n_act, n_factors)
+
+    Reference: docs/gae_design_v5.md §9; V-BOOTSTRAP-GEOM §4.5.
+    """
+    assert n_factors > 0, f"n_factors must be positive, got {n_factors}"
+    assert n_cat > 0, f"n_cat must be positive, got {n_cat}"
+    assert n_act > 0, f"n_act must be positive, got {n_act}"
+    assert mu_current.shape == (n_cat, n_act, n_factors), (
+        f"mu_current.shape={mu_current.shape} != ({n_cat}, {n_act}, {n_factors})"
+    )
+
+    factor_names: List[str] = domain_config.factor_names
+    assert len(factor_names) == n_factors, (
+        f"len(domain_config.factor_names)={len(factor_names)} != n_factors={n_factors}"
+    )
+
+    # Step 1: enrichment benefit ratio per factor, shape (n_factors,)
+    sa = np.array([measured_sigma[name] for name in factor_names], dtype=float)
+    sb = np.array([sigma_before[name]   for name in factor_names], dtype=float)
+    assert sa.shape == (n_factors,), f"sa.shape={sa.shape} != ({n_factors},)"
+    assert sb.shape == (n_factors,), f"sb.shape={sb.shape} != ({n_factors},)"
+    enrichment_ratio = (sb / sa) ** 2          # shape (n_factors,)
+
+    # Step 2: dominant axis scores — how much each factor drives centroid separation
+    dominant_axis = compute_dominant_axis(mu_current)   # shape (n_factors,)
+    assert dominant_axis.shape == (n_factors,), (
+        f"dominant_axis.shape={dominant_axis.shape} != ({n_factors},)"
+    )
+
+    # Step 3: geometry-aware weights — attenuate factors aligned with dominant structure
+    W_geom = enrichment_ratio * (1.0 - dominant_axis)
+    W_geom = np.clip(W_geom, 1e-6, None)               # never zero or negative
+    assert W_geom.shape == (n_factors,), f"W_geom.shape={W_geom.shape} != ({n_factors},)"
+
+    W_normalized = W_geom / W_geom.mean()
+    assert W_normalized.shape == (n_factors,), (
+        f"W_normalized.shape={W_normalized.shape} != ({n_factors},)"
+    )
+
+    # Step 4: bootstrap update — identical loop to existing scheme
+    mu = np.full((n_cat, n_act, n_factors), 0.5, dtype=float)
+
+    for decision in historical_decisions:
+        c, a, f = decision
+        f = np.asarray(f, dtype=float)
+        assert f.shape == (n_factors,), (
+            f"factor vector shape {f.shape} != ({n_factors},)"
+        )
+        assert 0 <= c < n_cat, f"category_idx={c} out of range [0, {n_cat})"
+        assert 0 <= a < n_act, f"action_idx={a} out of range [0, {n_act})"
+
+        gradient = f - mu[c, a, :]                               # f unchanged
+        assert gradient.shape == (n_factors,), (
+            f"gradient.shape={gradient.shape} != ({n_factors},)"
+        )
+        mu[c, a, :] += _ETA_CONFIRM * W_normalized * gradient   # kernel-weighted
+        mu[c, a, :] = np.clip(mu[c, a, :], 0.0, 1.0)
+
+    return mu
+
+
 def mask_to_array(
     mask: Dict[str, bool],
     factor_names: Optional[List[str]] = None,
