@@ -299,3 +299,121 @@ class TestKernelWeightRefresh:
 
         result = scorer.kernel_weight_refresh(est)
         assert result is False  # L2Kernel has no weights to refresh
+
+
+# ------------------------------------------------------------------ #
+# CLAIM-60 integration: σ reduction → weight refresh → accuracy gain #
+# ------------------------------------------------------------------ #
+
+class TestClaim60SigmaReductionAccuracy:
+    """
+    Proves CLAIM-60: lower σ on informative factors → higher accuracy
+    via DiagonalKernel automatic reweighting.
+
+    Setup: 6 SOC factors, 4 actions, 1 category.
+      disc_dims [2,4]   = threat_intel_enrichment, pattern_history (true signal)
+      noise_dims [0,1,3,5] = travel_match, asset_criticality, time_anomaly, device_trust
+
+    Each test alert: disc dims point to correct action, noise dims point to a
+    different (confounding) action. With equal weights the noise dims (×4) outweigh
+    the signal dims (×2). With W_low the signal dims are weighted 16× higher (400 vs 25)
+    so they dominate.
+    """
+
+    # Factor layout (SOC canonical):
+    #   0=travel_match, 1=asset_criticality, 2=threat_intel,
+    #   3=time_anomaly,  4=pattern_history,   5=device_trust
+    DISC_DIMS  = [2, 4]
+    NOISE_DIMS = [0, 1, 3, 5]
+
+    # Discriminating centroid values per action (indices into DISC_DIMS)
+    DISC_VALS = {
+        0: [0.9, 0.9],   # escalate:    high ti, high ph
+        1: [0.9, 0.1],   # investigate: high ti, low  ph
+        2: [0.1, 0.9],   # suppress:    low  ti, high ph
+        3: [0.1, 0.1],   # monitor:     low  ti, low  ph
+    }
+
+    # Noise-dim centroid values per action (indices into NOISE_DIMS)
+    # Chosen so each action has a distinct noise-dim "fingerprint"
+    NOISE_VALS = {
+        0: [0.9, 0.1, 0.1, 0.1],
+        1: [0.1, 0.9, 0.9, 0.9],
+        2: [0.9, 0.9, 0.1, 0.9],
+        3: [0.1, 0.1, 0.1, 0.1],
+    }
+
+    def _build_mu(self):
+        """Build centroid tensor (1, 4, 6)."""
+        mu = np.zeros((1, 4, 6))
+        for act in range(4):
+            for i, d in enumerate(self.DISC_DIMS):
+                mu[0, act, d] = self.DISC_VALS[act][i]
+            for i, d in enumerate(self.NOISE_DIMS):
+                mu[0, act, d] = self.NOISE_VALS[act][i]
+        return mu
+
+    def _build_scorer(self, sigma_array):
+        from gae.profile_scorer import ProfileScorer
+        W = 1.0 / sigma_array ** 2
+        return ProfileScorer(
+            mu=self._build_mu(),
+            actions=["escalate", "investigate", "suppress", "monitor"],
+            scoring_kernel=DiagonalKernel(W),
+        )
+
+    def test_sigma_reduction_improves_accuracy(self):
+        """
+        Proves CLAIM-60: lower σ on informative factors → higher triage accuracy.
+
+        W_high_noise: all σ = 0.20 → all weights = 25 (uniform).
+        W_low_noise:  threat_intel σ = 0.05, pattern_history σ = 0.05
+                      → disc weights = 400, noise weights = 25 (ratio 16:1).
+
+        100 alerts: disc dims point to true action, noise dims confound.
+        Expected: accuracy(W_low_noise) > accuracy(W_high_noise) by >= 3pp.
+        """
+        n_factors = 6
+        sigma_high = np.full(n_factors, 0.20)
+        sigma_low  = np.full(n_factors, 0.20)
+        sigma_low[2] = 0.05   # threat_intel
+        sigma_low[4] = 0.05   # pattern_history
+
+        scorer_high = self._build_scorer(sigma_high)
+        scorer_low  = self._build_scorer(sigma_low)
+
+        rng = np.random.default_rng(42)
+        n_alerts = 100
+        correct_high = 0
+        correct_low  = 0
+
+        for i in range(n_alerts):
+            true_action     = i % 4
+            confound_action = (true_action + 2) % 4   # maximally different action
+
+            f = np.zeros(n_factors)
+            # Disc dims: small noise around true action centroid
+            for j, d in enumerate(self.DISC_DIMS):
+                f[d] = np.clip(
+                    self.DISC_VALS[true_action][j] + rng.normal(0, 0.05), 0.0, 1.0
+                )
+            # Noise dims: small noise around CONFOUNDING action centroid
+            for j, d in enumerate(self.NOISE_DIMS):
+                f[d] = np.clip(
+                    self.NOISE_VALS[confound_action][j] + rng.normal(0, 0.05), 0.0, 1.0
+                )
+
+            if scorer_high.score(f, 0).action_index == true_action:
+                correct_high += 1
+            if scorer_low.score(f, 0).action_index == true_action:
+                correct_low += 1
+
+        acc_high = correct_high / n_alerts
+        acc_low  = correct_low  / n_alerts
+        delta_pp = (acc_low - acc_high) * 100.0
+
+        assert acc_low > acc_high + 0.03, (
+            f"CLAIM-60 not validated: acc_low_noise={acc_low:.3f}, "
+            f"acc_high_noise={acc_high:.3f}, delta={delta_pp:.1f}pp (need >= 3pp). "
+            f"DiagonalKernel σ-reweighting should favour informative factors."
+        )
