@@ -12,12 +12,51 @@ Reference: docs/gae_design_v8_3.md §17; GAE-BOOT-1.
 
 from __future__ import annotations
 
+import json
+import os
 import time
 from dataclasses import dataclass, field
 
 import numpy as np
 
 from gae.profile_scorer import ProfileScorer
+
+
+def _assert_bootstrap_anchor_not_overwritten(filepath: str) -> None:
+    """
+    Raises RuntimeError if iks_bootstrap_soc.json already exists.
+    Called before any write to the IKS anchor sidecar file.
+    The IKS anchor is written ONCE at P28 Phase 2 bootstrap.
+    Overwriting it causes IKS oscillation trap (T1 simulation failure:
+    IKS locks at ~3.0 permanently). Hard architectural constraint.
+    If intentional re-bootstrap needed: delete the file manually first.
+    """
+    if os.path.exists(filepath):
+        raise RuntimeError(
+            f"IKS anchor {filepath} already exists and cannot be "
+            f"overwritten. It must be written exactly once at P28 "
+            f"Phase 2 bootstrap. Delete the file manually if "
+            f"intentional re-bootstrap is required."
+        )
+
+
+def write_iks_bootstrap_anchor(filepath: str, data: dict) -> None:
+    """
+    Write the IKS anchor sidecar file (iks_bootstrap_soc.json) exactly once.
+
+    Calls _assert_bootstrap_anchor_not_overwritten() before writing to
+    enforce the P28 Phase 2 single-write constraint. Raises RuntimeError
+    if the file already exists.
+
+    Args:
+      filepath: Absolute or relative path to the anchor JSON file.
+      data:     Dictionary to serialise as the anchor payload.
+
+    Reference: T1 architecture constraint — μ₀ anchor freeze guard.
+    """
+    _assert_bootstrap_anchor_not_overwritten(filepath)
+    with open(filepath, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
 
 
 @dataclass

@@ -1,9 +1,11 @@
 """Tests for gae.bootstrap — bootstrap_calibration, BootstrapResult."""
 
+import os
+
 import numpy as np
 import pytest
 
-from gae.bootstrap import BootstrapResult, bootstrap_calibration
+from gae.bootstrap import BootstrapResult, bootstrap_calibration, write_iks_bootstrap_anchor
 from gae.profile_scorer import ProfileScorer
 
 
@@ -118,3 +120,24 @@ class TestBootstrapConvergenceFlag:
         assert result.converged is True, (
             f"Expected converged=True, got final_drift={result.final_drift:.6f}"
         )
+
+
+class TestBootstrapAnchorWriteOnce:
+    def test_bootstrap_anchor_write_once(self, tmp_path):
+        """First write succeeds; second write to same path raises RuntimeError."""
+        anchor = str(tmp_path / "iks_bootstrap_soc.json")
+        # First write must succeed
+        write_iks_bootstrap_anchor(anchor, {"mu0": [1, 2, 3]})
+        assert os.path.exists(anchor)
+        # Second write must raise
+        with pytest.raises(RuntimeError):
+            write_iks_bootstrap_anchor(anchor, {"mu0": [4, 5, 6]})
+
+    def test_bootstrap_anchor_guard_message_is_clear(self, tmp_path):
+        """RuntimeError message contains 'IKS anchor' and 'written exactly once'."""
+        anchor = str(tmp_path / "iks_bootstrap_soc.json")
+        write_iks_bootstrap_anchor(anchor, {"mu0": [1, 2, 3]})
+        with pytest.raises(RuntimeError, match="IKS anchor"):
+            write_iks_bootstrap_anchor(anchor, {"mu0": [4, 5, 6]})
+        with pytest.raises(RuntimeError, match="written exactly once"):
+            write_iks_bootstrap_anchor(anchor, {"mu0": [7, 8, 9]})
