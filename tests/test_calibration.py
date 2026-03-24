@@ -671,3 +671,101 @@ class TestEnrichedBootstrapPrior:
                 domain_config=cfg,
                 anchor_filepath=anchor,
             )
+
+    def test_delta_sigma_upweights_enriched_factors(self):
+        """
+        Δσ scheme: W_j = sigma_before_j² / sigma_after_j⁴.
+
+        f0 heavily enriched: sigma_before=0.24, sigma_after=0.09
+          W0 = 0.24² / 0.09⁴ = 0.0576 / 6.561e-5 ≈ 878
+        f1 not enriched:     sigma_before=0.09, sigma_after=0.09
+          W1 = 0.09² / 0.09⁴ = 1/0.09² ≈ 123
+
+        W_normalized ratio W0/W1 ≈ 7.1 (enriched factor gets ~7× higher weight).
+        """
+        @dataclass
+        class _Cfg2:
+            factor_names: list
+            n_cat: int = 1
+            n_act: int = 1
+
+        cfg = _Cfg2(factor_names=["enriched", "fixed"])
+
+        sigma_after  = {"enriched": 0.09, "fixed": 0.09}
+        sigma_before = {"enriched": 0.24, "fixed": 0.09}
+
+        # Compute expected W values
+        W0 = 0.24**2 / 0.09**4
+        W1 = 0.09**2 / 0.09**4
+        W_arr = np.array([W0, W1])
+        W_norm = W_arr / W_arr.mean()
+
+        # Verify ratio ≈ 7.1
+        ratio = W_norm[0] / W_norm[1]
+        assert abs(ratio - 7.111) < 0.01, (
+            f"Expected W_norm ratio ≈ 7.1, got {ratio:.3f}"
+        )
+
+        # Verify the function produces the expected convergence differential.
+        # One decision: f = [0.9, 0.9]. Enriched factor should move faster toward 0.9.
+        decisions = [(0, 0, np.array([0.9, 0.9]))]
+        mu_out = compute_enriched_bootstrap_prior(
+            historical_decisions=decisions,
+            measured_sigma=sigma_after,
+            domain_config=cfg,
+            n_cat=1,
+            n_act=1,
+            n_factors=2,
+            sigma_before=sigma_before,
+        )
+
+        dist_enriched = abs(mu_out[0, 0, 0] - 0.9)
+        dist_fixed    = abs(mu_out[0, 0, 1] - 0.9)
+        assert dist_enriched < dist_fixed, (
+            f"Enriched factor (W_norm={W_norm[0]:.1f}) should converge faster "
+            f"than fixed factor (W_norm={W_norm[1]:.1f}). "
+            f"dist_enriched={dist_enriched:.4f}, dist_fixed={dist_fixed:.4f}"
+        )
+
+    def test_fixed_factors_same_in_both_schemes(self):
+        """
+        For factor where sigma_before == sigma_after:
+          W_delta = sigma² / sigma⁴ = 1/sigma²  (same as original scheme).
+        Both schemes must produce identical mu for un-enriched factors.
+        """
+        @dataclass
+        class _Cfg2:
+            factor_names: list
+            n_cat: int = 1
+            n_act: int = 1
+
+        cfg = _Cfg2(factor_names=["f0", "f1"])
+        sigma = {"f0": 0.15, "f1": 0.20}
+
+        # sigma_before == sigma_after → Δσ scheme reduces to 1/σ²
+        decisions = [(0, 0, np.array([0.7, 0.3])) for _ in range(10)]
+
+        mu_original = compute_enriched_bootstrap_prior(
+            historical_decisions=decisions,
+            measured_sigma=sigma,
+            domain_config=cfg,
+            n_cat=1,
+            n_act=1,
+            n_factors=2,
+            sigma_before=None,      # original scheme
+        )
+
+        mu_delta = compute_enriched_bootstrap_prior(
+            historical_decisions=decisions,
+            measured_sigma=sigma,
+            domain_config=cfg,
+            n_cat=1,
+            n_act=1,
+            n_factors=2,
+            sigma_before=sigma,     # sigma_before == sigma_after → same as original
+        )
+
+        np.testing.assert_allclose(
+            mu_original, mu_delta, atol=1e-12,
+            err_msg="When sigma_before == sigma_after, Δσ scheme must equal original scheme."
+        )

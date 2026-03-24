@@ -506,6 +506,7 @@ def compute_enriched_bootstrap_prior(
     n_cat: int,
     n_act: int,
     n_factors: int,
+    sigma_before: Optional[Dict[str, float]] = None,
 ) -> np.ndarray:
     """
     Empirical Bayes bootstrap: re-run centroid calibration using
@@ -520,10 +521,16 @@ def compute_enriched_bootstrap_prior(
     Args:
         historical_decisions: list of (category_idx, action_idx, factor_vector)
                               tuples from SIEM historical import.
-        measured_sigma: dict mapping factor_name → σ value from
+        measured_sigma: dict mapping factor_name → σ_after value from
                        CovarianceEstimator.get_per_factor_sigma()
         domain_config: object with .factor_names list attribute.
         n_cat, n_act, n_factors: tensor dimensions.
+        sigma_before: optional dict mapping factor_name → σ_before (pre-enrichment).
+                      If provided, uses Δσ scheme: W_j = σ_before_j² / σ_after_j⁴.
+                      Factors that improved most (large σ_before/σ_after ratio) get
+                      highest weight. Fixed factors (σ_before == σ_after) reduce to
+                      1/σ² — identical to the original scheme.
+                      If None (default), uses original scheme: W = 1/σ_after².
 
     Returns:
         μ₀_enriched: np.ndarray shape (n_cat, n_act, n_factors)
@@ -531,7 +538,9 @@ def compute_enriched_bootstrap_prior(
                      optimum than standard bootstrap (simulation).
 
     Mechanism:
-        1. Build weight vector W = 1/σ² per factor (same as DiagonalKernel).
+        1. Build weight vector W per factor (shape (n_factors,)):
+             sigma_before=None:  W_j = 1 / σ_after_j²          (absolute reliability)
+             sigma_before given: W_j = σ_before_j² / σ_after_j⁴ (enrichment benefit)
         2. Normalize: W_normalized = W / W.mean() — preserves scale.
         3. For each historical decision (c, a, f):
            Compute kernel-weighted gradient: gradient = W_normalized * (f − μ[c,a,:]).
@@ -556,11 +565,25 @@ def compute_enriched_bootstrap_prior(
         f"len(domain_config.factor_names)={len(factor_names)} != n_factors={n_factors}"
     )
 
-    # Step 1: build W = 1/σ² per factor, shape (n_factors,)
-    W = np.array(
-        [1.0 / (measured_sigma[name] ** 2) for name in factor_names],
-        dtype=float,
+    # Step 1: build W per factor, shape (n_factors,)
+    sigma_after_arr = np.array([measured_sigma[name] for name in factor_names], dtype=float)
+    assert sigma_after_arr.shape == (n_factors,), (
+        f"sigma_after_arr.shape={sigma_after_arr.shape} != ({n_factors},)"
     )
+
+    if sigma_before is not None:
+        # Δσ scheme: weight by enrichment benefit
+        # W_j = σ_before_j² / σ_after_j⁴
+        # Fixed factors (σ_before == σ_after): W_j = σ² / σ⁴ = 1/σ² — same as original.
+        sigma_before_arr = np.array([sigma_before[name] for name in factor_names], dtype=float)
+        assert sigma_before_arr.shape == (n_factors,), (
+            f"sigma_before_arr.shape={sigma_before_arr.shape} != ({n_factors},)"
+        )
+        W = sigma_before_arr ** 2 / sigma_after_arr ** 4
+    else:
+        # Original scheme: weight by absolute reliability
+        W = 1.0 / sigma_after_arr ** 2
+
     assert W.shape == (n_factors,), f"W.shape={W.shape} != ({n_factors},)"
 
     # Step 2: normalize so mean weight = 1.0 (preserves scale)
