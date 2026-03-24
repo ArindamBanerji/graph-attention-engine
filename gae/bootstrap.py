@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from gae.calibration import compute_enriched_bootstrap_prior
 from gae.profile_scorer import ProfileScorer
 
 
@@ -246,3 +247,64 @@ def bootstrap_calibration(
             "timestamp": time.time(),
         },
     )
+
+
+def bootstrap_enriched_prior(
+    historical_decisions: list,
+    measured_sigma: dict,
+    domain_config,
+    anchor_filepath: str,
+) -> "np.ndarray":
+    """
+    Orchestrate enriched bootstrap at P28 Phase 2.
+
+    Computes μ₀_enriched from σ-weighted historical decisions, then writes
+    it to the IKS anchor sidecar file exactly once.
+
+    Steps:
+      1. Infer tensor dimensions from domain_config.factor_names,
+         historical_decisions, and domain_config.n_cat / domain_config.n_act.
+      2. Call compute_enriched_bootstrap_prior() — standalone, no live scorer.
+      3. Call write_iks_bootstrap_anchor(anchor_filepath, payload)
+         which raises RuntimeError if the anchor already exists (write-once guard).
+      4. Return μ₀_enriched for ProfileScorer initialization.
+
+    Args:
+        historical_decisions: list of (category_idx, action_idx, factor_vector).
+        measured_sigma: dict mapping factor_name → σ from CovarianceEstimator.
+        domain_config: object with .factor_names (list[str]),
+                       .n_cat (int), .n_act (int).
+        anchor_filepath: path to iks_bootstrap_soc.json.
+
+    Returns:
+        μ₀_enriched: np.ndarray shape (n_cat, n_act, n_factors).
+
+    Raises:
+        RuntimeError: if anchor_filepath already exists (write-once guard).
+
+    Reference: T1 architecture — μ₀ anchor freeze guard; P28 Phase 2.
+    """
+    n_factors = len(domain_config.factor_names)
+    n_cat = domain_config.n_cat
+    n_act = domain_config.n_act
+
+    mu0_enriched = compute_enriched_bootstrap_prior(
+        historical_decisions=historical_decisions,
+        measured_sigma=measured_sigma,
+        domain_config=domain_config,
+        n_cat=n_cat,
+        n_act=n_act,
+        n_factors=n_factors,
+    )
+
+    payload = {
+        "mu0_enriched": mu0_enriched.tolist(),
+        "n_cat": n_cat,
+        "n_act": n_act,
+        "n_factors": n_factors,
+        "factor_names": domain_config.factor_names,
+        "timestamp": time.time(),
+    }
+    write_iks_bootstrap_anchor(anchor_filepath, payload)
+
+    return mu0_enriched

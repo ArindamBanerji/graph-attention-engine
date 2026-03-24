@@ -454,3 +454,150 @@ class TestMaskToArray:
         mask = {'travel_match': False}  # device_trust missing
         arr = mask_to_array(mask)
         assert arr[5] == 1.0   # device_trust absent → include
+
+
+# ── Enriched Bootstrap Prior Tests ───────────────────────────────────────────
+
+from gae.calibration import compute_enriched_bootstrap_prior
+from gae.bootstrap import bootstrap_enriched_prior
+from dataclasses import dataclass
+
+
+@dataclass
+class _DomainConfig:
+    """Minimal domain_config stub for tests."""
+    factor_names: list
+    n_cat: int
+    n_act: int
+
+
+class TestEnrichedBootstrapPrior:
+    def _make_config(self):
+        return _DomainConfig(
+            factor_names=["threat_intel", "pattern_history"],
+            n_cat=2,
+            n_act=2,
+        )
+
+    def _make_decisions(self, n=20):
+        """Historical decisions: all push threat_intel high, pattern_history low."""
+        rng = np.random.default_rng(0)
+        decisions = []
+        for _ in range(n):
+            # threat_intel = 0.9, pattern_history = 0.1
+            f = np.array([0.9, 0.1])
+            decisions.append((0, 0, f))
+        return decisions
+
+    def test_enriched_bootstrap_upweights_low_sigma_factors(self):
+        """
+        threat_intel σ=0.05 → W=400; pattern_history σ=0.20 → W=25.
+        After enrichment, threat_intel dimension of μ₀ should be closer
+        to the historical signal (0.9) than pattern_history dimension (0.1).
+        """
+        cfg = self._make_config()
+        sigma = {"threat_intel": 0.05, "pattern_history": 0.20}
+        decisions = self._make_decisions(n=50)
+
+        mu = compute_enriched_bootstrap_prior(
+            historical_decisions=decisions,
+            measured_sigma=sigma,
+            domain_config=cfg,
+            n_cat=cfg.n_cat,
+            n_act=cfg.n_act,
+            n_factors=len(cfg.factor_names),
+        )
+
+        assert mu.shape == (2, 2, 2)
+        # threat_intel dimension (idx 0) of updated centroid should be farther
+        # from 0.5 (initial) than pattern_history dimension (idx 1),
+        # because high W pulls it more strongly toward the enriched signal.
+        ti_delta = abs(mu[0, 0, 0] - 0.5)
+        ph_delta = abs(mu[0, 0, 1] - 0.5)
+        assert ti_delta > ph_delta, (
+            f"Expected threat_intel pull ({ti_delta:.4f}) > "
+            f"pattern_history pull ({ph_delta:.4f}) due to lower σ weight"
+        )
+
+    def test_enriched_bootstrap_clips_to_unit_interval(self):
+        """All μ₀_enriched values must lie in [0.0, 1.0]."""
+        cfg = self._make_config()
+        sigma = {"threat_intel": 0.05, "pattern_history": 0.05}
+        # Extreme f vectors that would push enriched values out of [0,1] if unclipped
+        decisions = [(c, a, np.array([1.0, 1.0])) for c in range(2) for a in range(2)] * 200
+
+        mu = compute_enriched_bootstrap_prior(
+            historical_decisions=decisions,
+            measured_sigma=sigma,
+            domain_config=cfg,
+            n_cat=cfg.n_cat,
+            n_act=cfg.n_act,
+            n_factors=len(cfg.factor_names),
+        )
+
+        assert np.all(mu >= 0.0), f"μ₀ contains values < 0.0: min={mu.min()}"
+        assert np.all(mu <= 1.0), f"μ₀ contains values > 1.0: max={mu.max()}"
+
+    def test_enriched_bootstrap_differs_from_standard(self):
+        """
+        With heterogeneous σ (ratio > 2×), μ₀_enriched != μ₀_uniform.
+        The enriched prior diverges from the uniform-weight result.
+        """
+        cfg = self._make_config()
+        decisions = self._make_decisions(n=30)
+
+        # Heterogeneous σ: 4× ratio — should produce different result
+        sigma_het = {"threat_intel": 0.05, "pattern_history": 0.20}
+        mu_enriched = compute_enriched_bootstrap_prior(
+            historical_decisions=decisions,
+            measured_sigma=sigma_het,
+            domain_config=cfg,
+            n_cat=cfg.n_cat,
+            n_act=cfg.n_act,
+            n_factors=len(cfg.factor_names),
+        )
+
+        # Homogeneous σ: both same — enrichment is neutral, closer to uniform
+        sigma_uniform = {"threat_intel": 0.10, "pattern_history": 0.10}
+        mu_uniform = compute_enriched_bootstrap_prior(
+            historical_decisions=decisions,
+            measured_sigma=sigma_uniform,
+            domain_config=cfg,
+            n_cat=cfg.n_cat,
+            n_act=cfg.n_act,
+            n_factors=len(cfg.factor_names),
+        )
+
+        assert not np.allclose(mu_enriched, mu_uniform), (
+            "μ₀_enriched should differ from μ₀_uniform when σ is heterogeneous"
+        )
+
+    def test_bootstrap_enriched_prior_writes_anchor_once(self, tmp_path):
+        """
+        First call to bootstrap_enriched_prior() succeeds and writes anchor.
+        Second call raises RuntimeError (write-once guard fires).
+        """
+        cfg = self._make_config()
+        sigma = {"threat_intel": 0.10, "pattern_history": 0.15}
+        decisions = self._make_decisions(n=10)
+        anchor = str(tmp_path / "iks_bootstrap_soc.json")
+
+        # First call must succeed and return correct shape
+        mu = bootstrap_enriched_prior(
+            historical_decisions=decisions,
+            measured_sigma=sigma,
+            domain_config=cfg,
+            anchor_filepath=anchor,
+        )
+        assert mu.shape == (cfg.n_cat, cfg.n_act, len(cfg.factor_names))
+        import os
+        assert os.path.exists(anchor)
+
+        # Second call must raise RuntimeError
+        with pytest.raises(RuntimeError, match="IKS anchor"):
+            bootstrap_enriched_prior(
+                historical_decisions=decisions,
+                measured_sigma=sigma,
+                domain_config=cfg,
+                anchor_filepath=anchor,
+            )
