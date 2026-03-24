@@ -212,6 +212,14 @@ class ProfileScorer:
             self.eta_neg = 0.05
             self.decay   = 0.001
 
+        # INV-4: eta_neg >= 1.0 destroys calibration (ECE=0.49). Hard guard.
+        if self.eta_neg >= 1.0:
+            raise ValueError(
+                f"eta_neg={self.eta_neg} is forbidden. "
+                f"eta_neg >= 1.0 destroys calibration (ECE=0.49). "
+                f"Canonical value is 0.05."
+            )
+
         self.min_confidence: float = min_confidence
         self.eta_override: Optional[float] = eta_override  # None = use eta/eta_neg
 

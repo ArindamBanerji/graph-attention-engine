@@ -674,6 +674,22 @@ def test_eta_override_stored_on_scorer():
 
 
 # ---------------------------------------------------------------------------
+# TEST — INV-4: eta_neg >= 1.0 is forbidden
+# ---------------------------------------------------------------------------
+
+def test_eta_neg_1_raises_value_error():
+    """eta_neg >= 1.0 must raise ValueError — destroys calibration (ECE=0.49)."""
+    from gae.calibration import CalibrationProfile
+    profile = CalibrationProfile(
+        temperature=0.1,
+        extensions={"eta_neg": 1.0},
+    )
+    mu = np.random.default_rng(0).uniform(0.25, 0.75, (2, 3, 4))
+    with pytest.raises(ValueError, match="forbidden"):
+        ProfileScorer(mu, ["a", "b", "c"], profile=profile)
+
+
+# ---------------------------------------------------------------------------
 # TEST 33-39 — factor quarantine mask (v6.0 binary mask)
 # ---------------------------------------------------------------------------
 
