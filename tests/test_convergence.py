@@ -10,7 +10,10 @@ from gae.convergence import (
     STABILITY_THRESHOLD,
     compute_e_inf_per_component,
     compute_n_half,
+    compute_normalized_var_q,
     compute_steady_state_mse,
+    check_gradual_degradation,
+    ConservationMonitor,
     enrichment_multiplier,
     generate_onboarding_calendar,
     get_convergence_metrics,
@@ -325,3 +328,84 @@ class TestGenerateOnboardingCalendar:
         cal_low = generate_onboarding_calendar(cats, weights, alerts_per_day=50)
         cal_high = generate_onboarding_calendar(cats, weights, alerts_per_day=500)
         assert cal_high['total_weeks'] < cal_low['total_weeks']
+
+
+# ---------------------------------------------------------------------------
+# Fix A — compute_normalized_var_q
+# ---------------------------------------------------------------------------
+
+class TestNormalizedVarQ:
+    """Tests for baseline-normalized quality variance (Fix A)."""
+
+    def test_normalized_var_q_zero_at_baseline(self):
+        """Healthy Bernoulli fluctuations around q_baseline yield ~0."""
+        q_baseline = 0.85
+        q_rolling = [0.85, 0.90, 0.80, 0.85, 0.90]
+        result = compute_normalized_var_q(q_rolling, q_baseline)
+        assert result >= 0.0, "Result must be non-negative"
+        assert result < 0.02, f"Expected ~0.0 for healthy data, got {result:.4f}"
+
+    def test_normalized_var_q_positive_on_degradation(self):
+        """Bimodal (chaotic) quality scores exceed the Bernoulli floor → result > 0.05.
+
+        var_baseline = 0.85*(1-0.85) = 0.1275.  Need var_raw > 0.1775 to clear
+        the 0.05 threshold.  Alternating 0/1 gives var_raw ≈ 0.25 → result ≈ 0.12.
+        """
+        q_baseline = 0.85
+        # Bimodal / chaotic degradation: quality swings between 0 and 1
+        q_rolling = [0.0, 1.0, 0.0, 1.0, 0.0]
+        result = compute_normalized_var_q(q_rolling, q_baseline)
+        assert result > 0.05, f"Expected >0.05 for bimodal data, got {result:.4f}"
+
+    def test_normalized_var_q_short_window_returns_zero(self):
+        """Single-element window returns 0.0 (insufficient data)."""
+        result = compute_normalized_var_q([0.85], 0.85)
+        assert result == 0.0
+
+    def test_normalized_var_q_never_negative(self):
+        """Result is always max(0, ...) — never negative."""
+        q_rolling = [0.85, 0.85, 0.85, 0.85]
+        result = compute_normalized_var_q(q_rolling, 0.85)
+        assert result >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# Fix B — check_gradual_degradation
+# ---------------------------------------------------------------------------
+
+class TestCheckGradualDegradation:
+    """Tests for Layer 2 early warning (Fix B)."""
+
+    def test_layer2_fires_on_slope(self):
+        """Declining slope of -0.01/decision triggers YELLOW warning."""
+        q_history = [0.85 - 0.01 * i for i in range(30)]
+        fires, reason = check_gradual_degradation(q_history, q_baseline=0.85)
+        assert fires is True, "Expected Layer 2 to fire on steep negative slope"
+        assert "slope" in reason, f"Expected 'slope' in reason, got: {reason}"
+
+    def test_layer2_silent_on_healthy(self):
+        """Stable sinusoidal noise around q_baseline does not trigger."""
+        q_history = [0.85 + 0.02 * np.sin(i) for i in range(30)]
+        fires, reason = check_gradual_degradation(q_history, q_baseline=0.85)
+        assert fires is False, f"Expected no warning for healthy data; got reason={reason}"
+
+    def test_layer2_short_history_no_fire(self):
+        """Fewer than `window` decisions → no warning regardless of values."""
+        q_history = [0.50] * 10  # only 10 < 25 window
+        fires, reason = check_gradual_degradation(q_history, q_baseline=0.85)
+        assert fires is False
+        assert reason == ""
+
+    def test_layer2_fires_on_var_norm(self):
+        """High normalized variance (even without slope) triggers YELLOW.
+
+        var_baseline = 0.85*(1-0.85) = 0.1275.  Alternating 0/1 over 30
+        decisions gives var_raw ≈ 0.25, var_norm ≈ 0.12 > 0.05 threshold.
+        Slope ≈ 0 (symmetric), so only the var trigger fires.
+        """
+        # Bimodal oscillation — flat slope, high variance
+        q_history = [0.0 if i % 2 == 0 else 1.0 for i in range(30)]
+        fires, reason = check_gradual_degradation(
+            q_history, q_baseline=0.85, slope_threshold=-0.003, var_threshold=0.05
+        )
+        assert fires is True, "Expected Layer 2 to fire on high normalized variance"

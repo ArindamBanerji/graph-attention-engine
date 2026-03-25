@@ -511,3 +511,237 @@ def get_convergence_metrics(state: "LearningState") -> dict:
         ),
         "pending_autonomous": len(state.pending_validations),
     }
+
+
+# ---------------------------------------------------------------------------
+# Fix A — Baseline-normalized Var(q)
+# ---------------------------------------------------------------------------
+
+def compute_normalized_var_q(
+    q_rolling: list,
+    q_baseline: float,
+) -> float:
+    """
+    Baseline-normalized quality variance (Fix A).
+
+    Subtracts the expected Bernoulli variance for a healthy signal at
+    q_baseline, yielding ~0 under healthy conditions and positive when
+    degradation begins.
+
+    var_norm = max(0, Var(q_rolling) − q_baseline·(1−q_baseline))
+
+    P1 reference: supplementary quality-monitoring signal.
+    Shape: scalar (float).
+
+    Parameters
+    ----------
+    q_rolling : list[float]
+        Recent per-decision quality scores (rolling window).
+    q_baseline : float
+        Mean quality over the first 50 decisions (calibration period).
+        Fixed at calibration; never updated afterward.
+
+    Returns
+    -------
+    float
+        Baseline-normalized variance. 0.0 when len(q_rolling) < 2.
+    """
+    if len(q_rolling) < 2:
+        return 0.0
+    var_raw = float(np.var(q_rolling))
+    var_baseline = q_baseline * (1.0 - q_baseline)
+    return max(0.0, var_raw - var_baseline)
+
+
+# ---------------------------------------------------------------------------
+# Fix B — Layer 2 trend detection (YELLOW early warning)
+# ---------------------------------------------------------------------------
+
+def check_gradual_degradation(
+    q_history: list,
+    q_baseline: float,
+    slope_threshold: float = -0.003,
+    var_threshold: float = 0.05,
+    window: int = 25,
+) -> tuple:
+    """
+    Layer 2 early warning for gradual quality degradation (Fix B).
+
+    Operates independently of Layer 1 (α·q·V < θ_min → AMBER/RED).
+    Does NOT pause learning — YELLOW warning only.
+
+    Trigger 2a: slope of q̄_rolling_25 < slope_threshold per decision.
+    Trigger 2b: compute_normalized_var_q(recent, q_baseline) > var_threshold.
+
+    P1 reference: supplementary Layer 2 quality trend signal.
+    Shape: window-length slice of q_history fed to polyfit(degree=1).
+
+    Parameters
+    ----------
+    q_history : list[float]
+        Full per-decision quality history.
+    q_baseline : float
+        Mean quality over the first 50 decisions (fixed at calibration).
+    slope_threshold : float
+        Fires if OLS slope of last `window` q values < this (default -0.003).
+    var_threshold : float
+        Fires if normalized variance > this (default 0.05).
+    window : int
+        Number of recent decisions to examine (default 25).
+
+    Returns
+    -------
+    tuple[bool, str]
+        (fires, reason) — fires=True when either trigger activates;
+        reason is empty string when fires=False.
+    """
+    if len(q_history) < window:
+        return False, ""
+    recent = q_history[-window:]
+    assert len(recent) == window, f"recent length {len(recent)} != window {window}"
+    x = np.arange(window, dtype=np.float64)
+    slope = float(np.polyfit(x, recent, 1)[0])
+    var_norm = compute_normalized_var_q(recent, q_baseline)
+    if slope < slope_threshold:
+        return True, f"slope={slope:.4f} < {slope_threshold}"
+    if var_norm > var_threshold:
+        return True, f"var_norm={var_norm:.4f} > {var_threshold}"
+    return False, ""
+
+
+# ---------------------------------------------------------------------------
+# ConservationMonitor — Layer 1 (AMBER/RED) + Layer 2 (YELLOW)
+# ---------------------------------------------------------------------------
+
+#: Default threshold for Layer 2 normalized variance trigger (Fix A).
+VAR_Q_THRESHOLD: float = 0.05
+
+#: Number of decisions in the calibration period before q_baseline is set.
+CALIBRATION_PERIOD: int = 50
+
+
+class ConservationMonitor:
+    """
+    Two-layer quality conservation monitor.
+
+    Layer 1 (AMBER/RED): caller-driven via update_conservation_signal().
+    Fires when α·q·V < θ_min and pauses learning via set_conservation_status()
+    on the attached ProfileScorer. Layer 1 behavior is UNCHANGED by Fix B.
+
+    Layer 2 (YELLOW): fires check_gradual_degradation() every update after
+    the 50-decision calibration period. YELLOW warning is stored in
+    self.yellow_warning but does NOT pause learning.
+
+    q_baseline is computed as the mean of the first CALIBRATION_PERIOD (50)
+    quality scores and is never updated afterward.
+
+    P1 reference: conservation monitoring supplementary design.
+
+    Parameters
+    ----------
+    scorer : optional
+        ProfileScorer instance. When provided, Layer 1 calls
+        scorer.set_conservation_status(). May be None for standalone use.
+    slope_threshold : float
+        Layer 2 slope trigger (default -0.003/decision).
+    var_threshold : float
+        Layer 2 normalized-variance trigger (default 0.05).
+    window : int
+        Layer 2 rolling window size (default 25).
+    """
+
+    def __init__(
+        self,
+        scorer=None,
+        slope_threshold: float = -0.003,
+        var_threshold: float = VAR_Q_THRESHOLD,
+        window: int = 25,
+    ) -> None:
+        self._scorer = scorer
+        self._slope_threshold = slope_threshold
+        self._var_threshold = var_threshold
+        self._window = window
+
+        # Layer 2 state
+        self._q_history: list = []
+        self._q_baseline: float = 0.0
+        self._baseline_set: bool = False
+        self.yellow_warning: bool = False
+        self.yellow_reason: str = ""
+
+        # Layer 1 state (caller-driven)
+        self._conservation_status: str = "GREEN"
+
+    # ------------------------------------------------------------------
+    # Layer 1: existing conservation signal (AMBER/RED)
+    # ------------------------------------------------------------------
+
+    def update_conservation_signal(self, status: str) -> None:
+        """
+        Update Layer 1 conservation status (AMBER/RED/GREEN).
+
+        Called by external logic when α·q·V crosses θ_min.
+        Propagates to the attached scorer if present.
+        Layer 1 behavior is UNCHANGED by Fix B.
+
+        Parameters
+        ----------
+        status : str
+            One of 'GREEN', 'AMBER', 'RED'.
+        """
+        self._conservation_status = status
+        if self._scorer is not None:
+            self._scorer.set_conservation_status(status)
+
+    @property
+    def conservation_status(self) -> str:
+        """Current Layer 1 status string ('GREEN', 'AMBER', 'RED')."""
+        return self._conservation_status
+
+    # ------------------------------------------------------------------
+    # Layer 2: gradual degradation (YELLOW early warning)
+    # ------------------------------------------------------------------
+
+    def record_quality(self, q: float) -> None:
+        """
+        Record a per-decision quality score and run Layer 2 checks.
+
+        Sets q_baseline after the first CALIBRATION_PERIOD decisions
+        (never updated afterward). Runs check_gradual_degradation()
+        on every call once the baseline is established.
+        Updates self.yellow_warning and self.yellow_reason.
+        Does NOT affect learning or Layer 1 status.
+
+        Parameters
+        ----------
+        q : float
+            Quality score for this decision (e.g. 0.0–1.0).
+        """
+        self._q_history.append(float(q))
+
+        if not self._baseline_set and len(self._q_history) >= CALIBRATION_PERIOD:
+            self._q_baseline = float(
+                np.mean(self._q_history[:CALIBRATION_PERIOD])
+            )
+            self._baseline_set = True
+
+        if self._baseline_set:
+            fires, reason = check_gradual_degradation(
+                self._q_history,
+                self._q_baseline,
+                slope_threshold=self._slope_threshold,
+                var_threshold=self._var_threshold,
+                window=self._window,
+            )
+            self.yellow_warning = fires
+            self.yellow_reason = reason
+
+    @property
+    def q_baseline(self) -> float:
+        """Calibration-period mean quality (0.0 until baseline is set)."""
+        return self._q_baseline
+
+    @property
+    def baseline_set(self) -> bool:
+        """True after CALIBRATION_PERIOD decisions have been recorded."""
+        return self._baseline_set
