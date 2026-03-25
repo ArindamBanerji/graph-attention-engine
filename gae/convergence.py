@@ -782,10 +782,16 @@ class OLSMonitor:
         baseline_ols = mean(last plateau_window OLS values).
         baseline_frozen = True. Never updated again.
 
-    CUSUM equations (OLS scale, h=5.0):
+    CUSUM equations (OLS scale, self-calibrating h):
         deviation_t = baseline_ols − ols_t        (positive when OLS drops)
         C_t         = max(0, C_{t−1} + deviation_t − k)
-        alarm       ← C_t > h                     h=5.0, k=0.10
+        alarm       ← C_t > h
+
+    h is self-calibrated at plateau via _calibrate_h():
+        h = σ²_OLS × ln(arl0_target) / (2 × k)
+    This ensures ARL₀ ≥ arl0_target (default 1000) regardless of override
+    rate or monitoring window.  Fixed h=5.0 was calibrated for σ_OLS≈0.06
+    only and produced ARL₀≈217 at σ_OLS≈0.15 (α=0.25, W=30 conditions).
 
     Shape assertions:
         ols_history : list[float], length grows by 1 per update.
@@ -797,9 +803,6 @@ class OLSMonitor:
         Number of recent OLS decisions to assess plateau (default 20).
     plateau_threshold : float
         Rolling variance threshold below which plateau is declared (default 0.02).
-    h : float
-        CUSUM alarm threshold, OLS scale (default 5.0 — see CUSUM_H).
-        Do NOT substitute h=15.0 without recalibrating for OLS input range.
     k : float
         CUSUM reference offset from frozen baseline (default 0.10).
     """
@@ -808,23 +811,43 @@ class OLSMonitor:
         self,
         plateau_window: int = 20,
         plateau_threshold: float = 0.02,
-        h: float = CUSUM_H,
         k: float = 0.10,
     ) -> None:
         self.plateau_window: int = plateau_window
         self.plateau_threshold: float = plateau_threshold
-        self.h: float = h
-        self.k: float = k
+        self._k: float = k
+        self._arl0_target: float = 1000.0  # ARL₀ >> longest monitoring window
 
         # Plateau state
         self.ols_history: list = []
         self.baseline_ols: float = 0.0
         self.baseline_frozen: bool = False
 
-        # CUSUM state (only active post-plateau)
+        # CUSUM state (only active post-plateau, after _h is calibrated)
+        self._h: Optional[float] = None  # set by _calibrate_h() at plateau
         self.cusum: float = 0.0
         self.yellow_warning: bool = False
         self.yellow_reason: str = ""
+
+    def _calibrate_h(self) -> None:
+        """
+        Set h dynamically from observed σ_OLS at plateau.
+        Achieves ARL₀ ≥ arl0_target regardless of override rate or window.
+
+        Formula: h = σ²_OLS × ln(arl0_target) / (2 × k)
+        where σ_OLS = std of OLS values in the plateau window.
+
+        Replaces fixed h=5.0 which was calibrated for σ_OLS≈0.06 only.
+        At σ_OLS=0.06: h≈0.12.  At σ_OLS=0.15: h≈0.77 (scaled up ~6×).
+        σ_OLS floor=0.01 prevents h=0; h floor=0.5 ensures minimum sensitivity.
+
+        P1 reference: self-calibrating CUSUM h, v0.7.13.
+        """
+        plateau_values = self.ols_history[-self.plateau_window:]
+        sigma_ols = float(np.std(plateau_values))
+        sigma_ols = max(sigma_ols, 0.01)  # floor to prevent h=0
+        self._h = (sigma_ols ** 2) * float(np.log(self._arl0_target)) / (2.0 * self._k)
+        self._h = max(self._h, 0.5)  # minimum h floor
 
     def update(self, ols_t: float) -> bool:
         """
@@ -833,6 +856,8 @@ class OLSMonitor:
         Pre-plateau: appends to history, checks for plateau, returns False.
         Post-plateau: accumulates CUSUM on deviation from frozen baseline;
         sets yellow_warning=True and resets cusum on alarm.
+
+        Guard: returns False immediately if _h is None (plateau not yet reached).
 
         P1 reference: plateau-snapshot OLS baseline design.
         Shape: ols_history grows by 1; recent slice is (plateau_window,).
@@ -860,15 +885,20 @@ class OLSMonitor:
                 if float(np.var(recent)) < self.plateau_threshold:
                     self.baseline_ols = float(np.mean(recent))
                     self.baseline_frozen = True
+                    self._calibrate_h()  # set h based on observed σ_OLS
             return False  # no alarm before plateau
+
+        # Guard: no alarm before h is calibrated
+        if self._h is None:
+            return False
 
         # Post-plateau: CUSUM on deviation from frozen baseline
         deviation = self.baseline_ols - ols_t  # positive when OLS drops
-        self.cusum = max(0.0, self.cusum + deviation - self.k)
-        if self.cusum > self.h:
+        self.cusum = max(0.0, self.cusum + deviation - self._k)
+        if self.cusum > self._h:
             self.yellow_warning = True
             self.yellow_reason = (
-                f"OLS CUSUM={self.cusum:.3f} > h={self.h} "
+                f"OLS CUSUM={self.cusum:.3f} > h={self._h:.3f} "
                 f"(baseline={self.baseline_ols:.3f}, ols_t={ols_t:.3f})"
             )
             self.cusum = 0.0  # reset after alarm

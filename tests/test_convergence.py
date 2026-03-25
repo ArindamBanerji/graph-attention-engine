@@ -537,3 +537,46 @@ class TestOLSMonitor:
         assert not monitor.yellow_warning, (
             "yellow_warning must not fire when baseline is not frozen"
         )
+
+    def test_ols_monitor_h_calibrates_at_plateau(self):
+        """_h is calibrated (not None) once plateau is reached.
+
+        Zero-variance plateau (OLS=1.2 constant) gives σ_OLS=0.0,
+        hits the σ_OLS floor of 0.01, and h lands at the h floor=0.5.
+        That is correct behavior — floor prevents h=0 on noiseless data.
+        """
+        monitor = OLSMonitor(plateau_window=20, plateau_threshold=0.02)
+        for _ in range(20):
+            monitor.update(1.2)
+        assert monitor.baseline_frozen is True, (
+            "Expected baseline_frozen=True after 20 constant OLS values"
+        )
+        assert monitor._h is not None, "_h must be set after plateau"
+        assert monitor._h > 0.0, f"_h must be positive, got {monitor._h}"
+
+    def test_ols_monitor_arl0_scales_with_noise(self):
+        """Higher σ_OLS at plateau → larger h (ARL₀ maintained under high noise).
+
+        h = σ²_OLS × ln(1000) / (2k).  h floor=0.5 activates when σ<0.120.
+        To escape the floor AND satisfy plateau var<0.02, σ must be in (0.120, 0.141).
+        Monitor A: δ=0.125 → σ=0.125, var=0.01563 < 0.02, h≈0.540
+        Monitor B: δ=0.140 → σ=0.140, var=0.01960 < 0.02, h≈0.677
+        h_B > h_A demonstrates the scaling.
+        """
+        # Monitor A: alternating ±0.125 → σ=0.125, h≈0.540
+        monitor_a = OLSMonitor(plateau_window=20, plateau_threshold=0.02)
+        for i in range(20):
+            monitor_a.update(1.2 + 0.125 * (1 if i % 2 == 0 else -1))
+        assert monitor_a.baseline_frozen, "Monitor A: plateau not detected"
+
+        # Monitor B: alternating ±0.140 → σ=0.140, var=0.0196 < 0.02, h≈0.677
+        monitor_b = OLSMonitor(plateau_window=20, plateau_threshold=0.02)
+        for i in range(20):
+            monitor_b.update(1.2 + 0.140 * (1 if i % 2 == 0 else -1))
+        assert monitor_b.baseline_frozen, "Monitor B: plateau not detected"
+
+        assert monitor_b._h is not None and monitor_a._h is not None
+        assert monitor_b._h > monitor_a._h, (
+            f"Expected h_B ({monitor_b._h:.4f}) > h_A ({monitor_a._h:.4f}) "
+            f"for higher σ_OLS at plateau"
+        )
