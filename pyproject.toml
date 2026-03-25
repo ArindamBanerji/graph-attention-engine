@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graph-attention-engine"
-version = "0.7.10"
+version = "0.7.11"
 description = "Standalone numpy-only graph attention library (GAE v5)"
 readme = "README.md"
 license = { file = "LICENSE" }

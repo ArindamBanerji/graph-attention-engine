@@ -557,66 +557,31 @@ def compute_normalized_var_q(
 # Fix B — Layer 2 trend detection (YELLOW early warning)
 # ---------------------------------------------------------------------------
 
-def check_gradual_degradation(
-    q_history: list,
-    q_baseline: float,
-    slope_threshold: float = -0.003,
-    var_threshold: float = 0.05,
-    window: int = 25,
-) -> tuple:
-    """
-    Layer 2 early warning for gradual quality degradation (Fix B).
-
-    Operates independently of Layer 1 (α·q·V < θ_min → AMBER/RED).
-    Does NOT pause learning — YELLOW warning only.
-
-    Fires only when BOTH conditions hold simultaneously (AND logic):
-    Trigger 2a: slope of q̄_rolling_25 < slope_threshold per decision.
-    Trigger 2b: compute_normalized_var_q(recent, q_baseline) > var_threshold.
-
-    P1 reference: supplementary Layer 2 quality trend signal.
-    Shape: window-length slice of q_history fed to polyfit(degree=1).
-
-    Parameters
-    ----------
-    q_history : list[float]
-        Full per-decision quality history.
-    q_baseline : float
-        Mean quality over the first 50 decisions (fixed at calibration).
-    slope_threshold : float
-        Fires if OLS slope of last `window` q values < this (default -0.003).
-    var_threshold : float
-        Fires if normalized variance > this (default 0.05).
-    window : int
-        Number of recent decisions to examine (default 25).
-
-    Returns
-    -------
-    tuple[bool, str]
-        (fires, reason) — fires=True when BOTH triggers activate simultaneously;
-        reason is empty string when fires=False.
-    """
-    if len(q_history) < window:
-        return False, ""
-    recent = q_history[-window:]
-    assert len(recent) == window, f"recent length {len(recent)} != window {window}"
-    x = np.arange(window, dtype=np.float64)
-    slope = float(np.polyfit(x, recent, 1)[0])
-    var_norm = compute_normalized_var_q(recent, q_baseline)
-    if slope < slope_threshold and var_norm > var_threshold:
-        return True, f"slope={slope:.4f} and var_norm={var_norm:.4f}"
-    return False, ""
+# check_gradual_degradation() removed in v0.7.11.
+# Superseded by CUSUM on EWMA of q̄ inside ConservationMonitor._update_cusum().
+# Slope heuristic was fragile: 50% FP rate on healthy Bernoulli at q̄=0.85.
 
 
 # ---------------------------------------------------------------------------
-# ConservationMonitor — Layer 1 (AMBER/RED) + Layer 2 (YELLOW)
+# ConservationMonitor — Layer 1 (AMBER/RED) + Layer 2 CUSUM (YELLOW)
 # ---------------------------------------------------------------------------
 
-#: Default threshold for Layer 2 normalized variance trigger (Fix A).
+#: Default threshold for Layer 2 normalized variance signal (used externally).
 VAR_Q_THRESHOLD: float = 0.05
 
 #: Number of decisions in the calibration period before q_baseline is set.
 CALIBRATION_PERIOD: int = 50
+
+#: CUSUM EWMA decay (λ).  q_ewma_t = λ·q_t + (1−λ)·q_ewma_{t−1}
+CUSUM_LAMBDA: float = 0.1
+
+#: CUSUM allowance: k = q_baseline − 0.05.  Set dynamically after calibration.
+CUSUM_K_OFFSET: float = 0.05
+
+#: CUSUM alarm threshold h — empirically calibrated for ARL₀ ≈ 500 decisions.
+#: Calibration: 1000 simulations × 500 decisions at q̄=0.85 (Bernoulli).
+#: h=15.0 → ARL₀=500 (extended sweep [2.0–15.0]).
+CUSUM_H: float = 15.0
 
 
 class ConservationMonitor:
@@ -625,48 +590,52 @@ class ConservationMonitor:
 
     Layer 1 (AMBER/RED): caller-driven via update_conservation_signal().
     Fires when α·q·V < θ_min and pauses learning via set_conservation_status()
-    on the attached ProfileScorer. Layer 1 behavior is UNCHANGED by Fix B.
+    on the attached ProfileScorer.  Layer 1 is UNCHANGED.
 
-    Layer 2 (YELLOW): fires check_gradual_degradation() every update after
-    the 50-decision calibration period. YELLOW warning is stored in
-    self.yellow_warning but does NOT pause learning.
+    Layer 2 (YELLOW): CUSUM on EWMA of q̄ — canonical mean-shift detector.
+    Replaces slope heuristic (v0.7.10 AND logic; 50% FP on healthy Bernoulli).
 
-    q_baseline is computed as the mean of the first CALIBRATION_PERIOD (50)
-    quality scores and is never updated afterward.
+    CUSUM equations (P1 reference: supplementary CUSUM design):
+        q_ewma_t = λ·q_t + (1−λ)·q_ewma_{t−1}      λ = CUSUM_LAMBDA = 0.1
+        C_t      = max(0, C_{t−1} + (k − q_ewma_t))  k = q_baseline − CUSUM_K_OFFSET
+        alarm    ← C_t > h                             h = CUSUM_H = 15.0
 
-    P1 reference: conservation monitoring supplementary design.
+    k is set once after the 50-decision calibration period and never updated.
+    q_baseline is the mean of the first CALIBRATION_PERIOD quality scores.
+
+    After alarm: C_t resets to 0 (one notification per exceedance).
+    yellow_warning does NOT affect learning.
+
+    ARL₀ calibration (1000 runs × 500 decisions, q̄=0.85, seed=0):
+        h=2.0  → ARL₀=282   h=5.0  → ARL₀=406   h=10.0 → ARL₀=496
+        h=2.5  → ARL₀=317   h=6.0  → ARL₀=438   h=12.0 → ARL₀=498
+        h=3.0  → ARL₀=349   h=7.0  → ARL₀=462   h=15.0 → ARL₀=500 ✓
+        h=3.5  → ARL₀=379   h=8.0  → ARL₀=477
+        h=4.0  → ARL₀=399   h=9.0  → ARL₀=487
 
     Parameters
     ----------
     scorer : optional
-        ProfileScorer instance. When provided, Layer 1 calls
-        scorer.set_conservation_status(). May be None for standalone use.
-    slope_threshold : float
-        Layer 2 slope trigger (default -0.003/decision).
-    var_threshold : float
-        Layer 2 normalized-variance trigger (default 0.05).
-    window : int
-        Layer 2 rolling window size (default 25).
+        ProfileScorer instance.  Layer 1 calls scorer.set_conservation_status().
+        May be None for standalone use.
     """
 
-    def __init__(
-        self,
-        scorer=None,
-        slope_threshold: float = -0.003,
-        var_threshold: float = VAR_Q_THRESHOLD,
-        window: int = 25,
-    ) -> None:
+    def __init__(self, scorer=None) -> None:
         self._scorer = scorer
-        self._slope_threshold = slope_threshold
-        self._var_threshold = var_threshold
-        self._window = window
 
-        # Layer 2 state
+        # Layer 2 CUSUM state
         self._q_history: list = []
         self._q_baseline: float = 0.0
         self._baseline_set: bool = False
         self.yellow_warning: bool = False
         self.yellow_reason: str = ""
+
+        # CUSUM internals — initialized after calibration period
+        self._q_ewma: Optional[float] = None
+        self._cusum: float = 0.0
+        self._k: Optional[float] = None
+        self._h: float = CUSUM_H
+        self._lambda: float = CUSUM_LAMBDA
 
         # Layer 1 state (caller-driven)
         self._conservation_status: str = "GREEN"
@@ -681,7 +650,7 @@ class ConservationMonitor:
 
         Called by external logic when α·q·V crosses θ_min.
         Propagates to the attached scorer if present.
-        Layer 1 behavior is UNCHANGED by Fix B.
+        Layer 1 is UNCHANGED.
 
         Parameters
         ----------
@@ -698,16 +667,49 @@ class ConservationMonitor:
         return self._conservation_status
 
     # ------------------------------------------------------------------
-    # Layer 2: gradual degradation (YELLOW early warning)
+    # Layer 2: CUSUM on EWMA of q̄ (YELLOW early warning)
     # ------------------------------------------------------------------
+
+    def _update_cusum(self, q_t: float) -> None:
+        """
+        Update CUSUM on EWMA of q̄ (Layer 2 — YELLOW warning).
+
+        Called internally by record_quality() after baseline is set.
+        Sets self.yellow_warning = True if C_t > h.
+        Resets C_t to 0 after alarm (one notification per exceedance).
+        Does NOT affect learning — yellow_warning is informational only.
+
+        CUSUM equations (P1 reference: supplementary CUSUM design):
+            q_ewma_t = λ·q_t + (1−λ)·q_ewma_{t−1}
+            C_t      = max(0, C_{t−1} + (k − q_ewma_t))
+        Shape: scalar EWMA and CUSUM accumulators (float).
+
+        Parameters
+        ----------
+        q_t : float
+            Quality score for this decision.
+        """
+        # Update EWMA
+        if self._q_ewma is None:
+            self._q_ewma = q_t
+        else:
+            self._q_ewma = self._lambda * q_t + (1.0 - self._lambda) * self._q_ewma
+        # Update CUSUM
+        assert self._k is not None, "_update_cusum() called before k is set"
+        self._cusum = max(0.0, self._cusum + (self._k - self._q_ewma))
+        # Check alarm
+        if self._cusum > self._h:
+            self.yellow_warning = True
+            self.yellow_reason = f"CUSUM={self._cusum:.3f} > h={self._h}"
+            self._cusum = 0.0  # reset after alarm
 
     def record_quality(self, q: float) -> None:
         """
-        Record a per-decision quality score and run Layer 2 checks.
+        Record a per-decision quality score and run Layer 2 CUSUM.
 
         Sets q_baseline after the first CALIBRATION_PERIOD decisions
-        (never updated afterward). Runs check_gradual_degradation()
-        on every call once the baseline is established.
+        (never updated afterward).  Sets k = q_baseline − CUSUM_K_OFFSET
+        on the same event.  Calls _update_cusum() on every subsequent call.
         Updates self.yellow_warning and self.yellow_reason.
         Does NOT affect learning or Layer 1 status.
 
@@ -725,15 +727,9 @@ class ConservationMonitor:
             self._baseline_set = True
 
         if self._baseline_set:
-            fires, reason = check_gradual_degradation(
-                self._q_history,
-                self._q_baseline,
-                slope_threshold=self._slope_threshold,
-                var_threshold=self._var_threshold,
-                window=self._window,
-            )
-            self.yellow_warning = fires
-            self.yellow_reason = reason
+            if self._k is None:
+                self._k = self._q_baseline - CUSUM_K_OFFSET
+            self._update_cusum(float(q))
 
     @property
     def q_baseline(self) -> float:

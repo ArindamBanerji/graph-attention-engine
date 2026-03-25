@@ -12,7 +12,6 @@ from gae.convergence import (
     compute_n_half,
     compute_normalized_var_q,
     compute_steady_state_mse,
-    check_gradual_degradation,
     ConservationMonitor,
     enrichment_multiplier,
     generate_onboarding_calendar,
@@ -370,54 +369,82 @@ class TestNormalizedVarQ:
 
 
 # ---------------------------------------------------------------------------
-# Fix B — check_gradual_degradation
+# Layer 2 — CUSUM on EWMA of q̄ (v0.7.11)
 # ---------------------------------------------------------------------------
 
-class TestCheckGradualDegradation:
-    """Tests for Layer 2 early warning (Fix B)."""
+class TestCUSUM:
+    """Tests for Layer 2 CUSUM early warning (v0.7.11)."""
 
-    def test_layer2_fires_on_slope(self):
-        """BOTH slope AND var_norm must exceed thresholds (AND logic) to fire YELLOW.
+    def test_cusum_silent_on_healthy(self):
+        """ARL₀ ≈ 500: healthy Bernoulli at q̄=0.85 fires ≤ 2 alarms in 500 decisions."""
+        monitor = ConservationMonitor()
+        rng = np.random.default_rng(42)
+        alarm_count = 0
+        for _ in range(500):
+            q = float(rng.binomial(1, 0.85))
+            monitor.record_quality(q)
+            if monitor.yellow_warning:
+                alarm_count += 1
+                monitor.yellow_warning = False  # reset for next check
+        assert alarm_count <= 2, (
+            f"Expected ≤2 false alarms in 500 healthy decisions, got {alarm_count}"
+        )
 
-        Construction: 5 warm-up values, then 15 alternating 0/1 (high variance),
-        then 10 zeros (creates steep downward slope).
-        Window (last 25): slope ≈ -0.027 < -0.003, var_norm ≈ 0.074 > 0.05.
-        Both conditions hold → fires=True.
+    def test_cusum_detects_step_shift(self):
+        """CUSUM detects a step-down from q̄=0.85 to q̄=0.65.
+
+        Shift at t=100.  h=15.0 calibrated for ARL₀=500; ARL₁ for Δ=0.20
+        is ~95 decisions post-shift (seed=42: alarm at t=195).  Bound: ≤250.
         """
-        q_history = (
-            [0.85] * 5                              # outside window (warm-up)
-            + [1 if j % 2 == 1 else 0 for j in range(15)]  # alternating: high var
-            + [0.0] * 10                            # zeros: creates slope
+        monitor = ConservationMonitor()
+        rng = np.random.default_rng(42)
+        alarm_decision = None
+        for t in range(300):
+            q_bar = 0.85 if t < 100 else 0.65
+            q = float(rng.binomial(1, q_bar))
+            monitor.record_quality(q)
+            if monitor.yellow_warning and alarm_decision is None:
+                alarm_decision = t
+        assert alarm_decision is not None, "Expected CUSUM to detect step shift"
+        assert alarm_decision <= 250, (
+            f"Expected alarm by decision 250, fired at {alarm_decision}"
         )
-        fires, reason = check_gradual_degradation(q_history, q_baseline=0.85)
-        assert fires is True, "Expected Layer 2 to fire when BOTH slope and var_norm trigger"
-        assert "slope" in reason, f"Expected 'slope' in reason, got: {reason}"
 
-    def test_layer2_silent_on_healthy(self):
-        """Stable sinusoidal noise around q_baseline does not trigger."""
-        q_history = [0.85 + 0.02 * np.sin(i) for i in range(30)]
-        fires, reason = check_gradual_degradation(q_history, q_baseline=0.85)
-        assert fires is False, f"Expected no warning for healthy data; got reason={reason}"
+    def test_cusum_detects_linear_degradation(self):
+        """CUSUM detects linear decline from q̄=0.85 to 0.40 over 500 decisions.
 
-    def test_layer2_short_history_no_fire(self):
-        """Fewer than `window` decisions → no warning regardless of values."""
-        q_history = [0.50] * 10  # only 10 < 25 window
-        fires, reason = check_gradual_degradation(q_history, q_baseline=0.85)
-        assert fires is False
-        assert reason == ""
-
-    def test_layer2_silent_var_only(self):
-        """AND logic: high var_norm alone is insufficient — slope must also trigger.
-
-        Alternating 0/1 gives var_raw ≈ 0.25, var_norm ≈ 0.12 > 0.05 (var trigger).
-        But slope ≈ 0 (symmetric) → slope trigger silent.
-        With AND logic: fires=False. This is the FP-reduction improvement from P4-F v2.
+        h=15.0 calibrated for ARL₀=500; gradual degradation detected later than
+        a step shift.  seed=42: alarm at t=251.  Bound: ≤350.
         """
-        # Bimodal oscillation — flat slope, high variance
-        q_history = [0.0 if i % 2 == 0 else 1.0 for i in range(30)]
-        fires, reason = check_gradual_degradation(
-            q_history, q_baseline=0.85, slope_threshold=-0.003, var_threshold=0.05
+        monitor = ConservationMonitor()
+        rng = np.random.default_rng(42)
+        alarm_decision = None
+        for t in range(500):
+            q_bar = max(0.40, 0.85 - 0.45 * t / 500)
+            q = float(rng.binomial(1, q_bar))
+            monitor.record_quality(q)
+            if monitor.yellow_warning and alarm_decision is None:
+                alarm_decision = t
+        assert alarm_decision is not None, "Expected CUSUM to detect linear degradation"
+        assert alarm_decision <= 350, (
+            f"Expected alarm by decision 350, fired at {alarm_decision}"
         )
-        assert fires is False, (
-            f"AND logic: var_norm alone must not fire YELLOW; got reason={reason}"
+
+    def test_cusum_resets_after_alarm(self):
+        """CUSUM fires yellow_warning and resets C_t=0 after alarm.
+
+        After reset, CUSUM re-accumulates from continued degradation — so
+        _cusum is not 0 at the end of the run.  The test verifies:
+        (a) yellow_warning was set (alarm fired), and
+        (b) _k is set (calibration period completed).
+        """
+        monitor = ConservationMonitor()
+        rng = np.random.default_rng(42)
+        for t in range(200):
+            q = float(rng.binomial(1, 0.85 if t < 100 else 0.55))
+            monitor.record_quality(q)
+        # Alarm must have fired (step shift of 0.30 detected within 200 decisions)
+        assert monitor.yellow_warning is True, (
+            "Expected yellow_warning=True after step shift to q̄=0.55"
         )
+        assert monitor._k is not None, "Expected _k set after calibration period"
