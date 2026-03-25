@@ -377,10 +377,20 @@ class TestCheckGradualDegradation:
     """Tests for Layer 2 early warning (Fix B)."""
 
     def test_layer2_fires_on_slope(self):
-        """Declining slope of -0.01/decision triggers YELLOW warning."""
-        q_history = [0.85 - 0.01 * i for i in range(30)]
+        """BOTH slope AND var_norm must exceed thresholds (AND logic) to fire YELLOW.
+
+        Construction: 5 warm-up values, then 15 alternating 0/1 (high variance),
+        then 10 zeros (creates steep downward slope).
+        Window (last 25): slope ≈ -0.027 < -0.003, var_norm ≈ 0.074 > 0.05.
+        Both conditions hold → fires=True.
+        """
+        q_history = (
+            [0.85] * 5                              # outside window (warm-up)
+            + [1 if j % 2 == 1 else 0 for j in range(15)]  # alternating: high var
+            + [0.0] * 10                            # zeros: creates slope
+        )
         fires, reason = check_gradual_degradation(q_history, q_baseline=0.85)
-        assert fires is True, "Expected Layer 2 to fire on steep negative slope"
+        assert fires is True, "Expected Layer 2 to fire when BOTH slope and var_norm trigger"
         assert "slope" in reason, f"Expected 'slope' in reason, got: {reason}"
 
     def test_layer2_silent_on_healthy(self):
@@ -396,16 +406,18 @@ class TestCheckGradualDegradation:
         assert fires is False
         assert reason == ""
 
-    def test_layer2_fires_on_var_norm(self):
-        """High normalized variance (even without slope) triggers YELLOW.
+    def test_layer2_silent_var_only(self):
+        """AND logic: high var_norm alone is insufficient — slope must also trigger.
 
-        var_baseline = 0.85*(1-0.85) = 0.1275.  Alternating 0/1 over 30
-        decisions gives var_raw ≈ 0.25, var_norm ≈ 0.12 > 0.05 threshold.
-        Slope ≈ 0 (symmetric), so only the var trigger fires.
+        Alternating 0/1 gives var_raw ≈ 0.25, var_norm ≈ 0.12 > 0.05 (var trigger).
+        But slope ≈ 0 (symmetric) → slope trigger silent.
+        With AND logic: fires=False. This is the FP-reduction improvement from P4-F v2.
         """
         # Bimodal oscillation — flat slope, high variance
         q_history = [0.0 if i % 2 == 0 else 1.0 for i in range(30)]
         fires, reason = check_gradual_degradation(
             q_history, q_baseline=0.85, slope_threshold=-0.003, var_threshold=0.05
         )
-        assert fires is True, "Expected Layer 2 to fire on high normalized variance"
+        assert fires is False, (
+            f"AND logic: var_norm alone must not fire YELLOW; got reason={reason}"
+        )

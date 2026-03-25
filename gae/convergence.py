@@ -570,6 +570,7 @@ def check_gradual_degradation(
     Operates independently of Layer 1 (α·q·V < θ_min → AMBER/RED).
     Does NOT pause learning — YELLOW warning only.
 
+    Fires only when BOTH conditions hold simultaneously (AND logic):
     Trigger 2a: slope of q̄_rolling_25 < slope_threshold per decision.
     Trigger 2b: compute_normalized_var_q(recent, q_baseline) > var_threshold.
 
@@ -592,7 +593,7 @@ def check_gradual_degradation(
     Returns
     -------
     tuple[bool, str]
-        (fires, reason) — fires=True when either trigger activates;
+        (fires, reason) — fires=True when BOTH triggers activate simultaneously;
         reason is empty string when fires=False.
     """
     if len(q_history) < window:
@@ -602,10 +603,8 @@ def check_gradual_degradation(
     x = np.arange(window, dtype=np.float64)
     slope = float(np.polyfit(x, recent, 1)[0])
     var_norm = compute_normalized_var_q(recent, q_baseline)
-    if slope < slope_threshold:
-        return True, f"slope={slope:.4f} < {slope_threshold}"
-    if var_norm > var_threshold:
-        return True, f"var_norm={var_norm:.4f} > {var_threshold}"
+    if slope < slope_threshold and var_norm > var_threshold:
+        return True, f"slope={slope:.4f} and var_norm={var_norm:.4f}"
     return False, ""
 
 
