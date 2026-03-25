@@ -557,26 +557,32 @@ class TestOLSMonitor:
     def test_ols_monitor_arl0_scales_with_noise(self):
         """Higher σ_OLS at plateau → larger h (ARL₀ maintained under high noise).
 
-        h = σ²_OLS × ln(1000) / (2k).  h floor=0.5 activates when σ<0.120.
-        To escape the floor AND satisfy plateau var<0.02, σ must be in (0.120, 0.141).
-        Monitor A: δ=0.125 → σ=0.125, var=0.01563 < 0.02, h≈0.540
-        Monitor B: δ=0.140 → σ=0.140, var=0.01960 < 0.02, h≈0.677
-        h_B > h_A demonstrates the scaling.
+        With autocorrelation correction (W=20, rho=0.950, factor=39x):
+          h = sigma_obs^2 * 39.0 * ln(1000) / (2k)
+        The correction lifts h well above the 0.5 floor for any sigma>0.01,
+        so the narrow (0.120, 0.141) window from v0.7.13 no longer applies.
+
+        Monitor A: sigma_obs=0.06 -> h_eff ~ 4.85 > 0.5
+        Monitor B: sigma_obs=0.13 -> h_eff ~ 22.8 > 4.85
+        Both: h_B > h_A and h_B > 1.0.
         """
-        # Monitor A: alternating ±0.125 → σ=0.125, h≈0.540
+        # Monitor A: alternating +/-0.06 -> sigma=0.06, var=0.0036 < 0.02
         monitor_a = OLSMonitor(plateau_window=20, plateau_threshold=0.02)
         for i in range(20):
-            monitor_a.update(1.2 + 0.125 * (1 if i % 2 == 0 else -1))
+            monitor_a.update(1.2 + 0.06 * (1 if i % 2 == 0 else -1))
         assert monitor_a.baseline_frozen, "Monitor A: plateau not detected"
 
-        # Monitor B: alternating ±0.140 → σ=0.140, var=0.0196 < 0.02, h≈0.677
+        # Monitor B: alternating +/-0.13 -> sigma=0.13, var=0.0169 < 0.02
         monitor_b = OLSMonitor(plateau_window=20, plateau_threshold=0.02)
         for i in range(20):
-            monitor_b.update(1.2 + 0.140 * (1 if i % 2 == 0 else -1))
+            monitor_b.update(1.2 + 0.13 * (1 if i % 2 == 0 else -1))
         assert monitor_b.baseline_frozen, "Monitor B: plateau not detected"
 
         assert monitor_b._h is not None and monitor_a._h is not None
         assert monitor_b._h > monitor_a._h, (
             f"Expected h_B ({monitor_b._h:.4f}) > h_A ({monitor_a._h:.4f}) "
-            f"for higher σ_OLS at plateau"
+            f"for higher sigma_OLS at plateau"
+        )
+        assert monitor_b._h > 1.0, (
+            f"Expected h_B > 1.0 after autocorrelation correction, got {monitor_b._h:.4f}"
         )

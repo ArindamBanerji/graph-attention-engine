@@ -831,22 +831,34 @@ class OLSMonitor:
 
     def _calibrate_h(self) -> None:
         """
-        Set h dynamically from observed σ_OLS at plateau.
+        Set h dynamically from observed σ_OLS at plateau with autocorrelation correction.
         Achieves ARL₀ ≥ arl0_target regardless of override rate or window.
 
-        Formula: h = σ²_OLS × ln(arl0_target) / (2 × k)
-        where σ_OLS = std of OLS values in the plateau window.
+        Formula: h = σ²_eff × ln(arl0_target) / (2 × k)
+        where σ²_eff = σ²_obs × (1+ρ)/(1−ρ)  (autocorrelation correction)
+        and   ρ = (plateau_window − 1) / plateau_window
 
-        Replaces fixed h=5.0 which was calibrated for σ_OLS≈0.06 only.
-        At σ_OLS=0.06: h≈0.12.  At σ_OLS=0.15: h≈0.77 (scaled up ~6×).
+        Correction rationale: rolling OLS window W has consecutive-value overlap
+        of (W−1)/W decisions → AR(1) autocorrelation ρ≈(W−1)/W.  Using raw σ²_obs
+        underestimates effective variance by factor (1+ρ)/(1−ρ).
+        For W=20: ρ=0.950, correction=39.0×.
+        For W=30: ρ=0.967, correction=59.6×.
+
+        At σ_obs=0.13, W=20: h_corrected ≈ 34.8 (vs h_uncorrected≈0.585).
+
         σ_OLS floor=0.01 prevents h=0; h floor=0.5 ensures minimum sensitivity.
 
-        P1 reference: self-calibrating CUSUM h, v0.7.13.
+        P1 reference: autocorrelation-corrected CUSUM h, v0.7.14.
         """
         plateau_values = self.ols_history[-self.plateau_window:]
         sigma_ols = float(np.std(plateau_values))
         sigma_ols = max(sigma_ols, 0.01)  # floor to prevent h=0
-        self._h = (sigma_ols ** 2) * float(np.log(self._arl0_target)) / (2.0 * self._k)
+        # Autocorrelation correction for rolling window OLS.
+        # Rolling W with step=1: ρ=(W-1)/W, correction=(1+ρ)/(1-ρ)
+        rho = (self.plateau_window - 1) / self.plateau_window
+        ac_correction = (1 + rho) / (1 - rho)
+        sigma_eff_sq = (sigma_ols ** 2) * ac_correction
+        self._h = sigma_eff_sq * float(np.log(self._arl0_target)) / (2.0 * self._k)
         self._h = max(self._h, 0.5)  # minimum h floor
 
     def update(self, ols_t: float) -> bool:
