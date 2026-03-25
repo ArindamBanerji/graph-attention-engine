@@ -943,7 +943,7 @@ class VarQMonitor:
     persistence : int
         Consecutive crossings required before alarm fires (default 3).
     baseline_window : int
-        Decisions used to establish q_baseline (default 50).
+        Decisions (not override count) used to establish q_baseline (default 30).
     """
 
     def __init__(
@@ -951,7 +951,7 @@ class VarQMonitor:
         threshold: float = 0.05,
         window: int = 30,
         persistence: int = 3,
-        baseline_window: int = 50,
+        baseline_window: int = 30,
     ) -> None:
         self.threshold: float = threshold
         self.window: int = window
@@ -961,6 +961,7 @@ class VarQMonitor:
         self._q_history: list = []
         self._q_baseline: Optional[float] = None
         self._consecutive_crossings: int = 0
+        self._decision_count: int = 0
         self.yellow_warning: bool = False
 
     def update(self, q_t: float) -> bool:
@@ -985,10 +986,11 @@ class VarQMonitor:
             True if alarm fires on this call, False otherwise.
         """
         self._q_history.append(float(q_t))
+        self._decision_count += 1
 
         # Set baseline after baseline_window decisions
         if self._q_baseline is None:
-            if len(self._q_history) >= self.baseline_window:
+            if self._decision_count >= self.baseline_window:
                 self._q_baseline = float(
                     np.mean(self._q_history[:self.baseline_window])
                 )

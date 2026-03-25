@@ -665,13 +665,13 @@ class TestVarQMonitor:
 
     def test_varq_monitor_baseline_set_after_window(self):
         """_q_baseline is None before baseline_window, set after."""
-        monitor = VarQMonitor(baseline_window=50)
-        for _ in range(49):
+        monitor = VarQMonitor(baseline_window=30)
+        for _ in range(29):
             monitor.update(0.85)
         assert monitor._q_baseline is None, (
-            "Expected _q_baseline=None before 50th decision"
+            "Expected _q_baseline=None before 30th decision"
         )
         monitor.update(0.85)
         assert monitor._q_baseline is not None, (
-            "Expected _q_baseline set after 50th decision"
+            "Expected _q_baseline set after 30th decision"
         )
