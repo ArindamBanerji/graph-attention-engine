@@ -943,7 +943,12 @@ class VarQMonitor:
     persistence : int
         Consecutive crossings required before alarm fires (default 3).
     baseline_window : int
-        Decisions (not override count) used to establish q_baseline (default 30).
+        Override observations (not decisions) before baseline is set (default 10).
+        Must be <= onset_min * alpha for a clean baseline.
+        At alpha=0.25, onset=50: max baseline_window=12.
+        onset=50,  alpha=0.25: ~12 overrides -> baseline at 10 -> 2 clean margin.
+        onset=100, alpha=0.25: ~25 overrides -> baseline at 10 -> 15 clean.
+        onset=200, alpha=0.25: ~50 overrides -> baseline at 10 -> 40 clean.
     """
 
     def __init__(
@@ -951,7 +956,7 @@ class VarQMonitor:
         threshold: float = 0.05,
         window: int = 30,
         persistence: int = 3,
-        baseline_window: int = 30,
+        baseline_window: int = 10,
     ) -> None:
         self.threshold: float = threshold
         self.window: int = window
@@ -961,12 +966,15 @@ class VarQMonitor:
         self._q_history: list = []
         self._q_baseline: Optional[float] = None
         self._consecutive_crossings: int = 0
-        self._decision_count: int = 0
         self.yellow_warning: bool = False
 
     def update(self, q_t: float) -> bool:
         """
-        Ingest one quality score and check for sustained Var(q) degradation.
+        Ingest one override quality score and check for sustained Var(q) degradation.
+
+        Every call to update() is one override observation; q_t is the
+        override quality value. Baseline is set after baseline_window
+        override observations (len(_q_history) >= baseline_window).
 
         Returns True when YELLOW alarm fires (persistence consecutive crossings).
         Resets _consecutive_crossings to 0 on any sub-threshold reading.
@@ -986,11 +994,10 @@ class VarQMonitor:
             True if alarm fires on this call, False otherwise.
         """
         self._q_history.append(float(q_t))
-        self._decision_count += 1
 
-        # Set baseline after baseline_window decisions
+        # Set baseline after baseline_window override observations
         if self._q_baseline is None:
-            if self._decision_count >= self.baseline_window:
+            if len(self._q_history) >= self.baseline_window:
                 self._q_baseline = float(
                     np.mean(self._q_history[:self.baseline_window])
                 )
