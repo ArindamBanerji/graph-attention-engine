@@ -758,3 +758,119 @@ class ConservationMonitor:
     def baseline_set(self) -> bool:
         """True after CALIBRATION_PERIOD decisions have been recorded."""
         return self._baseline_set
+
+
+# ---------------------------------------------------------------------------
+# OLSMonitor — plateau-snapshot baseline for OLS-scale CUSUM (v0.7.12)
+# ---------------------------------------------------------------------------
+
+class OLSMonitor:
+    """
+    CUSUM-based monitor for OLS score degradation with plateau-snapshot baseline.
+
+    Resolves V-MV-CONSERVATION v2 FP contamination: OLS naturally declines
+    during the learning phase as centroids converge (overrides become less
+    valuable → OLS 1.21→1.0).  Conflating this with degradation produces
+    false positives (precision 0.543 vs gate >0.70).
+
+    Fix: freeze OLS baseline AFTER centroids stabilize (plateau detected).
+    CUSUM only accumulates post-plateau.  Pre-plateau OLS drift is excluded.
+
+    Plateau detection (P1 reference: plateau-snapshot OLS baseline design):
+        rolling variance of OLS over last plateau_window decisions
+        < plateau_threshold  →  plateau reached.
+        baseline_ols = mean(last plateau_window OLS values).
+        baseline_frozen = True. Never updated again.
+
+    CUSUM equations (OLS scale, h=5.0):
+        deviation_t = baseline_ols − ols_t        (positive when OLS drops)
+        C_t         = max(0, C_{t−1} + deviation_t − k)
+        alarm       ← C_t > h                     h=5.0, k=0.10
+
+    Shape assertions:
+        ols_history : list[float], length grows by 1 per update.
+        recent      : ndarray shape (plateau_window,) during plateau check.
+
+    Parameters
+    ----------
+    plateau_window : int
+        Number of recent OLS decisions to assess plateau (default 20).
+    plateau_threshold : float
+        Rolling variance threshold below which plateau is declared (default 0.02).
+    h : float
+        CUSUM alarm threshold, OLS scale (default 5.0 — see CUSUM_H).
+        Do NOT substitute h=15.0 without recalibrating for OLS input range.
+    k : float
+        CUSUM reference offset from frozen baseline (default 0.10).
+    """
+
+    def __init__(
+        self,
+        plateau_window: int = 20,
+        plateau_threshold: float = 0.02,
+        h: float = CUSUM_H,
+        k: float = 0.10,
+    ) -> None:
+        self.plateau_window: int = plateau_window
+        self.plateau_threshold: float = plateau_threshold
+        self.h: float = h
+        self.k: float = k
+
+        # Plateau state
+        self.ols_history: list = []
+        self.baseline_ols: float = 0.0
+        self.baseline_frozen: bool = False
+
+        # CUSUM state (only active post-plateau)
+        self.cusum: float = 0.0
+        self.yellow_warning: bool = False
+        self.yellow_reason: str = ""
+
+    def update(self, ols_t: float) -> bool:
+        """
+        Ingest one OLS observation and check for degradation alarm.
+
+        Pre-plateau: appends to history, checks for plateau, returns False.
+        Post-plateau: accumulates CUSUM on deviation from frozen baseline;
+        sets yellow_warning=True and resets cusum on alarm.
+
+        P1 reference: plateau-snapshot OLS baseline design.
+        Shape: ols_history grows by 1; recent slice is (plateau_window,).
+
+        Parameters
+        ----------
+        ols_t : float
+            OLS score for this decision (typically ∈ [1.0, 2.5]).
+
+        Returns
+        -------
+        bool
+            True if alarm fires on this call, False otherwise.
+        """
+        self.ols_history.append(float(ols_t))
+
+        if not self.baseline_frozen:
+            if len(self.ols_history) >= self.plateau_window:
+                recent = np.array(
+                    self.ols_history[-self.plateau_window:], dtype=np.float64
+                )
+                assert recent.shape == (self.plateau_window,), (
+                    f"recent shape {recent.shape} != ({self.plateau_window},)"
+                )
+                if float(np.var(recent)) < self.plateau_threshold:
+                    self.baseline_ols = float(np.mean(recent))
+                    self.baseline_frozen = True
+            return False  # no alarm before plateau
+
+        # Post-plateau: CUSUM on deviation from frozen baseline
+        deviation = self.baseline_ols - ols_t  # positive when OLS drops
+        self.cusum = max(0.0, self.cusum + deviation - self.k)
+        if self.cusum > self.h:
+            self.yellow_warning = True
+            self.yellow_reason = (
+                f"OLS CUSUM={self.cusum:.3f} > h={self.h} "
+                f"(baseline={self.baseline_ols:.3f}, ols_t={ols_t:.3f})"
+            )
+            self.cusum = 0.0  # reset after alarm
+            return True
+        return False

@@ -13,6 +13,7 @@ from gae.convergence import (
     compute_normalized_var_q,
     compute_steady_state_mse,
     ConservationMonitor,
+    OLSMonitor,
     enrichment_multiplier,
     generate_onboarding_calendar,
     get_convergence_metrics,
@@ -448,3 +449,91 @@ class TestCUSUM:
             "Expected yellow_warning=True after step shift to q̄=0.55"
         )
         assert monitor._k is not None, "Expected _k set after calibration period"
+
+
+# ---------------------------------------------------------------------------
+# OLSMonitor — plateau-snapshot baseline (v0.7.12)
+# ---------------------------------------------------------------------------
+
+class TestOLSMonitor:
+    """Tests for OLSMonitor plateau-snapshot baseline (v0.7.12)."""
+
+    def test_ols_monitor_silent_during_learning_phase(self):
+        """No alarm during learning-phase OLS decline; baseline freezes once stable.
+
+        A smooth linear decline (step=0.0136/decision) has rolling variance
+        ≈ 0.006 < plateau_threshold, so it would freeze immediately.  Real
+        learning-phase OLS oscillates as centroids compete.  We replicate this
+        with a deterministic ±0.15 oscillation on top of the decline, giving
+        rolling var ≈ 0.030 > 0.02 throughout — plateau is NOT detected.
+
+        Once OLS stabilises at 1.0 (no oscillation), var=0 < 0.02 → plateau
+        freezes correctly.  yellow_warning must stay False throughout.
+        """
+        monitor = OLSMonitor(plateau_window=20, plateau_threshold=0.02)
+        # Learning phase: oscillating OLS decline (var ≈ 0.030 > 0.02 → no freeze)
+        for i in range(60):
+            base = 1.8 - 0.8 * i / 59
+            ols = base + 0.15 * (1 if i % 2 == 0 else -1)  # deterministic ±0.15
+            monitor.update(ols)
+            assert not monitor.yellow_warning, (
+                f"Unexpected alarm at decision {i} during learning phase "
+                f"(ols={ols:.3f}, baseline_frozen={monitor.baseline_frozen})"
+            )
+        # Stable phase: OLS flat at 1.0, no oscillation → var=0 < 0.02, plateau freezes
+        for _ in range(20):
+            monitor.update(1.0)
+        assert monitor.baseline_frozen, (
+            "Expected baseline_frozen=True after OLS stabilises at 1.0"
+        )
+
+    def test_ols_monitor_detects_post_plateau_degradation(self):
+        """Alarm fires within 30 decisions of post-plateau OLS degradation."""
+        monitor = OLSMonitor(plateau_window=20, plateau_threshold=0.02)
+        # Plateau phase: 40 decisions stable at 1.2
+        for _ in range(40):
+            monitor.update(1.2)
+        assert monitor.baseline_frozen, "Expected plateau after 40 stable decisions"
+        assert abs(monitor.baseline_ols - 1.2) < 0.01, (
+            f"Expected baseline_ols ≈ 1.2, got {monitor.baseline_ols:.4f}"
+        )
+        # Degradation: OLS drops 1.2 → 0.7 over 50 decisions
+        alarm_decision = None
+        for i in range(50):
+            ols = 1.2 - 0.5 * i / 49
+            fired = monitor.update(ols)
+            if fired and alarm_decision is None:
+                alarm_decision = i
+        assert alarm_decision is not None, (
+            "Expected CUSUM alarm during post-plateau degradation"
+        )
+        # k=0.10 means deviation must exceed 0.10 before cusum accumulates;
+        # for a 0.5pp drop spread over 50 decisions, alarm fires around i=41.
+        assert alarm_decision <= 45, (
+            f"Expected alarm within 45 decisions of degradation, fired at {alarm_decision}"
+        )
+
+    def test_ols_monitor_plateau_frozen_correctly(self):
+        """Plateau freezes correctly: baseline_ols ≈ 1.15 after 20 identical values."""
+        monitor = OLSMonitor(plateau_window=20, plateau_threshold=0.02)
+        for _ in range(20):
+            monitor.update(1.15)
+        assert monitor.baseline_frozen, (
+            "Expected baseline_frozen=True after 20 zero-variance decisions"
+        )
+        assert abs(monitor.baseline_ols - 1.15) < 0.01, (
+            f"Expected baseline_ols ≈ 1.15, got {monitor.baseline_ols:.4f}"
+        )
+
+    def test_ols_monitor_no_freeze_on_volatile_ols(self):
+        """High-variance OLS (alternating 0.9/1.5) never triggers plateau freeze."""
+        monitor = OLSMonitor(plateau_window=20, plateau_threshold=0.02)
+        for i in range(30):
+            ols = 0.9 if i % 2 == 0 else 1.5
+            monitor.update(ols)
+        assert not monitor.baseline_frozen, (
+            "baseline_frozen must remain False for high-variance OLS"
+        )
+        assert not monitor.yellow_warning, (
+            "yellow_warning must not fire when baseline is not frozen"
+        )
