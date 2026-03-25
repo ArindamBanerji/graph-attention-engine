@@ -562,6 +562,12 @@ def compute_normalized_var_q(
 # Slope heuristic was fragile: 50% FP rate on healthy Bernoulli at q̄=0.85.
 
 
+# T_damage definition (plateau-snapshot, not peak-based):
+# Accuracy damage = sustained drop below baseline - 5pp
+# over a 20-decision plateau window.
+# Peak-based detection fires during learning oscillations
+# and produces false positives. Plateau-based is correct.
+
 # ---------------------------------------------------------------------------
 # ConservationMonitor — Layer 1 (AMBER/RED) + Layer 2 CUSUM (YELLOW)
 # ---------------------------------------------------------------------------
@@ -578,10 +584,11 @@ CUSUM_LAMBDA: float = 0.1
 #: CUSUM allowance: k = q_baseline − 0.05.  Set dynamically after calibration.
 CUSUM_K_OFFSET: float = 0.05
 
-#: CUSUM alarm threshold h — empirically calibrated for ARL₀ ≈ 500 decisions.
+#: CUSUM alarm threshold h — scale-dependent, empirically calibrated.
+#: h=5.0  calibrated for OLS ∈ [1.0, 2.5] input (V-OLS-DETECT, GAE 0.7.11) — ARL₀ ≈ 500.
+#: h=15.0 was calibrated for raw q̄ ∈ [0, 1] input — different input range, do NOT mix.
 #: Calibration: 1000 simulations × 500 decisions at q̄=0.85 (Bernoulli).
-#: h=15.0 → ARL₀=500 (extended sweep [2.0–15.0]).
-CUSUM_H: float = 15.0
+CUSUM_H: float = 5.0
 
 
 class ConservationMonitor:
@@ -598,7 +605,7 @@ class ConservationMonitor:
     CUSUM equations (P1 reference: supplementary CUSUM design):
         q_ewma_t = λ·q_t + (1−λ)·q_ewma_{t−1}      λ = CUSUM_LAMBDA = 0.1
         C_t      = max(0, C_{t−1} + (k − q_ewma_t))  k = q_baseline − CUSUM_K_OFFSET
-        alarm    ← C_t > h                             h = CUSUM_H = 15.0
+        alarm    ← C_t > h                             h = CUSUM_H = 5.0 (OLS scale)
 
     k is set once after the 50-decision calibration period and never updated.
     q_baseline is the mean of the first CALIBRATION_PERIOD quality scores.
@@ -634,6 +641,8 @@ class ConservationMonitor:
         self._q_ewma: Optional[float] = None
         self._cusum: float = 0.0
         self._k: Optional[float] = None
+        # h=5.0 calibrated for OLS scale (V-OLS-DETECT, GAE 0.7.11)
+        # h=15.0 was calibrated for raw q̄ scale — different input range
         self._h: float = CUSUM_H
         self._lambda: float = CUSUM_LAMBDA
 
@@ -678,6 +687,15 @@ class ConservationMonitor:
         Sets self.yellow_warning = True if C_t > h.
         Resets C_t to 0 after alarm (one notification per exceedance).
         Does NOT affect learning — yellow_warning is informational only.
+
+        CUSUM alarm threshold h is scale-dependent:
+          h=15.0: calibrated for q̄ ∈ [0,1] input (ARL₀=500)
+          h=5.0:  calibrated for OLS ∈ [1.0, 2.5] input (ARL₀≈500)
+
+        V-OLS-DETECT used h=5.0 with OLS as input.
+        If wiring raw q̄ as input: use h=15.0.
+        If wiring OLS as input: use h=5.0.
+        Do NOT revert to h=15.0 for OLS without recalibrating.
 
         CUSUM equations (P1 reference: supplementary CUSUM design):
             q_ewma_t = λ·q_t + (1−λ)·q_ewma_{t−1}
