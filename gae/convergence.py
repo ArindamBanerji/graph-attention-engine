@@ -916,3 +916,103 @@ class OLSMonitor:
             self.cusum = 0.0  # reset after alarm
             return True
         return False
+
+
+# ---------------------------------------------------------------------------
+# VarQMonitor — baseline-normalized Var(q) with persistence filter (v0.7.15)
+# ---------------------------------------------------------------------------
+
+class VarQMonitor:
+    """
+    Baseline-normalized Var(q) detector with persistence filter.
+
+    Requires N consecutive threshold crossings before YELLOW alarm fires.
+    Eliminates single-spike false positives from Bernoulli noise:
+    natural Var(q) noise produces brief spikes; real degradation
+    (e.g. q: 0.85→0.65) sustains elevated Var(q) for many windows.
+
+    Var(q) computation delegates to compute_normalized_var_q() (P1 ref: Fix A).
+    Shape: _q_history grows by 1 per update; recent slice is (window,).
+
+    Parameters
+    ----------
+    threshold : float
+        Normalized Var(q) threshold for a crossing event (default 0.05).
+    window : int
+        Rolling window size for Var(q) computation (default 30).
+    persistence : int
+        Consecutive crossings required before alarm fires (default 3).
+    baseline_window : int
+        Decisions used to establish q_baseline (default 50).
+    """
+
+    def __init__(
+        self,
+        threshold: float = 0.05,
+        window: int = 30,
+        persistence: int = 3,
+        baseline_window: int = 50,
+    ) -> None:
+        self.threshold: float = threshold
+        self.window: int = window
+        self.persistence: int = persistence
+        self.baseline_window: int = baseline_window
+
+        self._q_history: list = []
+        self._q_baseline: Optional[float] = None
+        self._consecutive_crossings: int = 0
+        self.yellow_warning: bool = False
+
+    def update(self, q_t: float) -> bool:
+        """
+        Ingest one quality score and check for sustained Var(q) degradation.
+
+        Returns True when YELLOW alarm fires (persistence consecutive crossings).
+        Resets _consecutive_crossings to 0 on any sub-threshold reading.
+        Resets to 0 after alarm fires (not sticky — allows re-alarm).
+
+        P1 reference: baseline-normalized Var(q), Fix A.
+        Shape: recent slice passed to compute_normalized_var_q is (window,).
+
+        Parameters
+        ----------
+        q_t : float
+            Per-decision quality score (0.0–1.0).
+
+        Returns
+        -------
+        bool
+            True if alarm fires on this call, False otherwise.
+        """
+        self._q_history.append(float(q_t))
+
+        # Set baseline after baseline_window decisions
+        if self._q_baseline is None:
+            if len(self._q_history) >= self.baseline_window:
+                self._q_baseline = float(
+                    np.mean(self._q_history[:self.baseline_window])
+                )
+            return False
+
+        # Need full window to compute Var(q)
+        if len(self._q_history) < self.window:
+            return False
+
+        # Compute normalized var_q over rolling window
+        recent = self._q_history[-self.window:]
+        assert len(recent) == self.window, (
+            f"recent length {len(recent)} != window {self.window}"
+        )
+        var_norm = compute_normalized_var_q(recent, self._q_baseline)
+
+        # Persistence filter
+        if var_norm > self.threshold:
+            self._consecutive_crossings += 1
+        else:
+            self._consecutive_crossings = 0
+
+        if self._consecutive_crossings >= self.persistence:
+            self.yellow_warning = True
+            self._consecutive_crossings = 0  # reset after alarm
+            return True
+        return False

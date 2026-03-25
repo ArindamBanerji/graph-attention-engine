@@ -14,6 +14,7 @@ from gae.convergence import (
     compute_steady_state_mse,
     ConservationMonitor,
     OLSMonitor,
+    VarQMonitor,
     enrichment_multiplier,
     generate_onboarding_calendar,
     get_convergence_metrics,
@@ -585,4 +586,92 @@ class TestOLSMonitor:
         )
         assert monitor_b._h > 1.0, (
             f"Expected h_B > 1.0 after autocorrelation correction, got {monitor_b._h:.4f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# VarQMonitor — persistence filter (v0.7.15)
+# ---------------------------------------------------------------------------
+
+class TestVarQMonitor:
+    """Tests for VarQMonitor persistence filter (v0.7.15)."""
+
+    @staticmethod
+    def _feed_baseline(monitor, q=0.85):
+        """Feed baseline_window decisions at constant q to set _q_baseline."""
+        for _ in range(monitor.baseline_window):
+            monitor.update(float(q))
+
+    def test_varq_monitor_persistence_blocks_single_spike(self):
+        """Two crossings then a sub-threshold reset: no alarm fires."""
+        monitor = VarQMonitor(threshold=0.05, persistence=3)
+        self._feed_baseline(monitor)
+
+        # Push alternating 0/1 (high var) for 2 rolling windows in a row,
+        # then healthy data so var_norm drops below threshold.
+        # Easiest: feed bimodal data for 2 steps (crossings accumulate),
+        # then reset with healthy data for a full window.
+        for i in range(monitor.window + 2):
+            # alternate 0/1 for first 2 then go healthy
+            if i < 2:
+                monitor.update(0.0 if i % 2 == 0 else 1.0)
+            else:
+                monitor.update(0.85)
+        assert not monitor.yellow_warning, (
+            "Spike did not persist 3 consecutive windows — no alarm expected"
+        )
+
+    def test_varq_monitor_persistence_fires_on_sustained(self):
+        """Sustained Bernoulli(0.55) degradation fires YELLOW after persistence crossings.
+
+        Degraded q̄=0.55 means binary draws (0 or 1), not constant 0.55.
+        Bernoulli(0.55): var_raw≈0.2475 >> var_baseline=0.1275 → var_norm≈0.12 > 0.05.
+        Alternating 0/1 approximates this: var=0.25, var_norm=0.1225.
+        After window (30) decisions are all bimodal, crossings fire consecutively.
+        Alarm requires persistence=3 consecutive crossings → fires at decision 32+.
+        Feed 35 bimodal decisions to ensure ≥3 consecutive crossings.
+        """
+        monitor = VarQMonitor(threshold=0.05, persistence=3)
+        self._feed_baseline(monitor)
+        fired = False
+        for i in range(35):  # alternating 0/1 ≈ Bernoulli(0.5), var_norm≈0.12 > 0.05
+            if monitor.update(0.0 if i % 2 == 0 else 1.0):
+                fired = True
+                break
+        assert fired, "Expected YELLOW alarm during sustained bimodal degradation"
+        assert monitor.yellow_warning is True
+
+    def test_varq_monitor_counter_resets_on_subthreshold(self):
+        """Counter increments on crossings and resets to 0 on sub-threshold reading."""
+        monitor = VarQMonitor(threshold=0.05, persistence=3)
+        self._feed_baseline(monitor)
+
+        # Feed bimodal 0/1 values to push var_norm above threshold.
+        # After baseline, we need window=30 decisions in history before var is computed.
+        # Since baseline is 50, we already have 50 decisions. Feed 30 bimodal ones.
+        for i in range(30):
+            monitor.update(0.0 if i % 2 == 0 else 1.0)
+
+        # At this point _consecutive_crossings reflects last few updates.
+        # Now feed one healthy decision to force a sub-threshold reading.
+        crossings_before = monitor._consecutive_crossings
+        # Feed full window of healthy values to ensure var_norm < threshold
+        for _ in range(monitor.window):
+            monitor.update(0.85)
+        assert monitor._consecutive_crossings == 0, (
+            f"Counter must reset to 0 after sub-threshold reading, "
+            f"got {monitor._consecutive_crossings}"
+        )
+
+    def test_varq_monitor_baseline_set_after_window(self):
+        """_q_baseline is None before baseline_window, set after."""
+        monitor = VarQMonitor(baseline_window=50)
+        for _ in range(49):
+            monitor.update(0.85)
+        assert monitor._q_baseline is None, (
+            "Expected _q_baseline=None before 50th decision"
+        )
+        monitor.update(0.85)
+        assert monitor._q_baseline is not None, (
+            "Expected _q_baseline set after 50th decision"
         )
