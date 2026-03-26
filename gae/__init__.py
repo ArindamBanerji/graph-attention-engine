@@ -42,13 +42,13 @@ Kernels:
 Referral:
   ReferralEngine, ReferralRule, ReferralDecision, ReferralReason, OverrideDetector
 
-Deprecated (TD-029 — remove in v6.0):
+Deprecated (TD-029 — remove in a future release):
   score_entity, score_alert, score_with_profile, ProfileScoringResult
 """
 
 from __future__ import annotations
 
-__version__ = "0.7.17"
+__version__ = "0.7.18"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
 from gae.kernels import L2Kernel, DiagonalKernel
@@ -133,6 +133,13 @@ from gae.learning import (
 # ── Convergence ──────────────────────────────────────────────────────
 from gae.convergence import get_convergence_metrics
 
+# ── Monitoring (observability only — no gating side-effects) ─────────
+from gae.convergence import (
+    ConservationMonitor,
+    OLSMonitor,
+    VarQMonitor,
+)
+
 # ── Infrastructure — events, contracts, factors ──────────────────────
 from gae.events import (
     FactorComputedEvent,
@@ -149,7 +156,7 @@ from gae.factors import FactorComputer, assemble_factor_vector
 # ── Persistence ──────────────────────────────────────────────────────
 from gae.store import save_state, load_state
 
-# ── Deprecated (TD-029 — remove in v6.0) ────────────────────────────
+# ── Deprecated (TD-029 — remove in a future release) ────────────────
 from gae.scoring import score_entity, score_alert, score_with_profile
 
 __all__ = [
@@ -198,6 +205,10 @@ __all__ = [
     "WeightUpdate",
     # Convergence
     "get_convergence_metrics",
+    # Monitoring (observability only — no gating side-effects)
+    "ConservationMonitor",
+    "OLSMonitor",
+    "VarQMonitor",
     # Events
     "FactorComputedEvent",
     "WeightsUpdatedEvent",
@@ -227,7 +238,7 @@ __all__ = [
     "ReferralDecision",
     "ReferralReason",
     "OverrideDetector",
-    # Deprecated (TD-029 — remove in v6.0)
+    # Deprecated (TD-029 — remove in a future release)
     "score_entity",
     "score_alert",
     "score_with_profile",

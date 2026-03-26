@@ -157,7 +157,7 @@ class ProfileScorer:
                           COSINE/DOT/MAHALANOBIS still use _compute_distances().
 
                           v6.0: L2Kernel (default) + DiagonalKernel.
-                          v6.5: ShrinkageKernel (auto from CovarianceEstimator).
+                          v7.0 research (not committed): ShrinkageKernel (auto from CovarianceEstimator).
                           Source: v6.0 kernel roadmap.
           factor_mask:    np.ndarray of shape (n_factors,) with 1.0 (include) and 0.0
                           (exclude). If None, all factors are active (backward compatible).

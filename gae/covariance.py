@@ -2,7 +2,7 @@
 Online covariance estimation with Ledoit-Wolf shrinkage.
 
 v6.0: COLLECTS data, computes Σ̂, but does NOT affect scoring.
-v6.5: Feeds ShrinkageKernel and MahalanobisKernel.
+v7.0 research (not committed): Feeds ShrinkageKernel and MahalanobisKernel.
 
 One estimator per (category, action) pair. SOC: 6×4 = 24 estimators.
 Uses exponentially-weighted Welford-style accumulation so recent decisions
@@ -65,7 +65,7 @@ class CovarianceEstimator:
     downweights old observations so the estimator tracks regime shifts.
 
     v6.0: collect only — output is logged but does NOT feed scoring.
-    v6.5: snapshot feeds ShrinkageKernel / MahalanobisKernel.
+    v7.0 research (not committed): snapshot feeds ShrinkageKernel / MahalanobisKernel.
 
     Usage
     -----

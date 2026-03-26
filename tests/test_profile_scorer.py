@@ -689,6 +689,18 @@ def test_eta_neg_1_raises_value_error():
         ProfileScorer(mu, ["a", "b", "c"], profile=profile)
 
 
+def test_eta_neg_below_1_does_not_raise():
+    """η_neg=0.99 must NOT raise — guard is >= 1.0, not > 1.0."""
+    from gae.calibration import CalibrationProfile
+    profile = CalibrationProfile(
+        temperature=0.1,
+        extensions={"eta_neg": 0.99},
+    )
+    mu = np.random.default_rng(0).uniform(0.25, 0.75, (2, 3, 4))
+    scorer = ProfileScorer(mu, ["a", "b", "c"], profile=profile)
+    assert scorer.eta_neg == 0.99
+
+
 # ---------------------------------------------------------------------------
 # TEST 33-39 — factor quarantine mask (v6.0 binary mask)
 # ---------------------------------------------------------------------------

@@ -143,7 +143,7 @@ class KernelSelector:
 
         L2:        plain squared Euclidean — all dimensions equal weight.
         diagonal:  weights = 1/σ², normalised to max=1 — high-noise dims attenuated.
-        shrinkage: same as diagonal for v6.0; v6.5 will use full Σ̂ off-diagonal.
+        shrinkage: same as diagonal for v6.0; v7.0 research (not committed) will use full Σ̂ off-diagonal.
 
         Shape: sigma (d,) → weights (d,).
         """
@@ -161,6 +161,7 @@ class KernelSelector:
 
         kernels["diagonal"] = DiagonalKernel(weights)
         # v6.0 shrinkage proxy — identical to diagonal until Σ̂ is available
+        # proxy: DiagonalKernel until true ShrinkageKernel ships (v7.0 research)
         kernels["shrinkage"] = DiagonalKernel(weights.copy())
 
         return kernels

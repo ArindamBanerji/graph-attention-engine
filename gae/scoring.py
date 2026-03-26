@@ -85,7 +85,7 @@ def score_entity(
 
     .. deprecated::
         Use :class:`gae.profile_scorer.ProfileScorer` instead.
-        score_entity() will be removed in v6.0 (TD-029).
+        score_entity() will be removed in a future release (TD-029).
 
     Computes the action probability distribution for one entity given its
     factor vector and the current weight matrix:
@@ -124,7 +124,7 @@ def score_entity(
     """
     warnings.warn(
         "score_entity() is deprecated. Use ProfileScorer.score() instead. "
-        "score_entity() will be removed in v6.0 (TD-029).",
+        "score_entity() will be removed in a future release (TD-029).",
         DeprecationWarning,
         stacklevel=2,
     )

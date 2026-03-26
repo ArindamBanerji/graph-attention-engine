@@ -2,7 +2,7 @@
 Pluggable scoring kernels for ProfileScorer.
 
 v6.0: L2Kernel (default, proven) + DiagonalKernel (weighted, continuous mask).
-v6.5: ShrinkageKernel + MahalanobisKernel (gated by V-MV-KERNEL).
+v7.0 research (not committed): ShrinkageKernel + MahalanobisKernel (gated by V-MV-KERNEL).
 
 The kernel controls HOW distance between factor vector f and centroid μ is
 measured. Different kernels weight dimensions differently.
@@ -117,7 +117,7 @@ class DiagonalKernel:
     When weights are 0/1:   equivalent to factor_mask.
 
     v6.0: ships alongside L2Kernel. Customer choice via DomainConfig.
-    v6.5: replaced by ShrinkageKernel (W derived from Σ̂ automatically).
+    v7.0 research (not committed): replaced by ShrinkageKernel (W derived from Σ̂ automatically).
 
     Reference: docs/gae_design_v5.md §9; v6.0 kernel roadmap.
     """
