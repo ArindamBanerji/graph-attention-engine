@@ -48,7 +48,7 @@ Deprecated (TD-029 — remove in a future release):
 
 from __future__ import annotations
 
-__version__ = "0.7.18"
+__version__ = "0.7.19"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
 from gae.kernels import L2Kernel, DiagonalKernel

@@ -62,6 +62,7 @@ class KernelType(Enum):
     """
 
     L2 = "l2"
+    DIAGONAL = "diagonal"
     MAHALANOBIS = "mahalanobis"
     COSINE = "cosine"
     DOT = "dot"
@@ -312,9 +313,9 @@ class ProfileScorer:
             f = f * self.factor_mask                   # (n_factors,)
             mu_c = mu_c * self.factor_mask             # (n_actions, n_factors) broadcast
 
-        # v6.0 kernel dispatch: scoring_kernel active on L2 path only.
+        # v6.0 kernel dispatch: scoring_kernel active on L2 and DIAGONAL paths.
         # COSINE/DOT/MAHALANOBIS still go through _compute_distances.
-        if self.kernel == KernelType.L2:
+        if self.kernel in (KernelType.L2, KernelType.DIAGONAL):
             distances = self.scoring_kernel.compute_distance(f, mu_c)
         else:
             distances = self._compute_distances(f, mu_c, category_index)
@@ -563,7 +564,7 @@ class ProfileScorer:
         -------
         shape (n_factors,)
         """
-        if self.kernel == KernelType.L2:
+        if self.kernel in (KernelType.L2, KernelType.DIAGONAL):
             return self.scoring_kernel.compute_gradient(f, mu_single)
         return f - mu_single
 

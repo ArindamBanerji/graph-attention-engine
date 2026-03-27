@@ -129,11 +129,19 @@ class DiagonalKernel:
         weights : np.ndarray, shape (d,)
             Per-factor importance weights. Typically 1/σ² (inverse noise
             variance) or binary 0/1. All values should be ≥ 0.
+
+        Attributes set at construction
+        --------------------------------
+        _W_baseline_max : float
+            weights.max() frozen at construction. Captures absolute signal
+            scale — higher value = richer signal. Use to compare kernels
+            built from different σ measurements (enrichment validation).
         """
         self.weights = np.asarray(weights, dtype=np.float64)
         assert self.weights.ndim == 1, (
             f"weights must be 1-D, got shape {self.weights.shape}"
         )
+        self._W_baseline_max: float = float(self.weights.max())
 
     def compute_distance(self, f: np.ndarray, mu: np.ndarray) -> np.ndarray:
         """
@@ -175,6 +183,21 @@ class DiagonalKernel:
         """
         w_max = max(self.weights.max(), 1e-9)
         return (self.weights / w_max) * (f - mu)
+
+    @property
+    def noise_ratio(self) -> float:
+        """
+        max(σ)/min(σ) derived from weights = 1/σ².
+
+        noise_ratio = σ_max/σ_min = sqrt(W_max/W_min) = sqrt(1/weights_min)
+        (since weights are proportional to W = 1/σ², W_max = _W_baseline_max × 1).
+
+        KernelSelector trigger criterion: recommend DiagonalKernel when > 1.5.
+
+        Reference: V-MV-KERNEL; docs/gae_design_v5.md §9.
+        """
+        w_min = max(float(self.weights.min()), 1e-12)
+        return float(np.sqrt(self._W_baseline_max / w_min))
 
     def refresh_weights(self, sigma_per_factor: np.ndarray) -> "DiagonalKernel":
         """
