@@ -122,26 +122,33 @@ class DiagonalKernel:
     Reference: docs/gae_design_v5.md §9; v6.0 kernel roadmap.
     """
 
-    def __init__(self, weights: np.ndarray) -> None:
+    def __init__(self, sigma: np.ndarray) -> None:
         """
         Parameters
         ----------
-        weights : np.ndarray, shape (d,)
-            Per-factor importance weights. Typically 1/σ² (inverse noise
-            variance) or binary 0/1. All values should be ≥ 0.
+        sigma : np.ndarray, shape (d,)
+            Per-factor noise standard deviation. All values must be > 0.
+            Weights are computed as W = 1/σ² then normalised by W.max():
+            self.weights = W / W.max() ∈ [0, 1].
 
         Attributes set at construction
         --------------------------------
         _W_baseline_max : float
-            weights.max() frozen at construction. Captures absolute signal
+            max(1/σ²) frozen at construction. Captures absolute signal
             scale — higher value = richer signal. Use to compare kernels
             built from different σ measurements (enrichment validation).
         """
-        self.weights = np.asarray(weights, dtype=np.float64)
-        assert self.weights.ndim == 1, (
-            f"weights must be 1-D, got shape {self.weights.shape}"
+        sigma = np.asarray(sigma, dtype=np.float64)
+        assert sigma.ndim == 1, (
+            f"sigma must be 1-D, got shape {sigma.shape}"
         )
-        self._W_baseline_max: float = float(self.weights.max())
+        if np.any(sigma <= 0):
+            raise ValueError(
+                f"DiagonalKernel: all sigma values must be > 0. Got {sigma}"
+            )
+        W = 1.0 / sigma ** 2
+        self._W_baseline_max: float = float(W.max())
+        self.weights: np.ndarray = W / self._W_baseline_max
 
     def compute_distance(self, f: np.ndarray, mu: np.ndarray) -> np.ndarray:
         """
@@ -222,5 +229,4 @@ class DiagonalKernel:
             f"weights.shape={self.weights.shape}"
         )
         clipped = np.maximum(sigma_per_factor, 1e-6)
-        new_weights = 1.0 / clipped ** 2
-        return DiagonalKernel(new_weights)
+        return DiagonalKernel(clipped)

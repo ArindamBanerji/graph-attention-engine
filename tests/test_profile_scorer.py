@@ -834,16 +834,17 @@ class TestScoringKernelIntegration:
         np.testing.assert_allclose(r_l2.probabilities, r_diag.probabilities)
 
     def test_diagonal_kernel_zero_weight_dimension_ignored(self):
-        """DiagonalKernel with a zero-weight dim must be insensitive to that dim."""
+        """DiagonalKernel with very large σ on last dim must be insensitive to that dim."""
         np.random.seed(1)
         mu = np.random.uniform(0.2, 0.8, (1, 3, 4))
-        w = np.array([1.0, 1.0, 1.0, 0.0])
-        scorer = ProfileScorer(mu, ["a", "b", "c"], scoring_kernel=DiagonalKernel(w))
+        # σ=[1.0, 1.0, 1.0, 1e6]: W=[1,1,1,1e-12], max=1, weights=[1,1,1,~1e-12] ≈ zero last
+        sigma = np.array([1.0, 1.0, 1.0, 1e6])
+        scorer = ProfileScorer(mu, ["a", "b", "c"], scoring_kernel=DiagonalKernel(sigma))
         f1 = np.array([0.3, 0.6, 0.1, 0.0])
         f2 = np.array([0.3, 0.6, 0.1, 0.9])  # only last dim differs
         r1 = scorer.score(f1, 0)
         r2 = scorer.score(f2, 0)
-        np.testing.assert_allclose(r1.probabilities, r2.probabilities)
+        np.testing.assert_allclose(r1.probabilities, r2.probabilities, atol=1e-6)
 
     def test_scoring_kernel_stored_on_instance(self):
         scorer, _ = _make_kernel_scorer(scoring_kernel=L2Kernel())
@@ -889,7 +890,9 @@ class TestScoringKernelIntegration:
         scorer_l2 = ProfileScorer(mu, ["a0", "a1"], scoring_kernel=L2Kernel())
         scorer_boosted = ProfileScorer(
             mu, ["a0", "a1"],
-            scoring_kernel=DiagonalKernel(np.array([100.0, 1.0, 1.0])),
+            # σ=[0.1, 1.0, 1.0] → W=[100, 1, 1] → weights=[1.0, 0.01, 0.01]
+            # dim 0 is amplified (low σ = reliable), dims 1/2 attenuated
+            scoring_kernel=DiagonalKernel(np.array([0.1, 1.0, 1.0])),
         )
         r_l2 = scorer_l2.score(f, 0)
         r_boosted = scorer_boosted.score(f, 0)

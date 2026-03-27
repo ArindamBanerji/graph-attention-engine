@@ -123,18 +123,25 @@ class TestL2KernelGradient:
 
 class TestDiagonalKernelInit:
     def test_weights_stored(self):
-        w = np.array([1.0, 2.0, 0.5])
-        k = DiagonalKernel(w)
-        np.testing.assert_array_equal(k.weights, w)
+        # σ=[1.0, 2.0, 0.5] → W=[1.0, 0.25, 4.0] → max=4.0 → weights=[0.25, 0.0625, 1.0]
+        sigma = np.array([1.0, 2.0, 0.5])
+        k = DiagonalKernel(sigma)
+        W = 1.0 / sigma ** 2
+        expected = W / W.max()
+        np.testing.assert_allclose(k.weights, expected)
 
     def test_weights_converted_to_float64(self):
-        w = np.array([1, 2, 3], dtype=np.int32)
-        k = DiagonalKernel(w)
+        sigma = np.array([1, 2, 3], dtype=np.int32)
+        k = DiagonalKernel(sigma)
         assert k.weights.dtype == np.float64
 
     def test_weights_must_be_1d(self):
         with pytest.raises(AssertionError):
             DiagonalKernel(np.ones((3, 3)))
+
+    def test_zero_sigma_raises_value_error(self):
+        with pytest.raises(ValueError, match="sigma values must be > 0"):
+            DiagonalKernel(np.array([0.1, 0.0, 0.3]))
 
 
 class TestDiagonalKernelDistance:
@@ -149,19 +156,22 @@ class TestDiagonalKernelDistance:
         )
 
     def test_zero_weight_ignores_dimension(self):
-        k = DiagonalKernel(np.array([1.0, 0.0]))
-        f = np.array([0.0, 0.9])   # second dim differs but weight=0
+        # σ=[0.1, 1e6]: W=[100, 1e-12], max=100, weights=[1.0, ~1e-14]
+        # Second dim effectively ignored (weight ≈ 0)
+        k = DiagonalKernel(np.array([0.1, 1e6]))
+        f = np.array([0.0, 0.9])   # second dim differs but weight ≈ 0
         mu = np.array([[0.0, 0.1]])  # second dim would be large L2
         d = k.compute_distance(f, mu)
-        assert d[0] == pytest.approx(0.0)
+        assert d[0] == pytest.approx(0.0, abs=1e-8)
 
     def test_known_weighted_value(self):
-        k = DiagonalKernel(np.array([2.0, 0.5]))
+        # σ=[0.5, 1.0]: W=[4.0, 1.0], max=4.0, weights=[1.0, 0.25]
+        # 1.0*(1-0)^2 + 0.25*(0-1)^2 = 1.0 + 0.25 = 1.25
+        k = DiagonalKernel(np.array([0.5, 1.0]))
         f = np.array([1.0, 0.0])
         mu = np.array([[0.0, 1.0]])
-        # 2*(1-0)^2 + 0.5*(0-1)^2 = 2 + 0.5 = 2.5
         d = k.compute_distance(f, mu)
-        assert d[0] == pytest.approx(2.5)
+        assert d[0] == pytest.approx(1.25)
 
     def test_output_shape(self):
         k = DiagonalKernel(np.ones(5))
@@ -171,10 +181,13 @@ class TestDiagonalKernelDistance:
         assert d.shape == (3,)
 
     def test_higher_weight_increases_distance(self):
+        # Lower σ on dim 0 → higher weight → larger distance contribution from dim 0.
+        # k1: σ=[1.0, 0.5] → w=[0.25, 1.0]; distance on f=[1,0], mu=[[0,0]]: 0.25*(1)²=0.25
+        # k2: σ=[0.5, 0.5] → w=[1.0, 1.0]; distance on f=[1,0], mu=[[0,0]]: 1.0*(1)²=1.0
         f = np.array([1.0, 0.0])
         mu = np.array([[0.0, 0.0]])
-        k1 = DiagonalKernel(np.array([1.0, 1.0]))
-        k2 = DiagonalKernel(np.array([4.0, 1.0]))
+        k1 = DiagonalKernel(np.array([1.0, 0.5]))   # σ high on dim 0 → low weight
+        k2 = DiagonalKernel(np.array([0.5, 0.5]))   # σ low on dim 0 → high weight
         assert k2.compute_distance(f, mu)[0] > k1.compute_distance(f, mu)[0]
 
 
@@ -190,22 +203,23 @@ class TestDiagonalKernelGradient:
         )
 
     def test_zero_weight_zeros_gradient_component(self):
-        k = DiagonalKernel(np.array([1.0, 0.0, 1.0]))
+        # σ=[0.1, 1e6, 0.1]: middle dim effectively ignored (weight ~ 1e-14)
+        k = DiagonalKernel(np.array([0.1, 1e6, 0.1]))
         f = np.array([0.5, 0.9, 0.3])
         mu = np.array([0.1, 0.1, 0.1])
         g = k.compute_gradient(f, mu)
-        assert g[1] == pytest.approx(0.0)
+        assert abs(g[1]) < 1e-10
 
     def test_gradient_scaled_by_weight(self):
-        # After w_max normalisation: g = (W / w_max) * (f - mu).
-        # w_max=3.0 → g[0]=(3/3)*1=1.0, g[1]=(1/3)*1=0.333.
-        # Reliable factor (w=3) still learns faster than noisy factor (w=1).
-        k = DiagonalKernel(np.array([3.0, 1.0]))
+        # σ=[1.0, 3.0]: W=[1.0, 1/9], max=1.0, weights=[1.0, 1/9].
+        # g = (W/w_max)*(f-mu) = [1.0, 1/9]*[1,1] = [1.0, 1/9].
+        # Reliable factor (low σ) gets full step; noisy factor gets proportionally less.
+        k = DiagonalKernel(np.array([1.0, 3.0]))
         f = np.array([1.0, 1.0])
         mu = np.array([0.0, 0.0])
         g = k.compute_gradient(f, mu)
-        assert g[0] == pytest.approx(1.0)            # w_max factor: full step
-        assert g[1] == pytest.approx(1.0 / 3.0)     # noisier factor: proportionally smaller
+        assert g[0] == pytest.approx(1.0)            # low-σ factor: full step
+        assert g[1] == pytest.approx(1.0 / 9.0)     # high-σ factor: proportionally smaller
         assert g[0] > g[1]                           # reliable still learns faster
 
     def test_gradient_output_shape(self):
@@ -240,25 +254,26 @@ class TestKernelWeightRefresh:
         return est
 
     def test_kernel_weight_refresh_updates_weights(self):
-        """refresh_weights() produces new DiagonalKernel with 1/σ² weights; original unchanged."""
+        """refresh_weights() produces new DiagonalKernel with 1/σ² normalised weights; original unchanged."""
         from gae.covariance import CovarianceEstimator
         est = self._make_estimator_with_n(d=4, n=100)
         sigma = est.get_per_factor_sigma()
         assert sigma is not None, "Expected sigma with 100 samples"
         assert sigma.shape == (4,)
 
-        original_weights = np.ones(4)
-        k_orig = DiagonalKernel(original_weights.copy())
+        original_sigma = np.ones(4)   # σ=[1,1,1,1] → weights=[1,1,1,1]
+        k_orig = DiagonalKernel(original_sigma.copy())
         k_new = k_orig.refresh_weights(sigma)
 
         # New instance returned — not the same object
         assert k_new is not k_orig
 
-        # Original weights unchanged (immutable design)
-        np.testing.assert_array_equal(k_orig.weights, original_weights)
+        # Original weights unchanged (immutable design): σ=ones → w=ones
+        np.testing.assert_array_equal(k_orig.weights, np.ones(4))
 
-        # New weights = 1 / σ², clipped at 1e-6
-        expected = 1.0 / np.maximum(sigma, 1e-6) ** 2
+        # New weights = (1/σ²) / max(1/σ²), clipped at 1e-6
+        raw_W = 1.0 / np.maximum(sigma, 1e-6) ** 2
+        expected = raw_W / raw_W.max()
         np.testing.assert_allclose(k_new.weights, expected, rtol=1e-9)
 
     def test_kernel_weight_refresh_safe_during_freeze(self):
@@ -276,9 +291,10 @@ class TestKernelWeightRefresh:
         # Centroid tensor must not change — kernel refresh only
         np.testing.assert_array_equal(scorer.mu, mu_before)
 
-        # Kernel weights must have changed (were all-ones, now 1/σ²)
+        # Kernel weights must have changed (were all-ones, now (1/σ²)/max)
         sigma = est.get_per_factor_sigma()
-        expected_weights = 1.0 / np.maximum(sigma, 1e-6) ** 2
+        raw_W = 1.0 / np.maximum(sigma, 1e-6) ** 2
+        expected_weights = raw_W / raw_W.max()
         np.testing.assert_allclose(scorer.scoring_kernel.weights, expected_weights, rtol=1e-9)
 
     def test_kernel_weight_refresh_insufficient_data(self):
@@ -359,11 +375,10 @@ class TestClaim60SigmaReductionAccuracy:
 
     def _build_scorer(self, sigma_array):
         from gae.profile_scorer import ProfileScorer
-        W = 1.0 / sigma_array ** 2
         return ProfileScorer(
             mu=self._build_mu(),
             actions=["escalate", "investigate", "suppress", "monitor"],
-            scoring_kernel=DiagonalKernel(W),
+            scoring_kernel=DiagonalKernel(sigma_array),
         )
 
     def test_sigma_reduction_improves_accuracy(self):
@@ -437,10 +452,10 @@ class TestDiagonalGradientNormalisation:
     def test_diagonal_gradient_bounded_by_eta(self):
         """
         Max step = η × max|G| must not exceed η regardless of weight magnitude.
-        SOC asset_criticality W=277.8 was the worst offender before fix.
+        σ=[0.06, 0.15] → W=[277.8, 44.4], max=277.8 — equivalent to SOC asset_criticality.
         """
         eta = 0.05
-        kernel = DiagonalKernel(np.array([277.8, 44.4]))
+        kernel = DiagonalKernel(np.array([0.06, 0.15]))  # σ → W=[277.8, 44.4]
         f  = np.array([0.9, 0.9])
         mu = np.array([0.1, 0.1])
         G = kernel.compute_gradient(f, mu)
@@ -453,17 +468,18 @@ class TestDiagonalGradientNormalisation:
     def test_diagonal_gradient_reliable_learns_faster(self):
         """
         After normalisation the gradient ratio equals the weight ratio.
-        Reliable factor (high W) gets proportionally larger gradient than noisy factor.
+        Reliable factor (low σ, high W) gets proportionally larger gradient than noisy factor.
+        σ=[0.06, 0.15] → W=[277.8, 44.4]; gradient ratio = 277.8/44.4 ≈ 6.25.
         """
-        kernel = DiagonalKernel(np.array([277.8, 44.4]))
+        kernel = DiagonalKernel(np.array([0.06, 0.15]))  # σ → W=[277.8, 44.4]
         f  = np.array([0.8, 0.8])
         mu = np.array([0.5, 0.5])
         G = kernel.compute_gradient(f, mu)
         assert G[0] > G[1], (
-            f"Reliable factor (W=277.8) gradient {G[0]:.6f} should exceed "
-            f"noisy factor (W=44.4) gradient {G[1]:.6f}"
+            f"Reliable factor (σ=0.06) gradient {G[0]:.6f} should exceed "
+            f"noisy factor (σ=0.15) gradient {G[1]:.6f}"
         )
-        expected_ratio = 277.8 / 44.4
+        expected_ratio = (1.0 / 0.06 ** 2) / (1.0 / 0.15 ** 2)   # = 6.25
         actual_ratio   = G[0] / G[1]
         assert abs(actual_ratio - expected_ratio) < 1e-6, (
             f"Gradient ratio {actual_ratio:.6f} should equal weight ratio "
@@ -479,13 +495,12 @@ class TestDiagonalGradientNormalisation:
         from gae.profile_scorer import ProfileScorer
 
         sigma = np.array([0.06, 0.07, 0.20])   # SOC-like: asset_crit, time_anomaly, pattern
-        W = 1.0 / sigma ** 2                    # [277.8, 204.1, 25.0]
 
         mu_init = np.full((1, 1, 3), 0.5)
         scorer = ProfileScorer(
             mu=mu_init,
             actions=["escalate"],
-            scoring_kernel=DiagonalKernel(W),
+            scoring_kernel=DiagonalKernel(sigma),
         )
 
         f = np.array([0.8, 0.7, 0.6])
