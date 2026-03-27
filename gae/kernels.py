@@ -149,6 +149,7 @@ class DiagonalKernel:
         W = 1.0 / sigma ** 2
         self._W_baseline_max: float = float(W.max())
         self.weights: np.ndarray = W / self._W_baseline_max
+        self.sigma: np.ndarray = sigma.copy()
 
     def compute_distance(self, f: np.ndarray, mu: np.ndarray) -> np.ndarray:
         """
@@ -205,6 +206,17 @@ class DiagonalKernel:
         """
         w_min = max(float(self.weights.min()), 1e-12)
         return float(np.sqrt(self._W_baseline_max / w_min))
+
+    @property
+    def raw_weights(self) -> np.ndarray:
+        """
+        Raw inverse-variance weights W_i = 1/σ_i² before normalization.
+        Use for cross-instance comparisons (e.g. enrichment-level
+        Fisher path: W/W_baseline.max()).
+
+        For scoring and gradient computation, use .weights (normalized).
+        """
+        return 1.0 / (self.sigma ** 2)
 
     def refresh_weights(self, sigma_per_factor: np.ndarray) -> "DiagonalKernel":
         """

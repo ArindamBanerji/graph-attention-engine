@@ -126,3 +126,19 @@ class TestDiagonalKernelSigmaWorkflow:
             f"Low-σ factor gradient should be larger. "
             f"grad[0]={grad[0]:.4f} grad[1]={grad[1]:.4f}"
         )
+
+    def test_raw_weights_are_unnormalized(self):
+        """
+        raw_weights returns W = 1/σ² before normalization.
+        Unlike .weights (max=1.0), raw_weights preserves absolute scale.
+        """
+        sigma = np.array([0.1, 0.2, 0.15, 0.25, 0.12, 0.18])
+        kernel = gae.DiagonalKernel(sigma)
+        raw = kernel.raw_weights
+
+        expected_raw_max = 1.0 / (0.1 ** 2)   # = 100.0
+        assert abs(raw.max() - expected_raw_max) < 0.01
+        assert abs(raw[0] - 100.0) < 0.01    # factor 0: 1/0.1² = 100
+        assert abs(raw[3] - 16.0) < 0.01     # factor 3: 1/0.25² = 16
+        # raw_weights must NOT be normalized to [0,1]
+        assert raw.max() > 1.0
