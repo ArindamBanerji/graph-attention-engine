@@ -273,6 +273,40 @@ class TestRecommend:
             assert "agreement_rate" in v
             assert "total" in v
 
+    def test_tiebreaker_uses_noise_ratio_when_margin_small(self):
+        # noise_ratio = 0.2/0.1 = 2.0 > 1.5 → tiebreaker picks diagonal
+        sigma = np.array([0.1, 0.2])
+        sel = KernelSelector(d=2, sigma_per_factor=sigma)
+        # margin = 0.005 (< 1pp threshold): diagonal 101/200, l2 100/200
+        sel.scores["diagonal"].total_decisions = 200
+        sel.scores["l2"].total_decisions = 200
+        sel.scores["shrinkage"].total_decisions = 200
+        sel._buffers["diagonal"] = [True] * 101 + [False] * 99
+        sel._buffers["l2"]       = [True] * 100 + [False] * 100
+        sel._buffers["shrinkage"] = [True] * 99  + [False] * 101
+        rec = sel.recommend()
+        assert rec.recommended_kernel == "diagonal", (
+            f"Tiebreaker with noise_ratio=2.0 > 1.5 should pick diagonal, "
+            f"got {rec.recommended_kernel!r}"
+        )
+
+    def test_tiebreaker_l2_when_low_noise_ratio(self):
+        # noise_ratio = 0.12/0.1 = 1.2 < 1.5 → tiebreaker picks l2
+        sigma = np.array([0.1, 0.12])
+        sel = KernelSelector(d=2, sigma_per_factor=sigma)
+        # margin = 0.005 (< 1pp threshold): diagonal 101/200, l2 100/200
+        sel.scores["diagonal"].total_decisions = 200
+        sel.scores["l2"].total_decisions = 200
+        sel.scores["shrinkage"].total_decisions = 200
+        sel._buffers["diagonal"] = [True] * 101 + [False] * 99
+        sel._buffers["l2"]       = [True] * 100 + [False] * 100
+        sel._buffers["shrinkage"] = [True] * 99  + [False] * 101
+        rec = sel.recommend()
+        assert rec.recommended_kernel == "l2", (
+            f"Tiebreaker with noise_ratio=1.2 < 1.5 should pick l2, "
+            f"got {rec.recommended_kernel!r}"
+        )
+
 
 # ------------------------------------------------------------------ #
 # get_comparison_summary                                              #

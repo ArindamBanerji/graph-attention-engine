@@ -333,6 +333,11 @@ class KernelSelector:
         runner_up = max(others, key=_rolling_rate)
         margin = _rolling_rate(best_name) - _rolling_rate(runner_up)
 
+        # Tiebreaker: margin < 1pp → fall back to Phase 2 noise_ratio rule
+        if margin < 0.01:
+            noise_ratio = float(self.sigma.max() / max(float(self.sigma.min()), 0.001))
+            best_name = "diagonal" if noise_ratio > 1.5 else "l2"
+
         reason = (
             f"{best_name} had highest rolling agreement: "
             f"{_rolling_rate(best_name):.1%} "
