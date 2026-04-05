@@ -24,6 +24,11 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from gae.calibration import CalibrationProfile
 
+# V-STABILITY F=8.14 — η change-rate cap (UNCONDITIONAL).
+# No single η × gradient step may move any centroid coordinate by more than
+# ±MAX_ETA_DELTA, regardless of η value or gradient magnitude.
+MAX_ETA_DELTA: float = 0.005
+
 
 @dataclass
 class CentroidUpdate:
@@ -680,6 +685,7 @@ class ProfileScorer:
             delta_vector = eta_eff * self._compute_gradient(f, self.mu[c, a, :])
             if self.factor_mask is not None:
                 delta_vector = delta_vector * self.factor_mask
+            delta_vector = np.clip(delta_vector, -MAX_ETA_DELTA, MAX_ETA_DELTA)  # V-STABILITY F=8.14
             centroid_delta_norm = float(np.linalg.norm(delta_vector))
             self.mu[c, a, :] += delta_vector
         else:
@@ -701,6 +707,7 @@ class ProfileScorer:
                 delta_vector = -push_rate * self._compute_gradient(f, self.mu[c, a, :])
                 if self.factor_mask is not None:
                     delta_vector = delta_vector * self.factor_mask
+                delta_vector = np.clip(delta_vector, -MAX_ETA_DELTA, MAX_ETA_DELTA)  # V-STABILITY F=8.14
                 centroid_delta_norm = float(np.linalg.norm(delta_vector))
                 self.mu[c, a, :] += delta_vector
             else:
@@ -709,12 +716,14 @@ class ProfileScorer:
                 delta_vector = -push_rate * self._compute_gradient(f, self.mu[c, a, :])
                 if self.factor_mask is not None:
                     delta_vector = delta_vector * self.factor_mask
+                delta_vector = np.clip(delta_vector, -MAX_ETA_DELTA, MAX_ETA_DELTA)  # V-STABILITY F=8.14
                 centroid_delta_norm = float(np.linalg.norm(delta_vector))
                 self.mu[c, a, :] += delta_vector
                 # Pull ground-truth centroid toward f
                 gt_delta_vector = pull_rate * self._compute_gradient(f, self.mu[c, gt, :])
                 if self.factor_mask is not None:
                     gt_delta_vector = gt_delta_vector * self.factor_mask
+                gt_delta_vector = np.clip(gt_delta_vector, -MAX_ETA_DELTA, MAX_ETA_DELTA)  # V-STABILITY F=8.14
                 gt_delta_norm = float(np.linalg.norm(gt_delta_vector))
                 self.mu[c, gt, :] += gt_delta_vector
 
