@@ -132,12 +132,29 @@ from gae.learning import (
 
 # ── Convergence ──────────────────────────────────────────────────────
 from gae.convergence import get_convergence_metrics
+from gae.convergence import (
+    centroid_distance_to_canonical,
+    gamma_threshold,
+    phase2_effective_threshold,
+    ConvergenceTrace,
+)
 
 # ── Monitoring (observability only — no gating side-effects) ─────────
 from gae.convergence import (
     ConservationMonitor,
     OLSMonitor,
     VarQMonitor,
+)
+
+# ── Oracle separation / EXP-G1 experiment framework ──────────────────
+from gae.synthetic import (
+    FactorVectorSample,
+    FactorVectorSampler,
+    CanonicalCentroid,
+    OracleSeparationExperiment,
+    GammaResult,
+    Phase1Result,
+    Phase2Result,
 )
 
 # ── Infrastructure — events, contracts, factors ──────────────────────
@@ -205,6 +222,18 @@ __all__ = [
     "WeightUpdate",
     # Convergence
     "get_convergence_metrics",
+    "centroid_distance_to_canonical",
+    "gamma_threshold",
+    "phase2_effective_threshold",
+    "ConvergenceTrace",
+    # Oracle separation / EXP-G1 experiment framework
+    "FactorVectorSample",
+    "FactorVectorSampler",
+    "CanonicalCentroid",
+    "OracleSeparationExperiment",
+    "GammaResult",
+    "Phase1Result",
+    "Phase2Result",
     # Monitoring (observability only — no gating side-effects)
     "ConservationMonitor",
     "OLSMonitor",

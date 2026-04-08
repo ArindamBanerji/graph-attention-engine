@@ -675,3 +675,46 @@ class TestVarQMonitor:
         assert monitor._q_baseline is not None, (
             "Expected _q_baseline set after 10th override observation"
         )
+
+
+# ── EXP-G1 convergence primitives (April 2026) ───────────────────────
+
+def test_centroid_distance_zero_for_identical():
+    """Distance from tensor to itself is 0."""
+    import numpy as np
+    from gae.convergence import centroid_distance_to_canonical
+    mu = np.full((6, 4, 6), 0.5)
+    assert centroid_distance_to_canonical(mu, mu) == 0.0
+
+
+def test_gamma_threshold_production_values():
+    """Production values yield threshold ≈ 0.128."""
+    from gae.convergence import gamma_threshold
+    threshold = gamma_threshold(
+        alpha_cat=2 / 6, delta_norm=0.25, theta=0.85
+    )
+    assert abs(threshold - 0.128) < 0.005
+
+
+def test_phase2_effective_threshold_production():
+    """Phase 2 effective threshold ≈ 0.55 for alpha_cat=1/3."""
+    from gae.convergence import phase2_effective_threshold
+    p_d_star = phase2_effective_threshold(alpha_cat=1 / 3, theta=0.85)
+    assert abs(p_d_star - 0.55) < 0.05
+
+
+def test_convergence_trace_n_half_gap():
+    """ConvergenceTrace stores n_half_gap correctly."""
+    from gae.convergence import ConvergenceTrace
+    trace = ConvergenceTrace(
+        centroid_distances=[3.0, 2.9, 2.8],
+        rolling_accuracy=[0.70, 0.82, 0.87],
+        n_half=3,
+        centroid_converged_at=None,
+        n_half_gap=True,
+        phase="phase1",
+        epsilon_firm=0.05,
+    )
+    assert trace.n_half_gap is True
+    assert trace.summary()["phase"] == "phase1"
+    assert trace.summary()["n_half"] == 3
