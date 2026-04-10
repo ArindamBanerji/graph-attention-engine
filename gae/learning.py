@@ -547,6 +547,9 @@ class LearningState:
         )
 
         rng = np.random.default_rng()
+        # Floor init_scale so new column cannot be immediately pruned by
+        # _prune_provisional_dimensions (theta_prune=0.01).
+        init_scale = max(init_scale, 0.02)
         new_column = rng.standard_normal((self.n_actions, 1)) * init_scale
         self.W = np.hstack([self.W, new_column])
 
