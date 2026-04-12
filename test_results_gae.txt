@@ -1,0 +1,185 @@
+........................................................................ [ 13%]
+........................................................................ [ 26%]
+........................................................................ [ 40%]
+.................F...................................................... [ 53%]
+........................................................................ [ 67%]
+........................................................................ [ 80%]
+........................................................................ [ 94%]
+................................                                         [100%]
+================================== FAILURES ===================================
+___________ TestEdgeCases.test_update_after_expand_preserves_shapes ___________
+
+self = <tests.test_generic_domains.TestEdgeCases object at 0x00000164C9333B50>
+
+    def test_update_after_expand_preserves_shapes(self):
+        """update() after expand_weight_matrix keeps W shape consistent."""
+        state = _make_state(2, 3, seed=72)
+        state.expand_weight_matrix("new_factor")
+    
+        f = np.clip(_rng(72).random((1, 4)), 0.0, 1.0)
+        u = state.update(0, "action_0", +1, f)
+    
+>       assert state.W.shape == (2, 4)
+E       assert (2, 3) == (2, 4)
+E         
+E         At index 1 diff: 3 != 4
+E         Use -v to get more diff
+
+tests\test_generic_domains.py:478: AssertionError
+============================== warnings summary ===============================
+..\..\..\proj-envs\python_expts_venv\Lib\site-packages\pytest_freezegun.py:17: 1072 warnings
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\proj-envs\python_expts_venv\Lib\site-packages\pytest_freezegun.py:17: DeprecationWarning: distutils Version classes are deprecated. Use packaging.version instead.
+    if LooseVersion(pytest.__version__) < LooseVersion('3.6.0'):
+
+tests/test_calibration.py::test_score_entity_uses_profile_temperature
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_calibration.py:134: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result_sharp = score_entity(F1x3, W2x3, ACTIONS, profile=profile_sharp)
+
+tests/test_calibration.py::test_score_entity_uses_profile_temperature
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_calibration.py:135: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result_soft = score_entity(F1x3, W2x3, ACTIONS, profile=profile_soft)
+
+tests/test_generic_domains.py::TestMultiDomainScoring::test_supply_chain_po_scoring
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:116: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f_s2p, W_s2p, actions_s2p, tau=0.3)
+
+tests/test_generic_domains.py::TestMultiDomainScoring::test_financial_compliance_scoring
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:131: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f_fin, W_fin, actions_fin, tau=0.2)
+
+tests/test_generic_domains.py::TestMultiDomainScoring::test_healthcare_triage_scoring
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:144: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f_health, W_health, actions_health, tau=0.25)
+
+tests/test_generic_domains.py::TestMultiDomainScoring::test_logistics_routing_scoring
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:157: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f_log, W_log, actions_log, tau=0.3)
+
+tests/test_generic_domains.py::TestMultiDomainScoring::test_factor_vector_r4_preserved_after_scoring
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:170: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f, W, ["a", "b", "c"], tau=0.25)
+
+tests/test_generic_domains.py::TestEdgeCases::test_single_factor_scoring
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:371: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f, W, ["yes", "no"], tau=0.25)
+
+tests/test_generic_domains.py::TestEdgeCases::test_single_action_always_selected_probability_one
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:379: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f, W, ["only_option"], tau=0.25)
+
+tests/test_generic_domains.py::TestEdgeCases::test_large_scale_20_factors_10_actions
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:391: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f, W, actions, tau=0.25)
+
+tests/test_generic_domains.py::TestEdgeCases::test_zero_factor_vector_no_nan
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:403: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f, W, ["a", "b", "c"], tau=0.25)
+
+tests/test_generic_domains.py::TestEdgeCases::test_all_ones_factor_vector_valid_probabilities
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:414: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f, W, ["a", "b", "c"], tau=0.25)
+
+tests/test_generic_domains.py::TestEdgeCases::test_zero_weight_matrix_uniform_distribution
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:425: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f, W, actions, tau=0.25)
+
+tests/test_generic_domains.py::TestEdgeCases::test_low_temperature_sharpens_distribution
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:436: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result_sharp = score_entity(f, W, ["a", "b", "c"], tau=0.01)
+
+tests/test_generic_domains.py::TestEdgeCases::test_low_temperature_sharpens_distribution
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:437: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result_flat = score_entity(f, W, ["a", "b", "c"], tau=10.0)
+
+tests/test_generic_domains.py::TestEdgeCases::test_expand_then_score_works
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:466: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f_new, state.W, ["a", "b", "c"], tau=0.25)
+
+tests/test_generic_domains.py::TestFactorComputerProtocol::test_factor_vector_fed_directly_into_score_entity
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_generic_domains.py:697: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    result = score_entity(f, W, actions, tau=0.25)
+
+tests/test_scoring.py::TestScoreAlert::test_returns_scoring_result
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:27: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS)
+
+tests/test_scoring.py::TestScoreAlert::test_selects_fp_close_for_travel_pattern
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:31: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS, tau=0.25)
+
+tests/test_scoring.py::TestScoreAlert::test_probabilities_sum_to_one
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:35: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS)
+
+tests/test_scoring.py::TestScoreAlert::test_probabilities_shape
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:41: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS)
+
+tests/test_scoring.py::TestScoreAlert::test_raw_scores_shape
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:45: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS)
+
+tests/test_scoring.py::TestScoreAlert::test_factor_vector_preserved_r4
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:50: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS)
+
+tests/test_scoring.py::TestScoreAlert::test_confidence_equals_max_probability
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:54: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS)
+
+tests/test_scoring.py::TestScoreAlert::test_temperature_stored
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:58: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS, tau=0.5)
+
+tests/test_scoring.py::TestScoreAlert::test_probabilities_all_positive
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:62: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS)
+
+tests/test_scoring.py::TestTemperature::test_lower_tau_gives_higher_confidence
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:70: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r_sharp = score_alert(F_TRAVEL, W4x6, ACTIONS, tau=0.1)
+
+tests/test_scoring.py::TestTemperature::test_lower_tau_gives_higher_confidence
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:71: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r_flat = score_alert(F_TRAVEL, W4x6, ACTIONS, tau=1.0)
+
+tests/test_scoring.py::TestTemperature::test_tau_one_matches_standard_softmax
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:76: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(F_TRAVEL, W4x6, ACTIONS, tau=1.0)
+
+tests/test_scoring.py::TestTemperature::test_zero_tau_raises
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:81: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    score_alert(F_TRAVEL, W4x6, ACTIONS, tau=0.0)
+
+tests/test_scoring.py::TestTemperature::test_negative_tau_raises
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:85: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    score_alert(F_TRAVEL, W4x6, ACTIONS, tau=-0.1)
+
+tests/test_scoring.py::TestShapeGuards::test_1d_f_raises
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:93: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    score_alert(np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5]), W4x6, ACTIONS)
+
+tests/test_scoring.py::TestShapeGuards::test_wrong_n_factors_raises
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:98: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    score_alert(F_TRAVEL, W_bad, ACTIONS)
+
+tests/test_scoring.py::TestShapeGuards::test_wrong_n_actions_raises
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:102: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    score_alert(F_TRAVEL, W4x6, ACTIONS[:-1])  # 3 actions, W has 4
+
+tests/test_scoring.py::TestShapeGuards::test_non_array_f_raises
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:106: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    score_alert([[0.9, 0.3, 0.1, 0.2, 0.8, 0.7]], W4x6, ACTIONS)  # type: ignore
+
+tests/test_scoring.py::TestShapeGuards::test_non_array_W_raises
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:110: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    score_alert(F_TRAVEL, W4x6.tolist(), ACTIONS)  # type: ignore
+
+tests/test_scoring.py::test_task_verification_smoke
+  C:\Users\baner\CopyFolder\IoT_thoughts\python-projects\kaggle_experiments\claude_projects\graph-attention-engine-v50\tests\test_scoring.py:125: DeprecationWarning: score_entity() is deprecated. Use ProfileScorer.score() instead. score_entity() will be removed in a future release (TD-029).
+    r = score_alert(f, W, actions, tau=0.25)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_generic_domains.py::TestEdgeCases::test_update_after_expand_preserves_shapes
+1 failed, 535 passed, 1109 warnings in 1.86s

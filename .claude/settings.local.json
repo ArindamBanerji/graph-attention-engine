@@ -3,7 +3,16 @@
     "allow": [
       "WebFetch(domain:www.dakshineshwari.net)",
       "Bash(pip install:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(cd \"C:/Users/baner/CopyFolder/IoT_thoughts/python-projects/kaggle_experiments/claude_projects/graph-attention-engine-v50\" && python -m pytest tests/ --collect-only -q 2>&1 | grep \"::\" | sed 's/::.*$//' | sort | uniq -c | sort -k2)",
+      "Bash(grep:*)",
+      "Bash(for i:*)",
+      "Bash(do python:*)",
+      "Bash(done)",
+      "Bash(do echo:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "code-review-graph"
+  ]
 }
