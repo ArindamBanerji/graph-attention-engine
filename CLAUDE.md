@@ -84,3 +84,30 @@ Example of CORRECT: "Assuming property 'id'. Verifying: grep shows 'alert_id'. U
 - Pure numpy. No database. No network. Permanent.
 - ProfileScorer is THE scorer. No alternative scoring paths.
 - DomainConfig defines tensor shape. refer_to_analyst NOT a scorable action (A=4 SOC).
+
+### No Silent Failure on Displayed Metrics
+- If a try/except computes a NUMBER shown in the UI: the except block
+  must set a flag (estimated=True, source="fallback") — never bare pass
+- If a try/except computes OPTIONAL enrichment: bare pass is acceptable
+- NEVER hardcode a number that looks like a computed metric (0.89, 23, 127)
+  without a comment explaining why it's a constant and not computed
+- The test: if the graph is empty, does the UI show zeros or plausible-looking
+  fake numbers? If fake numbers: it's a mockup, not a fallback.
+
+### AGE Is Not Neo4j — Three Critical Differences
+
+1. **SET n = {props} WIPES all other properties**
+   - NEVER: `SET d = {category: 'x'}` — destroys every other property
+   - ALWAYS: `SET d.category = 'x'` — preserves all other properties
+   - SAFE for bulk: `SET d += {a: 1, b: 2}` — merges, preserves existing
+   - AGEClient rejects the destructive form with ValueError
+
+2. **Concurrent writes to the same node fail**
+   - "Entity failed to be updated: 3" = PostgreSQL row lock conflict
+   - AGEClient retries with jitter (3 attempts, 100-250ms backoff)
+   - Avoid concurrent writes to the same node when possible
+
+3. **Decision nodes must be created atomically with their edge**
+   - ALWAYS: `MATCH (a:Alert) CREATE (d:Decision {...})-[:DECIDED_ON]->(a)`
+   - NEVER: CREATE Decision as one query, then edge as a second
+   - If MATCH finds no Alert, no Decision is created (proven atomic)
