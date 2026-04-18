@@ -253,6 +253,7 @@ class ProfileScorer:
         # Per-(category, action) observation counts for learning rate decay
         self.counts = np.zeros((self.n_categories, self.n_actions), dtype=np.int64)
         self._frozen: bool = False
+        self._eta_override_warned: bool = False
         assert self.counts.shape == (self.n_categories, self.n_actions), (
             f"counts shape {self.counts.shape} != ({self.n_categories}, {self.n_actions})"
         )
@@ -278,6 +279,27 @@ class ProfileScorer:
             )
             # Per-category covariance inverses — None until set_covariance() called
             self._cov_inv: Optional[np.ndarray] = None
+
+    @classmethod
+    def for_soc(cls, mu, actions=None, **kwargs):
+        """
+        Factory: ProfileScorer with SOC-validated defaults.
+
+        Sets eta_override=0.01 (P0 fix), auto_pause_on_amber=True,
+        and SOC canonical actions if not provided.
+
+        Usage:
+            scorer = ProfileScorer.for_soc(mu=centroids)
+        """
+        if actions is None:
+            actions = ["escalate", "investigate", "suppress", "monitor"]
+        return cls(
+            mu=mu,
+            actions=actions,
+            eta_override=kwargs.pop('eta_override', 0.01),
+            auto_pause_on_amber=kwargs.pop('auto_pause_on_amber', True),
+            **kwargs,
+        )
 
     # ------------------------------------------------------------------ #
     # Scoring                                                             #
@@ -306,6 +328,12 @@ class ProfileScorer:
         assert f.shape == (self.n_factors,), (
             f"f.shape={f.shape} must be ({self.n_factors},)"
         )
+        if not np.all(np.isfinite(f)):
+            raise ValueError("Factor vector contains NaN or Inf values")
+        if self.tau <= 0:
+            raise ValueError(
+                f"Temperature tau must be positive, got {self.tau}"
+            )
 
         mu_c = self.mu[category_index]  # shape (n_actions, n_factors)
         assert mu_c.shape == (self.n_actions, self.n_factors), (
@@ -622,6 +650,12 @@ class ProfileScorer:
         assert f.shape == (self.n_factors,), (
             f"f.shape={f.shape} must be ({self.n_factors},)"
         )
+        if not np.all(np.isfinite(f)):
+            raise ValueError("Factor vector contains NaN or Inf values")
+        if self.tau <= 0:
+            raise ValueError(
+                f"Temperature tau must be positive, got {self.tau}"
+            )
         c = category_index
         a = action_index
 
@@ -670,6 +704,21 @@ class ProfileScorer:
         count = self.counts[c, a]
         eta_eff     = self.eta     / (1.0 + self.decay * count)
         eta_neg_eff = self.eta_neg / (1.0 + self.decay * count)
+
+        if (self.eta_override is None
+                and self.eta != self.eta_neg
+                and not getattr(self, '_eta_override_warned', False)):
+            warnings.warn(
+                "ProfileScorer constructed with eta_override=None and "
+                f"asymmetric rates (eta={self.eta}, eta_neg={self.eta_neg}). "
+                "On future override calls, the override path will use "
+                "eta_neg, not the validated P0 attenuation. "
+                "Pass eta_override=0.01 (SOC default) or "
+                "call compute_eta_override() for your domain.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._eta_override_warned = True
 
         # Asymmetric η (Q5 validated): override path uses attenuated rate
         # for both push-away and GT-pull. None = backward compatible.

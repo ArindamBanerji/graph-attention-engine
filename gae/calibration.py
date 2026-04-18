@@ -154,31 +154,29 @@ def derive_theta_min(
     t_max_days: float = 21.0,
 ) -> float:
     """
-    Minimum conservation law signal for centroid convergence.
+    Conservation law floor: minimum daily correct-correction
+    signal required to deliver one effective learning half-life
+    within T_max calendar days.
 
-    θ_min = η × N_half² / T_max
+    θ_min = η × N_half² / T_max_days
 
-    Ensures enough verified decisions flow through the system for
-    centroids to track within the convergence half-life.
+    This is a convergence budget threshold, not a rate or flux.
 
-    SOC default: 0.05 × 14² / 21 ≈ 0.467 (T_max=21 days canonical).
-    S2P default: 0.05 × 14² / 26 ≈ 0.377 (longer cycle).
+    At η=0.05, N_half=14, T_max=21: θ_min ≈ 0.467 (SOC default).
+    At η=0.05, N_half=14, T_max=28: θ_min ≈ 0.350 (S2P default —
+    longer acceptable convergence due to 5:1 vs 20:1 penalty ratio).
 
-    Reference: research_note_v3; N_half from math_synopsis_v9 §5.
+    NOTE (April 16, 2026 — three-judge consensus): The previously
+    documented formula θ_min = 23.53/(α×V) was structurally
+    incorrect — it double-counted α and V which already appear on
+    the LHS of the conservation inequality α·q·V ≥ θ_min. The
+    correct form is this function's existing implementation: a
+    constant derived from convergence requirements, not a
+    deployment-scaled formula.
 
-    Parameters
-    ----------
-    eta : float
-        Learning rate.
-    n_half : float
-        Convergence half-life in decisions.
-    t_max_days : float
-        Maximum acceptable convergence time in days.
-
-    Returns
-    -------
-    float
-        θ_min threshold.
+    V=50 deployments are feasible: at α=0.25, q=0.85,
+    α·q·V = 10.6 >> 0.467. The "V=50 impossible" language in
+    earlier documentation was incorrect.
     """
     assert t_max_days > 0, f"t_max_days must be positive, got {t_max_days}"
     return float(eta * n_half ** 2 / t_max_days)
@@ -358,16 +356,33 @@ def compute_eta_override(
     mean_quality: float = 0.75,
     quality_variance: float = 0.03,
     safety_margin: float = 0.5,
+    worst_case_quality: Optional[float] = None,
 ) -> float:
     """
-    Compute optimal override learning rate from analyst quality distribution.
+    Principled η_override from override-signal SNR scaling.
 
-    Derived from signal-to-noise optimization:
-        η_override* ∝ (2q̄−1) / (2σ²_q + (2q̄−1))
+    PRIMARY FORMULA (worst-case calibration — RECOMMENDED):
+        η_override = η_confirm × (2 · q̄_worst − 1)
 
-    Theoretical prediction validated against Q5 sweep on 9 personas.
-    Formula matches the empirical optimum within one sweep step.
-    Empirical default: 0.01 (captures 80%+ of gain across all personas).
+    where q̄_worst is the worst-case analyst quality (5th percentile
+    or stress-test minimum). This bounds centroid degradation across
+    the full quality range.
+
+    For SOC (q̄_worst=0.60 from 24-persona V-Q5 validation):
+        η_override = 0.05 × (2·0.60 − 1) = 0.05 × 0.20 = 0.01
+
+    The ratio η_override/η_confirm = 2q̄−1 is the signal-to-noise
+    scaling for the override learning channel. Derivation: Gemini
+    (April 16, 2026 math poll), confirmed by Grok.
+
+    DIAGNOSTIC FORMULA (mean + variance — for comparison only):
+        η_override* ∝ (2q̄ − 1) / (2σ²_q + signal)
+
+    Returns worst-case calibration if worst_case_quality provided,
+    otherwise falls back to the diagnostic formula.
+
+    Three-judge consensus April 16, 2026: worst-case calibration
+    is the safety choice.
 
     Parameters
     ----------
@@ -379,14 +394,24 @@ def compute_eta_override(
         Variance of analyst quality distribution.
     safety_margin : float
         Conservative multiplier (0.5 recommended by Q5 sweep).
+    worst_case_quality : float, optional
+        Worst-case analyst quality (5th percentile or stress-test minimum).
+        When provided, uses the primary formula and ignores other params.
 
     Returns
     -------
     float
-        Recommended η_override value. Floored at 0.005 when signal ≤ 0.
+        η_override value.
+        - worst_case_quality path: η_confirm × max(0, 2q̄-1).
+          Returns 0.0 at q̄ ≤ 0.5 (learning disabled).
+        - diagnostic path (worst_case_quality=None):
+          Floored at 0.005 when signal ≤ 0.
 
     Source: Q5 sweep (9 personas × 6 η values), roadmap session formula.
+    Three-judge consensus April 16, 2026.
     """
+    if worst_case_quality is not None:
+        return float(eta_confirm * max(0.0, 2.0 * worst_case_quality - 1.0))
     signal = 2.0 * mean_quality - 1.0
     noise = 2.0 * quality_variance
     if signal <= 0:

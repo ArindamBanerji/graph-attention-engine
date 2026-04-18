@@ -1,22 +1,24 @@
-# Graph Attention Engine — Design & Architecture v10
+# Graph Attention Engine — Design & Architecture v10.4
 
-**Date:** March 21, 2026
-**Version:** 10.1 (v10 + ReferralEngine protocol + OverrideDetector stub; 478 tests)
-**Status:** v6.0 KERNEL ARCHITECTURE SETTLED. DiagonalKernel validated (+13pp SOC, +7pp S2P). ReferralRules architecture validated (72.7% DR, 12% FPR). ShrinkageKernel deprioritized to v7.0.
+**Date:** April 8, 2026
+**Version:** 10.6 (v10.5 + gae/experiments/ module spec §10.15: reproducibility scripts + domain examples + oracle separation demos; Block 3.2 concrete; 527 tests current)
+**Authority:** claims_registry_v10.0 · MAP v5.20
+**Status:** Phase 0 ✅ Phase 1 ✅ Phase 2 ✅ Phase 3 Priority 1 ✅. Loom demo v1 unblocked. DiagonalKernel validated (+13pp SOC, +7pp S2P). W2 flywheel validated (CLAIM-W2: +10.13pp, p=0.0002). Flywheel Health Monitor validated (CLAIM-OLS-01: 0% miss, p90≥50d). ReferralRules architecture validated (72.7% DR, 12% FPR). ShrinkageKernel deprioritized to v7.0.
 **Repository:** graph-attention-engine (standalone, numpy-only, Apache 2.0)
 **Scope:**
 - v4.1 (Tiers 1-3 foundation)
 - v4.5 (CalibrationProfile, per-factor decay)
 - **v5.0 COMPLETE** (ProfileScorer + OracleProvider + Evaluation + Judgment + Ablation + Users Guide)
-- **v6.0 IN PROGRESS** (Kernel framework + CovarianceEstimator + KernelSelector + asymmetric η + AMBER auto-pause + ReferralEngine — 478 tests)
-- v6.5 (GainScheduler, Fisher calendar, enforcement mode)
+- **v6.0 COMPLETE** (Kernel framework + CovarianceEstimator + KernelSelector + asymmetric η + AMBER auto-pause + ReferralEngine + OLSMonitor + enrichment_advisor — 517 tests)
+  - **v0.7.18-v0.7.20**: KERNELSEL-001 tiebreaker + raw_weights fix + Block 9.1-9.5 (CLAIM-66-70) — 527 tests
+- v6.5 (GainScheduler, Fisher calendar, enforcement mode, OverrideDetector activation)
 - v7.0 (Level 2: GraphAttentionBridge + ShrinkageKernel investigation)
 - v8.0 (Level 3: Cross-Domain Discovery)
 
 **Companion repos:**
-- ci-platform (73 tests — connectors, onboarding, deployment qualification, entity resolution, PII redaction, SAML — Apache 2.0)
-- soc-copilot (252 tests — SOC domain expertise, frozen ROI, hooks, shadow mode — proprietary)
-- cross-graph-experiments (~100 experiments: bridge, validation, OP/synthesis, persona sweeps, factorial kernel studies)
+- ci-platform (93 tests — connectors, onboarding, deployment qualification, entity resolution, PII redaction, SAML — Apache 2.0)
+- soc-copilot (288 tests — SOC domain expertise, frozen ROI, hooks, shadow mode, PatternHistoryFactorComputer — proprietary)
+- cross-graph-experiments (~130 experiments: bridge, validation, OP/synthesis, persona sweeps, factorial kernel studies, Phase 1 closure)
 
 **Supersedes:** gae_design_v9, v9.1 + all prior versions.
 
@@ -36,6 +38,26 @@
 > (10) **Test count updated.** 187 (v4.1) → 211 (v5.0-alpha: Phase 1) → 235 (v5.0 Phase 6 GAE) → **243 (v5.0 TAGGED, post-SOC fixes).**
 > (11) **Realistic accuracy numbers integrated.** math_synopsis_v6 50-seed validated numbers now present alongside synthetic numbers. Both are correct and serve different purposes.
 >
+> **Changes from v10.1 → v10.2 (March 25, 2026 — Phase 1 closure):**
+>
+> (29) **Header updated.** 478→517 tests. ci-platform 73→93. soc-copilot 252→288. Experiments ~100→~130. v6.0 marked COMPLETE.
+>
+> (30) **§9.5 DiagonalKernel gradient corrected (CRITICAL).** GAE-GRADIENT-001 bug fixed in v0.7.7: DiagonalKernel gradient was `W*(f-mu)`. Correct formula is `W/W.max()*(f-mu)`. The unnormalized gradient caused W to dominate in magnitude rather than direction, corrupting the learning signal under high-W factors. This was the root cause of the V-ENRICHMENT-NEGATIVE false UNSAFE result at GAE <0.7.7. §10.8 DiagonalKernel.compute_gradient() updated to match.
+>
+> (31) **§16 Production Constraints: two additions.** DiagonalKernel gradient constraint (W/W.max()*(f-mu) only) and η_neg guard (CalibrationProfile raises ValueError on η_neg ≥ 1.0, GAE 0.7.8 fix).
+>
+> (32) **§10.1 Module Overview updated.** 478→517 tests. convergence.py annotated: OLSMonitor (CUSUM on OLS, h=5.0 OLS scale, plateau-snapshot baseline, CLAIM-OLS-01). enrichment_advisor.py added (enrichment recommendation engine, validated on 5 profiles). VarQMonitor noted (logged only — Var(q) gating: PERMANENT HARD STOP, Bernoulli mixture theorem). Test file additions listed.
+>
+> (33) **§14.2 Design Decisions: Phase 1 entries added.** DiagonalKernel gradient fix, η_neg guard, W2 flywheel (CLAIM-W2), Flywheel Health Monitor (CLAIM-OLS-01), Var(q) hard stop, convergence calendar (CLAIM-CONV-01), two-tier poisoning (CLAIM-SK-01/LP-01), enrichment safety (CLAIM-65).
+>
+> (34) **§17.1a v6.0 marked COMPLETE.** Test progression extended to 517. Phase 1 session additions documented.
+>
+> (35) **§17.2 v6.0 open-source release items updated.** OLSMonitor, enrichment_advisor, VarQMonitor added.
+>
+> (36) **§18 Repo structure updated.** enrichment_advisor.py added. convergence.py annotation updated with OLSMonitor. VarQMonitor added to convergence.py. Test file additions listed.
+>
+> (37) **§15.2 test count updated.** 478→517.
+
 > **Changes from v9.1 → v10 (March 21, 2026 — kernel architecture settled):**
 >
 > (15) **NEW §9.6: DiagonalKernel equation.** P(a|f,c) = softmax(−(f−μ)ᵀW(f−μ)/τ) where W=diag(1/σ²). Validated: +13.2pp SOC, +6.8pp S2P on heterogeneous noise. Corr(noise_ratio, advantage)=0.990 across 4 healthcare personas.
@@ -154,7 +176,7 @@ This parallel makes GAE legible to engineers who know transformers. Use it in RE
 
 ## 4. Experimental Foundation
 
-### 4.1 Experiment Summary (~100 total)
+### 4.1 Experiment Summary (~175 total)
 
 | Group | Count | Key Findings |
 |---|---|---|
@@ -168,6 +190,10 @@ This parallel makes GAE legible to engineers who know transformers. Use it in RE
 | V-HC-CONFIG (mask + diagonal) | 5 | Mask halves degradation but insufficient; DiagonalKernel rescues healthcare (+3.7pp) |
 | V-MV-KERNEL factorial | 360 cells | Uniform: all kernels identical. Heterogeneous: Diagonal +13.2pp SOC, +6.8pp S2P |
 | Kernel deliverables + selector fixes | ~20 | Explanation A confirmed; shrinkage adds nothing; selector needs rolling window, ~250 decisions |
+| SVM series (SVM-001 through 004b, 005) | 8 | CL-ECON-MEASURED 30.85 min/alert. CLAIM-62 +42.69pp. CLAIM-64 r=0.9669. FX-1 coverage. |
+| V-CGA-FROZEN (Batch G) + V-SHADOW-SYNTHETIC | ~15 | CLAIM-59 54.4% faster convergence p<0.0001. Third compounding pathway confirmed. |
+| Block 9 D-series + V-GATE-STABILITY | ~8 | CLAIM-66–70: per-analyst η, η cap (UNCONDITIONAL F=8.14), spike detector, category freeze, cap. |
+| **Oracle separation (γ theorem, April 2026)** | **7** | **Batch F META-4 RETIRED (identifiability). Oracle separation Exp A/v6/v8/v11/v2/v3/Final. Binary prediction confirmed (ε=0.05: γ=0.71 ε=0.20: γ=1.03>1). Theorem established (4 LLMs). N_half gap documented. EXP-G1 design finalized.** |
 
 ### 4.2 Key Validated Numbers
 
@@ -189,6 +215,13 @@ This parallel makes GAE legible to engineers who know transformers. Use it in RE
 | **Healthcare rescue** | **+3.7pp (Diagonal) vs +0.3pp (L2)** | **σ_mean=0.22, 4 analysts, 15 seeds** | **V-HC-CONFIG** |
 | **Corr(noise_ratio, advantage)** | **0.990** | **4 healthcare personas, ratio 1.6-4.6×** | **Selector fixes Ask 3** |
 | **Shrinkage vs Diagonal gap** | **<1pp (both domains)** | **Explanation A confirmed** | **Kernel deliverables D2/D3** |
+
+| **Third compounding pathway** | **54.4% faster convergence** | **p<0.0001, 26/30 seeds, 90-day simulation** | **CLAIM-59 (V-CGA-FROZEN, April 6, 2026)** |
+| **Enrichment Day-1 lift (prod config)** | **+42.69pp** | **Enriched μ₀ + DiagonalKernel, 3 profiles** | **CLAIM-62 (SVM-003b)** |
+| → enriched μ₀ initialization alone | +40.93pp | L2 kernel, N=30/profile | CLAIM-62 decomposition |
+| **Fisher info: enrichment → η_eff** | **r=0.9669 empirical=analytical** | **GAE 0.7.20 required (raw_weights)** | **CLAIM-64 (SVM-004b)** |
+| **Analyst time savings (SANS-calibrated)** | **30.85 min/alert** | **CI=[29.90,31.81], 30 personas** | **CL-ECON-MEASURED** |
+| Per-industry ROI | $523K–$2.8M/year | Healthcare/Midmarket/FinServ | CL-ECON-MEASURED |
 
 **Note on the two accuracy regimes:** The 97.89% / 98.2% numbers are centroidal synthetic (ground-truth profiles, oracle-initialized centroids). The 71.7% / 78.9% numbers are realistic (profiles estimated from domain knowledge, realistic factor distributions, 50 seeds). Both are correct — they measure different things. The centroidal numbers validate the scoring mechanism. The realistic numbers are the honest product claim. **Never mix these in the same sentence.**
 
@@ -216,9 +249,13 @@ This parallel makes GAE legible to engineers who know transformers. Use it in RE
 | Operative window λ∈[0.5, 0.6] | EXP-OP2 | Settled |
 | Checkpoint/rollback required | EXP-OP2: 35% never recover | TD-033 requirement |
 | LayerNorm required (Level 2) | V1B: 2.9M× norm explosion | Settled, permanent |
-| γ is estimated (~1.5) | Not yet measured | EXP-G1 pending |
+| **γ > 1 ANALYTICALLY PROVEN** | **Oracle separation + 4-LLM math poll (April 8, 2026). Binary simulation: ε=0.05 → γ=0.71<1 ✓; ε=0.20 → γ=1.03>1 ✓. Theorem: γ > 1 ⇔ ε_firm > ε_firm★ ≈ 0.125. Production ε_firm ∈ [0.15, 0.40]. Batch F META-4 RETIRED.** | **CC-21 Tier 2 (conditional). Settled.** |
+| centroid_distance_to_canonical as convergence metric | N_half conflates centroid convergence with vector quality. dist(t) = ‖μ(t)−GT‖_F decreases monotonically in every oracle separation experiment (all seeds, all phases). | Hard architectural rule — permanent. |
 | **Noise ceiling is kernel-dependent** | **V-B3 + V-MV-KERNEL. L2: σ≤0.157. Diagonal: σ≤0.25.** | **Settled** |
 | **Noise ceiling is three-variable** | **V-B3: corruption vector is V×(1-q̄)×η, not σ alone** | **Settled** |
+| **Third compounding pathway confirmed** | **CLAIM-59: graph enrichment independent of learning. 54.4% faster p<0.0001, 26/30 seeds.** | **Settled (April 6, 2026)** |
+| **raw_weights vs weights distinction** | **CLAIM-64: use raw_weights (true 1/σ²) for η_eff. weights (pre-normalized) for scoring. Silent footgun in v0.7.19.** | **Settled, GAE 0.7.20 required** |
+| **Innovation 10 CLOSED** | **CL-ECON-MEASURED UNCONDITIONAL: 30.85 min/alert, $523K–$2.8M/year (SVM-002b, SANS-calibrated)** | **Settled (March 26, 2026)** |
 
 ---
 
@@ -602,7 +639,10 @@ Override path (analyst changes action):
 
 Where K.gradient is kernel-aware:
   L2Kernel:       gradient = (f − μ)
-  DiagonalKernel: gradient = W · (f − μ)    — pushes harder on clean dimensions
+  DiagonalKernel: gradient = W/W.max() · (f − μ)    — normalized weights control direction, not magnitude
+                  NOTE: W/W.max() NOT W*(f-mu). GAE-GRADIENT-001 fixed in v0.7.7.
+                  W*(f-mu) was wrong: high-W factors dominated by magnitude, corrupting learning direction.
+                  W/W.max()*(f-mu): weights in [0,1], direction preserved, all factors contribute correctly.
 
 REQUIRED: all μ values clipped to [0, 1] after every update (V2 validated)
 REQUIRED: masked dimensions (factor_mask) do NOT update (gradient zeroed)
@@ -630,16 +670,26 @@ def compute_eta_override(eta_confirm=0.05, mean_quality=0.75, quality_variance=0
 
 ### 10.1 Module Overview
 
-All v5.0 modules shipped. v6.0 modules in progress. 478 tests. v0.7.0 target.
+All v5.0 modules shipped. v6.0 COMPLETE. 517 tests. v0.7.17.
 
 ```
 gae/
 ├── profile_scorer.py    ✅ ProfileScorer, ScoringResult, KernelType, CentroidUpdate (updated v6.0: kernel, factor_mask, eta_override, auto_pause)
 ├── kernels.py           ✅ NEW v6.0: ScoringKernel protocol, L2Kernel, DiagonalKernel (28 tests)
+│                            NOTE: DiagonalKernel.compute_gradient = W/W.max()*(f-mu) — see GAE-GRADIENT-001 fix
 ├── covariance.py        ✅ NEW v6.0: CovarianceEstimator, CovarianceSnapshot (23 tests) — COLLECTS only, does not score
 ├── kernel_selector.py   ✅ NEW v6.0: KernelSelector, KernelRecommendation (46 tests) — Phase 2/3/4 kernel selection
-├── referral.py          ✅ NEW v6.0: ReferralEngine, ReferralRule, ReferralDecision, OverrideDetector (31 tests) [NEW v10.1]
-├── calibration.py       ✅ CalibrationProfile + compute_factor_mask, mask_to_array, compute_eta_override, derive_theta_min, check_conservation, compute_optimal_tau, compute_breach_window, estimate_fisher_information, predict_n_half
+├── referral.py          ✅ NEW v6.0: ReferralEngine, ReferralRule, ReferralDecision, OverrideDetector (31 tests)
+├── convergence.py       ✅ v2: EPSILON=0.10, safety_factor=2.0
+│                            OLSMonitor: CUSUM on OLS, h=5.0 (OLS scale), plateau-snapshot baseline (CLAIM-OLS-01)
+│                            VarQMonitor: LOGGED ONLY — Bernoulli mixture theorem = PERMANENT HARD STOP for gating
+├── enrichment_advisor.py ✅ NEW Phase 1: enrichment recommendation engine — ranks factors by expected Day-1 gain
+│                            Validated on 5 deployment profiles. Integrates with P28 Phase 2 report.
+│                            Input: σ_profile from CovarianceEstimator. Output: factor priority ranking.
+├── calibration.py       ✅ CalibrationProfile + compute_factor_mask, mask_to_array, compute_eta_override,
+│                            derive_theta_min, check_conservation, compute_optimal_tau, compute_breach_window,
+│                            estimate_fisher_information, predict_n_half
+│                            η_neg guard: ValueError on η_neg ≥ 1.0 (v0.7.8 fix)
 ├── factors.py           ✅ FactorComputer protocol, assemble_factor_vector
 ├── learning.py          ✅ LearningState (delegates to ProfileScorer.update)
 ├── scoring.py           ⚠️ DEPRECATED — forwards to ProfileScorer (remove at v7.0)
@@ -647,7 +697,6 @@ gae/
 ├── evaluation.py        ✅ run_evaluation, EvaluationScenario, EvaluationReport (NEW v5.0)
 ├── judgment.py          ✅ compute_judgment, JudgmentResult (NEW v5.0)
 ├── ablation.py          ✅ run_ablation, AblationReport (NEW v5.0)
-├── convergence.py       ✅ Convergence checking
 ├── fisher.py            ✅ estimate_fisher_information, predict_n_half, enrichment_multiplier
 ├── contracts.py         ✅ Unchanged
 ├── primitives.py        ✅ Unchanged
@@ -921,7 +970,14 @@ class DiagonalKernel:
     """
     def __init__(self, weights: np.ndarray): ...  # shape (d,)
     def compute_distance(self, f, mu): return np.sum(self.weights * (f-mu)**2, axis=-1)
-    def compute_gradient(self, f, mu): return self.weights * (f - mu)
+    def compute_gradient(self, f, mu):
+        # GAE-GRADIENT-001 fix (v0.7.7): normalize before multiply.
+        # W/W.max() keeps weights in [0,1] — direction preserved, magnitude bounded.
+        # W*(f-mu) was WRONG: dominant weights corrupted gradient direction.
+        w_max = self.weights.max()
+        if w_max == 0:
+            return f - mu  # fallback to L2 if all weights zero
+        return (self.weights / w_max) * (f - mu)
 ```
 
 **28 tests** covering: protocol compliance, L2 distance/gradient, DiagonalKernel init/distance/gradient, unit weights = L2, binary weights = factor mask, zero weights → uniform probabilities.
@@ -1106,6 +1162,388 @@ python -c "from gae import ProfileScorer, KernelType, OracleProvider, run_evalua
 
 ---
 
+
+### 10.13 Synthetic Data Generation (`gae/synthetic.py`) — NEW v10.4
+
+> **HARD RULE: NO LLM DEPENDENCY.** `gae/synthetic.py` is pure numpy/scipy.
+> Factor vectors are generated parametrically. Correctness is labeled from centroid
+> geometry. LLM-based generation lives in cross-graph-experiments and is passed in
+> as pre-computed `List[FactorVectorSample]`. GAE never calls an LLM. Never.
+
+> **NO LLM DEPENDENCY.** `gae/synthetic.py` is pure numpy/scipy. It generates factor
+> vectors parametrically (Gaussian distributions) and labels correctness from centroid
+> distance. LLM-based factor vector generation lives in cross-graph-experiments and is
+> passed to `OracleSeparationExperiment` as pre-computed `List[FactorVectorSample]`.
+
+**Architecture rationale:** Synthetic data generation for GAE experiments lives in GAE,
+not ci-platform. The oracle separation framework works directly with centroid distances
+and OracleProvider (both already in GAE). It is useful for testing any GAE domain.
+Overnight onboarding synthetic prep (industry-calibrated alert generation for new customers)
+remains in ci-platform — that is deployment infrastructure, not math testing infrastructure.
+
+**Module responsibility:** Generate realistic factor vectors PARAMETRICALLY (no LLM)
+and oracle-label correctness from centroid geometry, for γ theorem validation, convergence
+experiments, and domain testing. The oracle separation principle: correctness comes from
+math (centroid distance to GT), never from LLM judgment. Factor vector distributions
+are specified by sigma_profile — open-source users define their own noise characteristics.
+
+```python
+# gae/synthetic.py
+
+@dataclass
+class FactorVectorSample:
+    """A single sampled factor vector with metadata."""
+    f: np.ndarray               # shape (d,) — the factor vector in [0,1]^d
+    regime: str                 # "cold_start" | "post_disruption" | "enriched"
+    sigma_per_factor: np.ndarray  # σ for each factor at time of sampling
+    generation_seed: int
+
+class FactorVectorSampler:
+    """
+    Samples realistic factor vectors PARAMETRICALLY (numpy/Gaussian) for a GAE domain.
+
+    NO LLM DEPENDENCY. This class never calls an LLM. It generates factor vectors
+    from Gaussian distributions parameterized by sigma_profile. Correctness is always
+    labeled by the oracle (centroid distance to GT), never by LLM judgment.
+
+    If you want LLM-generated factor vectors: call your LLM externally, collect the
+    output as List[FactorVectorSample], and pass it directly to OracleSeparationExperiment.
+    GAE accepts pre-computed vectors from any source.
+
+    Validated: Exp A (April 2026) confirmed parametric generation produces
+    well-differentiated regime vectors (per-factor variance 0.077–0.089,
+    regime differentiation confirmed across cold_start vs post_disruption).
+    """
+    def __init__(
+        self,
+        domain_config: DomainConfig,
+        sigma_profile: np.ndarray,     # per-factor noise standard deviations
+        regime_shift: float = 0.3,     # mean shift at disruption boundary
+        seed: Optional[int] = None,
+    ) -> None: ...
+
+class OracleSeparationExperiment:
+    """
+    Oracle separation protocol for γ theorem validation.
+    Phase 1: cold-start calibration from mu_0 toward GT_1.
+    Phase 2: post-disruption re-convergence from mu_T1 toward GT_2 = GT_1 + Δ.
+
+    CORRECTNESS IS DETERMINED BY CENTROID DISTANCE TO GT — NOT BY LLM JUDGMENT.
+    Factor vectors can come from FactorVectorSampler (parametric, numpy) or from
+    any external source (including LLM-generated, passed as pre-computed List).
+    GAE does not call LLMs. GAE does not depend on LLMs.
+
+    Validated: v8 (ε_sim=0.05 < threshold): γ=0.714 < 1 ✓
+               v3 (ε_sim=0.20 > threshold): γ=1.033 > 1 ✓
+    """
+    def __init__(
+        self,
+        scorer: ProfileScorer,
+        oracle: OracleProvider,
+        epsilon_firm: float,            # ‖μ_0 − GT_1‖ — firm-specific deviation
+        disruption_magnitude: float,    # ‖Δ‖ — shift applied to c_d categories
+        disrupted_categories: List[int],
+        window: int = 10,               # rolling window w for N_half
+        theta: float = 0.85,            # accuracy threshold θ
+    ) -> None: ...
+
+    def run_phase1(self, factor_samples: List[FactorVectorSample]) -> Phase1Result: ...
+    def run_phase2(self, factor_samples: List[FactorVectorSample],
+                   phase1_result: Phase1Result) -> Phase2Result: ...
+    def compute_gamma(self, r1: Phase1Result, r2: Phase2Result) -> GammaResult: ...
+
+@dataclass
+class GammaResult:
+    n_half_1: Optional[int]    # None if Phase 1 DNF (N_half measurement gap)
+    n_half_2: Optional[int]
+    gamma: Optional[float]     # None if either phase DNF
+    centroid_dist_phase1: List[float]  # dist(t) = ‖μ(t) − GT₁‖_F per decision
+    centroid_dist_phase2: List[float]  # dist(t) = ‖μ(t) − GT₂‖_F per decision
+    n_half_gap_detected: bool  # True if N_half fired before centroid converged
+    note: str
+
+class CanonicalCentroid:
+    """
+    Manages canonical centroids (ground truth) for oracle separation experiments.
+    Distinct from the deployed system's centroids — these are the mathematical GT
+    that the oracle uses to label correctness.
+
+    NOT the same as BACKLOG-015 centroid_distance_to_canonical (which logs
+    distance from the live deployed centroid to a pre-deployment canonical snapshot).
+    """
+    def __init__(self, domain_config: DomainConfig) -> None: ...
+
+    @classmethod
+    def from_ground_truth(cls, gt: np.ndarray) -> CanonicalCentroid: ...
+
+    def apply_disruption(self, delta: np.ndarray,
+                         categories: List[int]) -> CanonicalCentroid:
+        """Returns a new CanonicalCentroid representing GT_2 = GT_1 + Δ."""
+        ...
+```
+
+**Production integration note:** The three EXP-G1 log fields (centroid_distance_to_canonical,
+pattern_history_value, alert_category_distribution) are logged in ci-platform's triage path —
+not in `gae/synthetic.py`. `gae/synthetic.py` is for experiment design, not production logging.
+
+**LLM boundary (hard rule):** `gae/synthetic.py` never calls an LLM. Never imports an LLM
+client library. Never requires an API key. The oracle separation experiments in
+cross-graph-experiments that used LLMs passed the LLM output (factor vectors) to the
+oracle separation framework as pre-computed numpy arrays. That pattern is the contract:
+LLM output goes IN as data; GAE does the math.
+
+**Tests:** ≥5 tests covering: OracleSeparationExperiment produces γ<1 below threshold;
+γ>1 above threshold; GammaResult.n_half_gap_detected fires when N_half crosses θ before
+centroid has converged 80% of D(μ_0, GT); FactorVectorSampler variance within spec;
+CanonicalCentroid.apply_disruption matches ‖Δ‖ exactly.
+
+---
+
+### 10.14 Convergence Analysis (`gae/convergence.py`) — NEW v10.4
+
+**Module responsibility:** Model-independent convergence metrics for production deployment
+monitoring and EXP-G1 measurement. Separates centroid convergence from N_half accuracy
+threshold crossing.
+
+```python
+# gae/convergence.py
+
+def centroid_distance_to_canonical(
+    mu: np.ndarray,
+    canonical: np.ndarray,
+) -> float:
+    """
+    Frobenius distance between the current centroid tensor and the canonical (GT) snapshot.
+    The model-independent convergence signal: decreases monotonically under production
+    learning dynamics regardless of seed or factor vector quality.
+
+    Replaces N_half as the primary γ measurement metric.
+    Simulation finding (April 2026): N_half variance 27× (γ=13.4 vs γ=0.48) at 3 seeds
+    vs centroid distance decreasing monotonically in every seed, every phase.
+
+    Args:
+        mu:        Current centroid tensor, shape (C, A, d)
+        canonical: Canonical (ground truth) centroid, shape (C, A, d)
+    Returns:
+        float: ‖mu − canonical‖_F  (Frobenius norm)
+    """
+    return float(np.linalg.norm(mu.flatten() - canonical.flatten()))
+
+def gamma_threshold(
+    alpha_cat: float,
+    delta_norm: float,
+    theta: float = 0.85,
+) -> float:
+    """
+    Computes the ε_firm threshold below which γ ≤ 1 (theorem).
+    Production values: alpha_cat=2/6≈0.33, delta_norm≈0.25, theta=0.85 → 0.128.
+
+    Args:
+        alpha_cat:  Fraction of alert categories disrupted (c_d / C)
+        delta_norm: Disruption magnitude ‖Δ‖
+        theta:      Operational accuracy threshold (default 0.85)
+    Returns:
+        float: ε_firm★ — the threshold
+    """
+    return alpha_cat * delta_norm * theta / (theta - (1 - alpha_cat))
+
+def phase2_effective_threshold(
+    alpha_cat: float,
+    theta: float = 0.85,
+) -> float:
+    """
+    The effective accuracy required from disrupted categories for rolling-window
+    to declare Phase 2 complete. p_d★ = (θ - (1 - α_cat)) / α_cat ≈ 0.55.
+    Explains why Phase 2 is shorter than Phase 1: undisrupted categories carry
+    the rolling window, reducing the effective target for disrupted categories.
+
+    Args:
+        alpha_cat:  Fraction of alert categories disrupted
+        theta:      Operational accuracy threshold (default 0.85)
+    Returns:
+        float: p_d★ — the effective disrupted-category threshold
+    """
+    return (theta - (1 - alpha_cat)) / alpha_cat
+
+@dataclass
+class ConvergenceTrace:
+    """
+    Full convergence history for a deployment or experiment phase.
+    Primary artifact of EXP-G1 and oracle separation experiments.
+    """
+    centroid_distances: List[float]  # dist(t) per verified decision
+    rolling_accuracy: List[float]    # θ-rolling accuracy per decision
+    n_half: Optional[int]            # decision count when rolling_accuracy ≥ θ
+    centroid_converged_at: Optional[int]  # decision count when dist plateau
+    n_half_gap: bool  # True if n_half fired before centroid plateau
+    phase: str        # "phase1" | "phase2"
+    epsilon_firm: Optional[float]
+```
+
+**Re-Convergence Theorem (formal statement for this module):**
+
+```
+Theorem (April 8, 2026): γ = N_half,1 / N_half,2 > 1 if and only if
+
+    ε_firm > γ_threshold(α_cat, ‖Δ‖, θ) ≈ 0.128
+
+Conditions:
+  (1) Category-sparse disruption: c_d/C ≈ 0.33
+  (2) Warm-started centroids: μ_T1 ≈ GT_1 at Phase 2 start
+  (3) ε_firm = ‖μ_0 − GT_1‖ > 0.128
+
+Three proof paths: Geometric | Dimensional | η₋ trap avoidance.
+Confirmed: GPT-4.1, Claude Opus 4, Grok 3, Gemini (April 8, 2026).
+Simulation: binary prediction correct in both directions.
+Production ε_firm ∈ [0.15, 0.40]. Every real deployment clears the threshold.
+
+Commercial claim: CC-21 (Tier 2 — conditional). EXP-G1 → Tier 1.
+Reference: math_synopsis_v13 §3.2, claims_registry_v10 §B.5.
+```
+
+**Tests:** ≥4 tests covering: gamma_threshold returns 0.128 for production values;
+phase2_effective_threshold returns ~0.55 for alpha_cat=2/6; centroid_distance_to_canonical
+is zero for identical tensors; ConvergenceTrace.n_half_gap is True when rolling accuracy
+crosses θ before centroid distance drops to 20% of initial.
+
+---
+
+### 10.15 Experiment Library (`gae/experiments/`) — NEW v10.6
+
+**Architectural principle:** cross-graph-experiments is the lab notebook.
+`gae/experiments/` is the published methods section.
+
+**Three strict rules for everything in this directory:**
+1. Apache 2.0 only — no API keys, no proprietary data, no SOC-specific configs
+2. Depends only on `gae` public API and `numpy`. No other dependencies.
+3. Marked clearly as research/examples, not production code (README states this)
+
+**Module structure:**
+
+```
+gae/
+  experiments/
+    __init__.py
+    README.md                  # "Research examples — not production code"
+    evals/
+      exp_c1.py                # Kernel gap: L2 vs dot product, 36.89pp
+      exp_e2.py                # Scale test: 99.9% at 20×10×20 tensor
+      factorial.py             # Factorial experiment framework (k×m×n, any domain)
+    oracle_separation/
+      example_validation.py   # Validate γ>1 for any domain — parametric vectors, no LLM
+      convergence_demo.py     # centroid_distance_to_canonical vs N_half — shows why
+                               #   N_half is noisy and centroid distance is reliable
+    domains/
+      medical_triage.py        # 4×4×5 domain: diagnose/treat/refer/monitor
+      supply_chain.py          # 3×4×6 domain: approve/hold/expedite/cancel
+      financial_approval.py    # 5×4×4 domain: approve/review/reject/escalate
+```
+
+---
+
+**`evals/exp_c1.py` — The arXiv kernel gap experiment:**
+
+```python
+# gae/experiments/evals/exp_c1.py
+"""
+EXP-C1: L2 distance vs dot product on identical centroidal data.
+Reproduces the 36.89pp result from Banerji (2026a).
+Runtime: < 1 minute. No API keys required.
+"""
+from gae import ProfileScorer, DomainConfig, run_evaluation, GTAlignedOracle
+import numpy as np
+
+def run_exp_c1(C=6, A=4, d=6, n_decisions=500, seed=42):
+    rng = np.random.default_rng(seed)
+    mu = rng.uniform(0, 1, (C, A, d))
+    config = DomainConfig(C=C, A=A, d=d)
+    oracle = GTAlignedOracle(mu=mu, actions=config.actions)
+
+    l2_scorer    = ProfileScorer(mu=mu.copy(), domain_config=config, kernel="l2")
+    dot_scorer   = ProfileScorer(mu=mu.copy(), domain_config=config, kernel="dot")
+
+    l2_result  = run_evaluation(l2_scorer,  oracle, n_decisions=n_decisions)
+    dot_result = run_evaluation(dot_scorer, oracle, n_decisions=n_decisions)
+
+    gap = l2_result.accuracy - dot_result.accuracy
+    print(f"L2:  {l2_result.accuracy:.2%}")
+    print(f"Dot: {dot_result.accuracy:.2%}")
+    print(f"Gap: {gap:.2%}pp")  # Expected: ~36.89pp
+    return gap
+
+if __name__ == "__main__":
+    run_exp_c1()
+```
+
+**`oracle_separation/example_validation.py` — γ theorem for any domain:**
+
+```python
+# gae/experiments/oracle_separation/example_validation.py
+"""
+Demonstrates oracle separation γ validation for any GAE domain.
+Shows: ε_firm=0.05 (below threshold 0.125) → γ < 1
+       ε_firm=0.20 (above threshold 0.125) → γ > 1
+Reproduces the binary prediction from Banerji (2026a) §4.6.
+"""
+from gae.synthetic import OracleSeparationExperiment, FactorVectorSampler, CanonicalCentroid
+from gae.convergence import gamma_threshold
+
+def run_binary_prediction(domain_config, epsilon_firm, n_decisions=300, seed=42):
+    threshold = gamma_threshold(alpha_cat=2/6, delta_norm=0.25, theta=0.85)
+    print(f"ε_firm = {epsilon_firm:.3f} | threshold = {threshold:.3f} | "
+          f"{'ABOVE (predict γ>1)' if epsilon_firm > threshold else 'BELOW (predict γ<1)'}")
+
+    experiment = OracleSeparationExperiment(
+        domain_config=domain_config,
+        epsilon_firm=epsilon_firm,
+        disrupted_categories=[0, 1],
+        delta_norm=0.25,
+    )
+    result = experiment.run(n_decisions=n_decisions, seed=seed)
+    print(f"γ = {result.gamma:.3f} | {'> 1 ✓' if result.gamma > 1 else '< 1 ✓'}")
+    return result
+```
+
+**`domains/medical_triage.py` — Example non-SOC domain:**
+
+```python
+# gae/experiments/domains/medical_triage.py
+"""
+Medical triage domain: demonstrates GAE with entirely non-SOC actions and factors.
+Categories: chest_pain, respiratory, neurological, trauma, other
+Actions:    treat_immediately / admit / refer_specialist / discharge
+Factors:    vital_signs / symptom_severity / lab_values / history_risk / response_to_treatment
+"""
+from gae import DomainConfig
+
+MEDICAL_CONFIG = DomainConfig(
+    categories=["chest_pain", "respiratory", "neurological", "trauma", "other"],
+    actions=["treat_immediately", "admit", "refer_specialist", "discharge"],
+    factor_names=["vital_signs", "symptom_severity", "lab_values",
+                  "history_risk", "response_to_treatment"],
+)
+```
+
+---
+
+**What stays in cross-graph-experiments (not moved):**
+
+| Cross-graph artifact | Why it stays |
+|---|---|
+| SOC-specific personas (factorial_soc_streams.json etc.) | Proprietary — characterizes our deployment parameter space |
+| All result JSONs (Batches A–G, oracle sep runs) | Research data, not library code |
+| LLM API calling infrastructure | Requires API keys; open-source users write their own |
+| LLM-based factor vector generation scripts | LLM calls that produce List[FactorVectorSample] for oracle sep experiments. Output is passed to OracleSeparationExperiment — the GAE public API accepts any pre-computed vectors. |
+| Our specific oracle sep runs (v6, v8, v11, v2, v3, Final) | Lab notebook entries, not reproducibility demonstrations |
+| V-MV-KERNEL 390-cell data | Proprietary experiment data |
+
+**The migration validation test:** If gae/synthetic.py and gae/convergence.py are
+well-designed, the cross-graph-experiments oracle separation scripts should simplify to
+thin wrappers calling the GAE library. If they can't be simplified, the abstractions
+need revision. The migration is a correctness test for the new modules.
+
+---
+
 ## 11. Level 2/3 — Design Specification (v7/v8 Targets)
 
 *(Unchanged from v8.3 §11. Reproduced in brief. Full specification in v8.3.)*
@@ -1284,6 +1722,9 @@ P-REF-5: OverrideDetector activates on data volume, not calendar (50+ positives)
 
 ## 13. Equation Traceability Matrix
 
+> **v10.4 additions:** Eq. GAMMA-THEOREM, GAMMA-THRESH, GAMMA-P_D, GAMMA-DIST added.
+> See `gae/convergence.py` for implementations.
+
 | Equation | Paper Section | File | Function | Version | Status |
 |---|---|---|---|---|---|
 | **Eq. 4-final** | §3 | `gae/profile_scorer.py` | `ProfileScorer.score()` | v5.0 | ✅ LIVE |
@@ -1297,6 +1738,10 @@ P-REF-5: OverrideDetector activates on data volume, not calendar (50+ positives)
 | Eq. 8a-8c (discovery) | §4 | `gae/discovery_engine.py` | `discover()` | v8.0 | 📋 Designed |
 | ECE computation | - | `gae/evaluation.py` | `compute_ece()` | v5.0 | ✅ LIVE |
 | **ReferralEngine** | §12.3 | `gae/referral.py` | `ReferralEngine.evaluate()` | v6.0 | ✅ LIVE [NEW v10.1] |
+| **Eq. GAMMA-THEOREM** | §3.2 (math_synopsis_v13) | `gae/convergence.py` | `gamma_threshold()` | v10.4 | ✅ IMPLEMENTED |
+| **Eq. GAMMA-THRESH** | §3.2 | `gae/convergence.py` | `gamma_threshold()` | v10.4 | ✅ IMPLEMENTED |
+| **Eq. GAMMA-P_D** | §3.2 | `gae/convergence.py` | `phase2_effective_threshold()` | v10.4 | ✅ IMPLEMENTED |
+| **Eq. GAMMA-DIST** | §3.2 | `gae/convergence.py` | `centroid_distance_to_canonical()` | v10.4 | ✅ IMPLEMENTED |
 | **OverrideDetector** | §12.3 | `gae/referral.py` | `OverrideDetector.predict()` | v6.5 | 🔵 STUB [NEW v10.1] |
 
 ---
@@ -1319,7 +1764,14 @@ NumPy-only (24 multiply-adds don't need PyTorch), three-repo architecture (enfor
 | **Factor mask deprecated** | **V-HC-CONFIG: mask hurt Day 1 by 6pp** | **DiagonalKernel supersedes** |
 | **Asymmetric η (P0)** | **9 personas: 13-27pp degradation. 24 personas: validated.** | **η_override=0.01 permanent** |
 | **AMBER auto-pause** | **Three-judge consensus** | **Conservation AMBER → freeze** |
-| **Noise ceiling kernel-dependent** | **V-B3 + V-MV-KERNEL** | **L2: σ≤0.157. Diag: σ≤0.25** |
+| **DiagonalKernel gradient fix (GAE-GRADIENT-001)** | **V-ENRICHMENT-NEGATIVE false UNSAFE at GAE <0.7.7 — gradient W*(f-mu) was wrong. W/W.max()*(f-mu) confirmed correct.** | **W/W.max() is the only valid gradient. Gradient bug skepticism protocol added to governing principles.** |
+| **η_neg ≥ 1.0 guard** | **RuntimeError at η_neg=1.0 produced FORBIDDEN ECE=0.49 result. ValueError added.** | **CalibrationProfile raises ValueError on η_neg ≥ 1.0. Test covers boundary at exactly 1.0.** |
+| **W2 flywheel validated** | **V-TRIGGERED-EVOLUTION full: +10.13pp (CI=[+5.4,+14.9]pp, p=0.0002, N=30). Δ_dissimilar=0.00pp.** | **CLAIM-W2 UNCONDITIONAL. PatternHistoryFactorComputer in SOC. Graph compounds independently of centroids.** |
+| **Flywheel Health Monitor** | **V-OLS-DETECT: 0% miss rate, p90≥50d lead time (adversarial + complacency, N=30/condition).** | **CLAIM-OLS-01 UNCONDITIONAL. CUSUM h=5.0 OLS scale. Plateau-snapshot baseline. Conservation law 4th role.** |
+| **Var(q) gating: PERMANENT HARD STOP** | **V-MV-CONSERVATION-BIMODAL: Bernoulli mixture theorem. Var(Q_bimodal)=p̄(1-p̄) — identical to uniform at same mean.** | **Var(q) is LOGGED ONLY. No gating, no product claim, no further iterations.** |
+| **Convergence calendar** | **V-MV-CONVERGENCE v2: MAE=1.55d. V has NO causal effect on N_half. q̄ dominant (coeff -3.28).** | **CLAIM-CONV-01 UNCONDITIONAL. Calendar shows decisions AND days separately.** |
+| **Two-tier poisoning at A=4** | **EXP-S2-REPRO-A4 series: σ-perturbation mean 0.850pp at 20% (gate ≤1.0pp). Label poisoning mean 3.20pp at 20% adversarial (gate ≤5pp).** | **CLAIM-SK-01 + CLAIM-LP-01. Prior single gate (≤0.20pp) was A=5 geometry — A=4 recalibration required.** |
+| **Enrichment safety (CLAIM-65)** | **V-ENRICHMENT-NEGATIVE v2 (GAE 0.7.8): SAFE. CI upper 1.1pp at adversarial multi-factor contamination. Mechanism: W=1/σ² auto-downweights bad enrichment.** | **CLAIM-65 UNCONDITIONAL. Source trust gate (0A-6) moved to Post-MVP enrichment provenance logging.** |
 | Dot product warned | EXP-C1: 61% on [0,1] | KernelType.DOT emits warning |
 | Profile centroids | EXP-C1: 97.89% zero-learning | W matrix eliminated |
 | G eliminated | EXP-A: +0.01pp | No GatingMatrix anywhere |
@@ -1363,7 +1815,7 @@ A GitHub repo is not an open-source project. An open-source project has the foll
 
 **Code quality:**
 - [✅] Apache 2.0 LICENSE at repo root
-- [✅] 478 tests, all passing
+- [✅] 517 tests, all passing
 - [✅] NumPy-only — zero external dependency to install
 - [✅] Type hints throughout
 - [⚠️] Docstrings complete on public classes (need audit — v5.5)
@@ -1494,11 +1946,333 @@ This example serves three purposes: (1) proves the platform claim, (2) gives pro
 |---|---|---|---|
 | v0.5.0 | 0.5.0 | v0.5.0 | ProfileScorer + full evaluation API (tagged) |
 | **v0.7.0** | **0.7.0** | **v0.7.0** | **Kernel architecture + CovarianceEstimator + KernelSelector + open-source release prep** |
-| v0.8.0 | 0.8.0 | v0.8.0 | GainScheduler + Fisher calendar + embeddings infrastructure |
+| v0.8.0 | 0.8.0 | v0.8.0 | GainScheduler + Fisher calendar + embeddings + open-source test suite (~900 tests, §15.6) + **gae/experiments/** (§10.15): exp_c1.py reproduces 36.89pp; oracle_separation/ demonstrates γ theorem; domain examples (medical, supply chain, financial) |
 | v1.0.0 | 1.0.0 | v1.0.0 | GraphAttentionBridge (Level 2) — first major release |
 | v2.0.0 | 2.0.0 | v2.0.0 | Cross-domain discovery (Level 3) |
 
 **Why 0.x until GraphAttentionBridge?** The API is stable within 0.x (no breaking changes without a minor version bump) but the 1.0.0 signal means "this is the long-term supported API." That signal should coincide with the Level 2 implementation, which is when external developers can build the cross-domain compounding story themselves.
+
+---
+
+### 15.6 Open-Source Test Strategy [NEW v10.5]
+
+**Context:** GAE is designed to be used as a domain-agnostic engine — the "transformers
+for compounding intelligence." Current tests (527) verify correctness at nominal values
+for the SOC domain. Open-source requires tests that verify INVARIANTS across the full
+parameter space, for ANY domain, at boundary conditions not yet tested.
+
+**Target: ~900 tests before open-source release (v0.8.0).** The gap is real but bounded.
+~370 new tests across 11 categories plus infrastructure rework.
+
+---
+
+#### Category 1 — Numeric Stability (~5 now → 30 target, P0)
+
+Most dangerous silent failure mode for open-source users: extreme inputs producing NaN,
+overflow, or silent clipping violations.
+
+**Test inventory:**
+- Factor boundary: f = [0,0,...,0], f = [1,1,...,1], f alternating [0,1,0,1]
+- Centroid boundary: μ already at 0 or 1, then updated — stays clipped
+- 1000 incorrect updates: μ stays in [0,1] at all corners
+- Temperature extremes: τ = 0.001 (near-zero), τ = 10.0 (near-uniform)
+- τ invariant argmax: argmax same across all τ values
+- DiagonalKernel weight extremes: W[i] ≈ 1e-10 (nearly masked), W = ones (must equal L2), W = [1000,1,1,1,1,1]
+- softmax no overflow, no underflow, no NaN at extreme distances
+- gradient norm bounded: no explosion on any input combination
+
+---
+
+#### Category 2 — Tensor Shape Variants (~3 now → 25 target, P0)
+
+Open-source users will build every conceivable domain shape. Must prove GAE works for all.
+
+**Test inventory:**
+- Minimal: (1,1,1), (1,2,3), (2,2,2)
+- Large: (20,10,50), (100,5,8), (6,4,100)
+- Asymmetric: (12,2,6), (2,8,6)
+- Batch scoring: shape (N,d) — verify batch == N individual calls
+- Dtype variants: float32, float64; output dtype matches input dtype
+
+---
+
+#### Category 3 — API Contract / Backward Compatibility (~0 now → 25 target, P0)
+
+**Critical.** Breaking an API field breaks every downstream user. These tests are the
+regression gate for every future release.
+
+**ScoringResult fields — all must always be present:**
+action_probabilities, selected_action, confidence, distances, factor_vector, probabilities.
+
+**ProfileScorer constructor — all kwargs optional except mu + actions.**
+
+**Serialization round-trip:** score(f) before checkpoint == score(f) after restore.
+
+**CentroidUpdate contract:** returns CentroidUpdate or None; delta_norm always positive.
+
+**freeze/unfreeze:** frozen → update() returns None; score() unchanged; unfreeze → resumes.
+
+**gae/convergence.py API contract (NEW v10.5):**
+- `centroid_distance_to_canonical(mu, canonical)` — non-negative, zero for identical,
+  symmetric (dist(A,B) == dist(B,A)), scales correctly with tensor size
+- `gamma_threshold(alpha_cat, delta_norm, theta)` — returns ≈0.128 for production values;
+  monotone in all three parameters; raises ValueError on invalid inputs
+- `phase2_effective_threshold(alpha_cat, theta)` — returns ≈0.55 for standard values;
+  raises when formula produces negative result (theta ≤ 1 - alpha_cat)
+
+---
+
+#### Category 4 — Domain-Agnostic Correctness (~0 now → 25 target, P1)
+
+**This is the key open-source differentiator.** Tests must prove GAE works for domains
+we've never built.
+
+**Four test domains (all distinct from SOC):**
+```
+Medical:       diagnose / treat / refer / monitor (4 categories, 4 actions, 5 factors)
+Supply chain:  approve / hold / expedite / cancel (3 categories, 4 actions, 6 factors)
+Financial:     approve / review / reject / escalate (5 categories, 4 actions, 4 factors)
+HR screening:  hire / waitlist / reject / reinterview (4 categories, 4 actions, 5 factors)
+```
+
+**For each domain, verify:**
+1. Score changes meaningfully as factor values change (non-constant)
+2. Centroid updates in the correct direction (toward f for correct action)
+3. After 200 updates, accuracy > 70% (above random for any domain)
+4. IKS increases from bootstrap to converged state
+5. γ_threshold(alpha_cat, delta_norm) returns valid float — convergence.py works
+
+**Cross-domain consistency:**
+- Swapping action name strings doesn't change math (geometry is label-agnostic)
+- Permuting categories doesn't change per-category scores
+
+---
+
+#### Category 5 — Learning Dynamics (~10 now → 40 target, P1)
+
+**Asymmetric η must be proven, not asserted:**
+- |Δμ_override| < |Δμ_confirm| for every input combination
+- Exactly 5× attenuation at default settings (η_confirm=0.05, η_override=0.01)
+- Ratio preserved after 1000 updates
+
+**Convergence properties:**
+- centroid_distance_to_canonical decreases monotonically over 200 correct updates
+- centroid_distance does NOT decrease monotonically over 200 random updates
+- N_half gap detection fires when accuracy crosses θ before centroid distance drops 20%
+
+**Count-based decay:** update magnitude decreases over time, asymptotically (not to zero).
+
+**Multi-category isolation:** update in category 0 does not affect category 1.
+
+---
+
+#### Category 6 — Kernel Protocol Compliance (~28 now → 50 target, P1)
+
+**Every user-defined kernel must satisfy the protocol.** A compliance checker:
+
+```python
+def assert_kernel_protocol_compliance(kernel):
+    # distance is non-negative, zero for identical vectors, symmetric
+    # gradient points from mu toward f (for correct update direction)
+    # gradient magnitude bounded — no explosion
+    # gradient is zero when f == mu exactly
+```
+
+Run on: L2Kernel, DiagonalKernel. And any user-defined kernel fails loudly if protocol
+violated.
+
+**DiagonalKernel specific mathematical properties:**
+- Reduces to L2 when all weights are uniform — **must be exact, not approximate**
+- Zero weight removes factor influence entirely: W[i]=0 → factor i irrelevant to score
+- `gradient_formula_exact`: W/W.max()*(f-mu), not W*(f-mu) — sign of this is a footgun
+- `raw_weights` are true 1/σ² (not pre-normalized) — regression test from v0.7.20 fix
+- `weights` (pre-normalized [0,1]) for scoring; `raw_weights` for η_eff calculations
+
+---
+
+#### Category 7 — Synthetic Data Range Tests (~5 now → 45 target, P1)
+
+**Extended from original analysis to cover oracle separation parameter space (v10.5 addition):**
+
+```python
+# Original SOC parameter space (24 parametrized tests)
+@pytest.mark.parametrize("sigma", [0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40])
+def test_learning_at_sigma(sigma): ...
+
+@pytest.mark.parametrize("q_bar", [0.55, 0.60, 0.70, 0.80, 0.90, 0.95])
+def test_learning_at_analyst_quality(q_bar): ...
+
+@pytest.mark.parametrize("n_decisions", [10, 50, 100, 500, 1000, 5000])
+def test_learning_at_volume(n_decisions): ...
+
+# Oracle separation parameter space (NEW — 21 additional tests)
+@pytest.mark.parametrize("epsilon_firm", [0.05, 0.10, 0.128, 0.15, 0.20, 0.30, 0.40])
+def test_gamma_theorem_at_epsilon_firm(epsilon_firm):
+    # Below 0.128: gamma < 1 (theorem predicts < 1)
+    # Above 0.128: gamma > 1 (theorem predicts > 1)
+    # At 0.128: gamma ≈ 1 (boundary case)
+
+@pytest.mark.parametrize("alpha_cat", [1/6, 2/6, 3/6, 4/6])
+def test_rolling_window_shortcut_at_alpha(alpha_cat):
+    # p_d* = (theta - (1-alpha_cat)) / alpha_cat decreases as alpha increases
+
+@pytest.mark.parametrize("noise_ratio", [1.0, 1.5, 2.0, 3.0, 5.0])
+def test_diagonal_advantage_at_noise_ratio(noise_ratio): ...
+```
+
+**Torture test (unchanged from analysis — correct as specified):**
+σ=0.30, q̄=0.60, N=2000. Asymmetric η prevents corruption. μ stays in [0,1].
+Conservation law fires AMBER before damage accumulates. **Add: centroid_distance_to_canonical
+decreases despite hostile conditions** — validates that the reliable metric holds even here.
+
+---
+
+#### Category 8 — Oracle and Evaluation Pipeline (~15 now → 40 target, P2)
+
+**EXP-G1 related tests now included (from gae/synthetic.py):**
+- centroid_distance_to_canonical decreases under correct learning
+- OracleSeparationExperiment binary prediction: ε=0.05 → γ<1; ε=0.20 → γ>1
+- GammaResult.n_half_gap_detected fires when N_half crosses θ before centroid plateau
+
+---
+
+#### Category 9 — Referral Engine (~31 now → 50 target, P2)
+
+All rules return (False, {}) on empty context, not exception.
+Referral VETO overrides high-confidence suppress — **key safety property, must be tested**.
+Referral does not modify scoring result (P-REF-1 invariant).
+
+---
+
+#### Category 10 — `gae/convergence.py` Tests (0 now → 20 target, P0) [NEW v10.5]
+
+**This is a new public API. Every function must have contract tests.**
+
+```python
+def test_centroid_distance_zero_for_identical():
+def test_centroid_distance_nonnegative_always():
+def test_centroid_distance_symmetric():
+def test_centroid_distance_scales_with_tensor_size():
+def test_centroid_distance_decreases_monotonically_under_learning():  # KEY claim
+def test_gamma_threshold_production_values():    # ≈0.128 for (2/6, 0.25, 0.85)
+def test_gamma_threshold_monotone_in_alpha():    # more disruption → higher threshold
+def test_gamma_threshold_monotone_in_delta():    # bigger disruption → higher threshold
+def test_gamma_threshold_invalid_inputs_raise():
+def test_phase2_effective_threshold_standard():  # ≈0.55 for (2/6, 0.85)
+def test_phase2_effective_threshold_invalid_raises():  # theta ≤ 1-alpha_cat
+def test_convergence_trace_nhalf_gap_detected():
+def test_convergence_trace_nhalf_gap_not_detected_when_centroid_converges_first():
+def test_convergence_trace_full_construction():
+```
+
+---
+
+#### Category 11 — `gae/synthetic.py` Tests (0 now → 20 target, P0) [NEW v10.5]
+
+```python
+def test_factor_vector_sampler_range_in_01():
+def test_factor_vector_sampler_regime_differentiation():
+def test_oracle_separation_phase1_converges():
+def test_oracle_separation_phase2_converges():
+def test_gamma_result_nhalf_gap_fires():
+def test_canonical_centroid_apply_disruption_magnitude():  # ‖GT₂ − GT₁‖ = ‖Δ‖ exactly
+def test_canonical_centroid_only_disrupted_categories_shift():
+def test_binary_prediction_below_threshold():   # ε=0.05 → γ < 1
+def test_binary_prediction_above_threshold():   # ε=0.20 → γ > 1
+def test_oracle_separation_model_independence(): # same result across LLM models
+```
+
+---
+
+#### Category 12 — Thread Safety (0 now → 10 target, P1) [NEW v10.5]
+
+**This is the most dangerous silent failure mode for production open-source use.**
+Concurrent `score()` calls are safe (reads μ). Concurrent `update()` calls must be
+serialized or explicitly documented as unsafe.
+
+```python
+def test_concurrent_scoring_produces_consistent_results():
+    # 100 threads calling score() simultaneously — all produce identical results
+def test_concurrent_updates_are_safe_or_documented_unsafe():
+    # Either: concurrent updates don't corrupt μ (locking)
+    # Or: concurrent updates raise a clear ConcurrentUpdateError
+def test_score_during_update_is_consistent():
+    # score() called while update() is running — result is pre- or post-update, not corrupt
+```
+
+---
+
+#### Test Infrastructure — Prerequisite (do before Categories 4–12)
+
+The current test suite at 527 tests is at the limit of manageable flat organization.
+Adding ~370 more tests without restructuring creates an unmaintainable test suite.
+
+**Required before writing new tests:**
+
+```
+tests/
+  conftest.py            # shared fixtures: standard domains, nominal scorer instances
+  unit/
+    test_scoring.py      # Category 1 + 2
+    test_learning.py     # Category 5
+    test_kernels.py      # Category 6
+    test_api_contract.py # Category 3
+    test_convergence.py  # Category 10
+    test_synthetic.py    # Category 11
+  parametric/
+    test_ranges.py       # Category 7 — all parametrized tests together
+    test_domains.py      # Category 4 — all four domain tests
+  integration/
+    test_oracle_eval.py  # Category 8
+    test_referral.py     # Category 9
+    test_thread_safety.py # Category 12
+  benchmarks/
+    bench_score.py       # score() latency at nominal + large tensor
+    bench_update.py      # update() latency
+    bench_memory.py      # memory footprint
+```
+
+**Shared fixtures (conftest.py):**
+```python
+@pytest.fixture
+def nominal_soc_scorer(): ...  # 6×4×6 tensor, standard calibration
+@pytest.fixture
+def medical_scorer(): ...      # 4×4×5 tensor, medical domain
+@pytest.fixture
+def gt_oracle(nominal_scorer): ...
+@pytest.fixture
+def standard_factor_vector(): ...  # d=6, mid-range values
+```
+
+---
+
+#### Summary Table
+
+| Category | Current | Target | Priority |
+|---|---|---|---|
+| 1 — Numeric stability | ~5 | 30 | **P0** |
+| 2 — Tensor shape variants | ~3 | 25 | **P0** |
+| 3 — API contract | ~0 | 25 | **P0** |
+| 10 — gae/convergence.py | 0 | 20 | **P0** |
+| 11 — gae/synthetic.py | 0 | 20 | **P0** |
+| 4 — Domain-agnostic | ~0 | 25 | P1 |
+| 5 — Learning dynamics | ~10 | 40 | P1 |
+| 6 — Kernel protocol | ~28 | 50 | P1 |
+| 7 — Synthetic data range | ~5 | 45 | P1 |
+| 12 — Thread safety | 0 | 10 | P1 |
+| 8 — Oracle/evaluation | ~15 | 40 | P2 |
+| 9 — Referral engine | ~31 | 50 | P2 |
+| **Total new** | | **~370** | |
+| + existing 527 | | | |
+| **Grand total target** | | **~900** | |
+
+**`gae/experiments/` development** runs in parallel with Block 3.7a test suite work.
+The exp_c1.py and exp_e2.py scripts are essentially free — they're pure GAE public API
+calls that already work. The oracle_separation/ examples validate gae/synthetic.py.
+The domain examples validate Category 4 test domains. All three are produced together.
+
+**Test infrastructure restructure** is prerequisite to Categories 4–12.
+Write infrastructure first, then P0 categories, then P1, then P2.
 
 ---
 
@@ -1520,6 +2294,8 @@ These are constraints derived from experiments. They are not guidelines. Code th
 | **η_confirm** | **0.05** | **P0 fix validated across 24 personas** | **Under-learning from confirm path if reduced** |
 | **θ_min** | **0.467** | **η=0.05, N_half=14, T_max=21 days** | **Conservation law floor too lenient at 0.434** |
 | **AMBER auto-pause** | **Freeze on AMBER/RED** | **Three-judge consensus** | **Detection-without-response gap** |
+| **DiagonalKernel gradient** | **W/W.max()*(f-mu) ONLY** | **GAE-GRADIENT-001 fix v0.7.7** | **W*(f-mu) corrupts learning direction — high-W factors dominate by magnitude not signal** |
+| **η_neg guard** | **ValueError on η_neg ≥ 1.0** | **GAE 0.7.8 — η_neg=1.0 produced ECE=0.49 (FORBIDDEN)** | **η_neg=1.0 inverts the penalty signal — pushes centroid toward wrong action** |
 | **DiagonalKernel for noise_ratio > 1.5** | **Default** | **V-MV-KERNEL: +13pp SOC, +7pp S2P** | **13-22pp accuracy loss on heterogeneous noise** |
 | **ShrinkageKernel** | **NOT shipped at v6.0** | **D2/D3: off-diagonal <1pp** | **Complexity without benefit** |
 
@@ -1554,25 +2330,35 @@ v5.0 TAGGED:     243 tests  (+SOC integration fixes)
 v5.0 post-tag:   246 tests  (+WIRING-1: CentroidUpdate, freeze/unfreeze)
 ```
 
-### 17.1a v6.0 — IN PROGRESS (478 tests)
+### 17.1a v6.0 — COMPLETE ✅ (517 tests, v0.7.17)
+
+*(See §17.1b below for v0.7.18–v0.7.20 additions: 517→527 tests)*
 
 **Kernel architecture (settled March 21, 2026):**
 - `gae/kernels.py` — ScoringKernel protocol, L2Kernel, DiagonalKernel (28 tests)
 - `gae/covariance.py` — CovarianceEstimator with Ledoit-Wolf + exponential decay (23 tests)
 - `gae/kernel_selector.py` — KernelSelector: Phase 2/3/4 empirical kernel selection (46 tests)
-- `gae/referral.py` — ReferralEngine, ReferralRule protocol, OverrideDetector stub (31 tests) [NEW v10.1]
-- ProfileScorer: kernel parameter, factor_mask, eta_override, auto_pause_on_amber (+8 tests AMBER, +7 tests mask, +8 tests kernel integration)
-- calibration.py: compute_factor_mask, mask_to_array, compute_eta_override (+5 tests mask, +3 tests mask_to_array)
-- convergence.py v2: EPSILON_DEFAULT=0.10, safety_factor=2.0 (+6 tests)
+- `gae/referral.py` — ReferralEngine, ReferralRule protocol, OverrideDetector stub (31 tests)
+- ProfileScorer: kernel parameter, factor_mask, eta_override, auto_pause_on_amber
+- calibration.py: compute_factor_mask, mask_to_array, compute_eta_override
+- convergence.py v2: EPSILON_DEFAULT=0.10, safety_factor=2.0
 - fisher.py: estimate_fisher_information, predict_n_half, enrichment_multiplier
 
-**Key experimental validation (March 21):**
-- V-MV-KERNEL factorial: 360 cells (216 uniform + 144 heterogeneous). DiagonalKernel +13.2pp SOC, +6.8pp S2P.
+**Phase 1 session additions (March 25, 2026):**
+- `gae/convergence.py` — OLSMonitor: CUSUM on OLS, h=5.0 (OLS scale), plateau-snapshot baseline (CLAIM-OLS-01 validated)
+- `gae/convergence.py` — VarQMonitor: logged observability metric, NO gating logic (Bernoulli mixture theorem hard stop)
+- `gae/enrichment_advisor.py` — enrichment recommendation engine, 5 deployment profiles validated
+- DiagonalKernel gradient fix: W/W.max()*(f-mu) — GAE-GRADIENT-001, v0.7.7
+- η_neg guard: ValueError on η_neg ≥ 1.0 — v0.7.8
+
+**Key experimental validation:**
+- V-MV-KERNEL factorial: 390 cells. DiagonalKernel +13.2pp SOC, +6.8pp S2P.
 - V-HC-CONFIG with DiagonalKernel: healthcare rescued at σ=0.22 (+3.7pp vs L2 +0.3pp).
-- 4 healthcare personas: Corr(noise_ratio, advantage) = 0.990.
-- Explanation A confirmed: off-diagonal adds <1pp. ShrinkageKernel deprioritized.
-- KernelSelector stabilizes at ~250 decisions with rolling window.
-- EXP-REFER-LAYERED: Rules R1-R7 = 72.7% DR, 12% FPR. Confidence gate rejected for referral (14% precision). [NEW v10.1]
+- EXP-REFER-LAYERED: Rules R1-R7 = 72.7% DR, 12% FPR. Confidence gate rejected for referral.
+- V-TRIGGERED-EVOLUTION full: +10.13pp (p=0.0002, N=30) — CLAIM-W2 UNCONDITIONAL.
+- V-OLS-DETECT: 0% miss, p90≥50d lead time — CLAIM-OLS-01 UNCONDITIONAL.
+- V-ENRICHMENT-NEGATIVE v2 (GAE 0.7.8): SAFE, CI upper 1.1pp — CLAIM-65 UNCONDITIONAL.
+- V-MV-CONSERVATION-BIMODAL: Bernoulli mixture theorem — Var(q) gating PERMANENT HARD STOP.
 
 **Test count progression (v6.0):**
 ```
@@ -1586,51 +2372,135 @@ v5.0 post-tag:   246 tests
 +KernelSelector: 437 tests  (+KernelSelector, KernelRecommendation, Phase 2/3/4)
 +Rolling window: 447 tests  (+rolling 100-window comparison)
 +ReferralEngine: 478 tests  (+ReferralEngine, ReferralRule, OverrideDetector stub)
++Gradient fix:   499 tests  (+GAE-GRADIENT-001 fix tests, enrichment_advisor validation)
++η_neg guard:    507 tests  (+η_neg ≥ 1.0 ValueError, boundary at exactly 1.0)
++OLSMonitor:     517 tests  (+OLSMonitor CUSUM, VarQMonitor, plateau-snapshot)
 ```
 
-### 17.2 v6.0 — Open-Source Release + Kernel Architecture (v0.7.0)
+### 17.1b v0.7.18–v0.7.20 — COMPLETE ✅ (527 tests) [NEW v10.3]
 
-**Open-source prep (carried from v5.5 plan):**
-- `README.md` complete rewrite (§15.3 spec) — add DiagonalKernel to quick start
+**KERNELSEL-001 — KernelSelector tiebreaker (v0.7.18):**
+- `gae/kernel_selector.py` — tiebreaker logic when Phase 2 rule and Phase 4 empirical disagree.
+  Phase 4 (empirical) always overrides Phase 2 (rule) on genuine disagreement.
+- +2 GAE tests. CLAIM-56 (KernelSelector 4/4 correct) confirmed on extended test suite.
+
+**DiagonalKernel raw_weights fix (v0.7.19 → v0.7.20):**
+- `gae/kernels.py` — DiagonalKernel.raw_weights property added, returns true 1/σ² values.
+  Previous `.weights` property returned pre-normalized W/W.max() — correct for scoring,
+  but wrong for Fisher information calculations (silent scale cancellation).
+- DiagonalKernel.weights: pre-normalized [0,1] — USE FOR SCORING
+- DiagonalKernel.raw_weights: true 1/σ² — USE FOR η_eff AND ENRICHMENT ROI (CLAIM-64)
+- v0.7.19 had a raw_weights bug causing scale cancellation. v0.7.20 required for CLAIM-64.
+- +1 GAE test: `kernel.raw_weights[i] == 1/sigma[i]**2` for all i (regression prevention).
+
+**Block 9.1–9.5 v6.5 features (April 5, 2026):**
+All five shipped as gated features. See §17.3 for full specs.
+
+| Feature | Claim | Status | Tests |
+|---|---|---|---|
+| Per-analyst η weighting (Block 9.1) | CLAIM-66 CONDITIONAL (+0.86pp at q̄=0.80, r=0.975-1.000) | ✅ SHIPPED | +1 |
+| η change-rate cap (Block 9.5) | CLAIM-67 UNCONDITIONAL (F=8.14, ±0.005/cadence) | ✅ SHIPPED | +1 |
+| Spike detector deployment-specific (Block 9.2) | CLAIM-68 CONDITIONAL (p=0.010, NOT hardcoded 3σ) | ✅ SHIPPED | +1 |
+| Category freeze on volume spikes (Block 9.3) | CLAIM-69 CONDITIONAL (65.5% spurious events blocked) | ✅ SHIPPED | +1 |
+| Spike update cap 1.5× (Block 9.4) | CLAIM-70 CONDITIONAL (monotone learning during spikes) | ✅ SHIPPED | +1 |
+
+**Test count progression (v0.7.18–v0.7.20):**
+```
+v0.7.17 (v6.0):  517 tests
++KERNELSEL-001:  519 tests  (+2: tiebreaker + regression)
++raw_weights:    520 tests  (+1: raw_weights regression)
++Block 9.1-9.5:  525 tests  (+5: one per feature)
++regression:     527 tests  (+2: BACKLOG-020 fixture + IKS stability)
+```
+
+### 17.1c Oracle Separation & γ Theorem (April 7–8, 2026) [NEW v10.4]
+
+**Batch F META-4: RETIRED.** LLM competence prior dominates correctness labels at any
+prompt sophistication. γ from LLM-generated personas is structurally unmeasurable.
+Full record: `synthetic_data_generation_analysis_v2.md`.
+
+**Oracle separation experiments (7 runs, April 2026):**
+
+| Run | Setup | Key Finding |
+|---|---|---|
+| Exp A | Factor quality check | Oracle mechanism clean; regime differentiation validated |
+| v6 | Cold init (μ₀ = uniform ± 0.15) | Phase 1 DNF — η₋ trap. N_half gap confirmed. |
+| v8 | Expert init (ε_sim = 0.05) | γ = 0.714 < 1 ✓ (below theorem threshold) |
+| v11 | GPT-5.4 probe (ε_sim = 0.05) | Floor effect: N_half = 10 (min possible). Model independence confirmed. |
+| v2 | ε_sim = 0.20, wrong vector distribution | γ < 1 from distribution mismatch, not geometric failure |
+| v3 | ε_sim = 0.20, corrected (cold_start both phases) | **γ = 1.033 > 1 ✓** (above theorem threshold) |
+| Final | ε_sim = 0.35, 3 seeds | N_half variance 27× — simulation limit reached. Track closed. |
+
+**Theorem established (April 8, 2026):** γ > 1 ↔ ε_firm > 0.125. Four LLMs independent.
+Binary simulation confirmed in both directions. Simulation track CLOSED.
+
+**New GAE modules added:**
+- `gae/synthetic.py` — OracleSeparationExperiment, FactorVectorSampler, CanonicalCentroid (§10.13)
+- `gae/convergence.py` — centroid_distance_to_canonical, gamma_threshold, phase2_effective_threshold (§10.14)
+
+**Pending tests:** 5 for gae/synthetic.py + 4 for gae/convergence.py = 9 new tests before pilot Day 1.
+
+---
+
+### 17.2 v6.0 — COMPLETE ✅ (v0.7.17 shipped)
+
+**Open-source prep (shipped with v0.7.x):**
+- `README.md` complete rewrite (§15.3 spec) — DiagonalKernel in quick start
 - `CONTRIBUTING.md` + `CODE_OF_CONDUCT.md` + `SECURITY.md`
-- `CHANGELOG.md` from v0.1.0 → v0.7.0 (includes kernel architecture)
+- `CHANGELOG.md` v0.1.0 → v0.7.17 (includes kernel architecture + Phase 1 fixes)
 - GitHub Actions: pytest + lint + mypy on push
-- PyPI publish: `pip install graph-attention-engine`
+- PyPI: `pip install graph-attention-engine` (v0.7.17)
 - `examples/procurement_approval/` (§15.4)
 - Docstring audit: all public classes fully documented
 - `py.typed` marker (PEP 561)
 - GitHub Issues templates (Bug, Feature, New Domain)
 
-**Kernel architecture (SETTLED — ships with v0.7.0):**
+**Kernel architecture (SHIPPED v0.7.0):**
 - DiagonalKernel as default for noise_ratio > 1.5
 - KernelSelector for empirical kernel comparison during shadow mode
 - CovarianceEstimator collecting data (research asset for v7.0)
 - Factor quarantine mask deprecated (code present, docs say deprecated)
 
-**Calibration and conservation:**
+**Calibration and conservation (SHIPPED v0.7.x):**
 - CalibrationProfile category_thresholds (enables 40%+ auto-approve coverage)
 - compute_eta_override() for per-deployment η tuning
 - AMBER auto-pause (conservation signal → freeze learning)
 - derive_theta_min() canonical (θ_min=0.467, T_max=21)
 
-**Referral routing (SETTLED — ships with v0.7.0):** [NEW v10.1]
+**Referral routing (SHIPPED v0.7.0):**
 - ReferralEngine: domain-agnostic protocol for post-scoring referral VETO
 - ReferralRule protocol: pure functions, no ML, fully auditable
 - OverrideDetector stub: interface for v6.5 learned referral patterns
 - Experimental validation: rules 72.7% DR at 12% FPR (EXP-REFER-LAYERED)
 - Confidence gate REJECTED for referral (14% precision = active harm)
-- Referral is independent of scoring — P-REF-1: never modifies ProfileScorer
 
-**Meta-graph diagnostics:**
-- Centroid drift visualization (Chart A fix — currently shows ≈0.0)
-- Ψ diagnostic functions (anomaly detection, stability tracking)
-- Profile convergence report: "Your system is X% more accurate than deployment day"
+**Phase 1 additions (SHIPPED v0.7.7–v0.7.17):**
+- `gae/enrichment_advisor.py` — enrichment recommendation engine (validated on 5 profiles)
+- `gae/convergence.py` OLSMonitor — CUSUM on OLS, h=5.0 OLS scale, plateau-snapshot (CLAIM-OLS-01)
+- `gae/convergence.py` VarQMonitor — LOGGED ONLY, Bernoulli mixture theorem hard stop
+- DiagonalKernel gradient fix: W/W.max()*(f-mu) — GAE-GRADIENT-001 v0.7.7
+- η_neg guard: ValueError on η_neg ≥ 1.0 — v0.7.8
 
 ### 17.3 v6.5 — GainScheduler + Fisher Calendar + Embeddings + Override Learning
 
+**Block 9.1–9.5 items: ✅ SHIPPED April 5, 2026 (in §17.1b above)**
+Per-analyst η (CLAIM-66), η cap (CLAIM-67 UNCONDITIONAL), spike detector (CLAIM-68),
+category freeze (CLAIM-69), spike update cap (CLAIM-70). All in GAE v0.7.20.
+
+**Open-source test strategy (v10.5, April 8, 2026):**
+Target ~900 tests (from current 527). 11 test categories + infrastructure.
+New Block 3.7a: test suite restructure + P0/P1 categories.
+See §15.6 for full category breakdown and test inventory.
+
+**New deliverables from v10.4 (added April 8, 2026):**
+- `gae/synthetic.py` — OracleSeparationExperiment, FactorVectorSampler, CanonicalCentroid, GammaResult (§10.13)
+- `gae/convergence.py` — centroid_distance_to_canonical, gamma_threshold, phase2_effective_threshold, ConvergenceTrace (§10.14)
+- 9 new tests needed (5 synthetic + 4 convergence) — P1 before pilot Day 1
+
+**Remaining v6.5 items (not yet shipped):**
 - `gae/embeddings.py` — EmbeddingProvider, PropertyEmbedding, TransformerEmbedding (Tier 4)
 - `gae/graph_schema.py` — GraphSchema dataclass (§11.4)
-- GainScheduler: periodic τ recalibration (~70 decisions/category), conservation-gated, σ-aware
+- GainScheduler: periodic τ recalibration (~70 decisions/category), conservation-gated, σ-aware. Requires τ sweep (50 seeds) before implementation — Block 9.6 deferred.
 - Fisher onboarding calendar (dynamic): per-category bars update as sources connect
 - **OverrideDetector activation:** implement predict() (LogisticRegression on 19 features), retrain loop, data-gated at ≥50 production positives [NEW v10.1]
 - Infrastructure for GraphAttentionBridge (writes hooks, no bridge logic yet)
@@ -1662,13 +2532,18 @@ v5.0 post-tag:   246 tests
 ```
 graph-attention-engine/
 ├── gae/
-│   ├── __init__.py              ✅ Full public API surface (v6.0 — expanded)
+│   ├── __init__.py              ✅ Full public API surface (v6.0 — expanded, OLSMonitor + enrichment_advisor)
 │   ├── profile_scorer.py        ✅ ProfileScorer, ScoringResult, CentroidUpdate (v6.0: kernel, mask, eta_override, auto_pause)
-│   ├── kernels.py               ✅ NEW v6.0: ScoringKernel, L2Kernel, DiagonalKernel (28 tests)
-│   ├── covariance.py            ✅ NEW v6.0: CovarianceEstimator, CovarianceSnapshot (23 tests)
-│   ├── kernel_selector.py       ✅ NEW v6.0: KernelSelector, KernelRecommendation (46 tests)
-│   ├── referral.py              ✅ NEW v6.0: ReferralEngine, ReferralRule, OverrideDetector (31 tests) [NEW v10.1]
+│   ├── kernels.py               ✅ ScoringKernel, L2Kernel, DiagonalKernel (28 tests)
+│   │                               NOTE: DiagonalKernel.compute_gradient = W/W.max()*(f-mu) — GAE-GRADIENT-001 fix v0.7.7
+│   ├── covariance.py            ✅ CovarianceEstimator, CovarianceSnapshot (23 tests)
+│   ├── kernel_selector.py       ✅ KernelSelector, KernelRecommendation (46 tests)
+│   ├── referral.py              ✅ ReferralEngine, ReferralRule, OverrideDetector (31 tests)
+│   ├── enrichment_advisor.py    ✅ NEW Phase 1: enrichment recommendation engine — factor priority ranking
+│   │                               Input: σ_profile from CovarianceEstimator → Output: ranked factor list
+│   │                               Validated on 5 deployment profiles. Feeds P28 Phase 2 report.
 │   ├── calibration.py           ✅ CalibrationProfile + factor_mask + eta_override + conservation + fisher
+│   │                               η_neg guard: ValueError on η_neg ≥ 1.0 (v0.7.8)
 │   ├── factors.py               ✅ FactorComputer protocol, assemble_factor_vector
 │   ├── learning.py              ✅ LearningState (delegates to ProfileScorer)
 │   ├── oracle.py                ✅ OracleProvider, GTAlignedOracle, BernoulliOracle
@@ -1677,6 +2552,8 @@ graph-attention-engine/
 │   ├── ablation.py              ✅ run_ablation, AblationReport
 │   ├── scoring.py               ⚠️ DEPRECATED — forwards to ProfileScorer (remove v7.0)
 │   ├── convergence.py           ✅ v2: EPSILON=0.10, safety_factor=2.0
+│   │                               OLSMonitor: CUSUM on OLS, h=5.0 (OLS scale), plateau-snapshot (CLAIM-OLS-01)
+│   │                               VarQMonitor: logged only — PERMANENT HARD STOP for gating (Bernoulli mixture theorem)
 │   ├── fisher.py                ✅ estimate_fisher_information, predict_n_half, enrichment_multiplier
 │   ├── contracts.py             ✅ Unchanged
 │   ├── primitives.py            ✅ Unchanged
@@ -1689,11 +2566,15 @@ graph-attention-engine/
 │   └── discovery_engine.py      📋 Level 3 — v8.0
 ├── tests/
 │   ├── test_profile_scorer.py   ✅ L2, DiagonalKernel, mask, eta_override, AMBER pause, kernel integration
-│   ├── test_kernels.py          ✅ NEW v6.0: ScoringKernel protocol, L2, Diagonal (28 tests)
-│   ├── test_covariance.py       ✅ NEW v6.0: CovarianceEstimator (23 tests)
-│   ├── test_kernel_selector.py  ✅ NEW v6.0: KernelSelector Phase 2/3/4 (46 tests)
-│   ├── test_referral.py         ✅ NEW v6.0: ReferralEngine, OverrideDetector (31 tests) [NEW v10.1]
+│   ├── test_kernels.py          ✅ ScoringKernel protocol, L2, Diagonal, gradient correctness (28 tests)
+│   │                               Includes: W/W.max() gradient test, zero-weights fallback, gradient direction validation
+│   ├── test_covariance.py       ✅ CovarianceEstimator (23 tests)
+│   ├── test_kernel_selector.py  ✅ KernelSelector Phase 2/3/4 (46 tests)
+│   ├── test_referral.py         ✅ ReferralEngine, OverrideDetector (31 tests)
 │   ├── test_calibration.py      ✅ factor_mask, mask_to_array, eta_override, conservation, fisher
+│   │                               η_neg guard: ValueError at ≥1.0, boundary at exactly 1.0
+│   ├── test_convergence.py      ✅ OLSMonitor CUSUM (h=5.0), plateau-snapshot, VarQMonitor logged-only
+│   ├── test_enrichment_advisor.py ✅ NEW Phase 1: factor ranking, 5 deployment profiles
 │   ├── test_oracle.py           ✅
 │   ├── test_evaluation.py       ✅
 │   ├── test_judgment.py         ✅
@@ -1705,24 +2586,24 @@ graph-attention-engine/
 │   │   ├── config.py
 │   │   ├── run_example.py
 │   │   └── README.md
-│   └── procurement_approval/    📋 S2P domain — v6.0 (§15.4)
+│   └── procurement_approval/    ✅ S2P domain (§15.4)
 ├── docs/
-│   ├── users_guide.md           ✅ 289 lines, 8 sections (update for kernels at v6.0)
-│   ├── equations.md             📋 Eq reference with paper links — v6.0
-│   └── EXPORTS.md               📋 Full public API reference — v6.0
+│   ├── users_guide.md           ✅ Updated for kernel architecture + OLSMonitor
+│   ├── equations.md             ✅ Eq reference with paper links + gradient fix documented
+│   └── EXPORTS.md               ✅ Full public API reference
 ├── .github/
 │   ├── workflows/
-│   │   ├── pytest.yml           📋 CI — v6.0
-│   │   └── lint.yml             📋 CI — v6.0
+│   │   ├── pytest.yml           ✅ CI — all 517 tests on push
+│   │   └── lint.yml             ✅ CI — ruff + mypy
 │   └── ISSUE_TEMPLATE/
-│       ├── bug_report.yml       📋 v6.0
-│       └── new_domain.yml       📋 v6.0
-├── README.md                    ⚠️ Minimal — REWRITE TARGET for v6.0 (§15.3, add DiagonalKernel)
-├── CONTRIBUTING.md              📋 v6.0
-├── CHANGELOG.md                 📋 v6.0
-├── SECURITY.md                  📋 v6.0
-├── CODE_OF_CONDUCT.md           📋 v6.0
-├── pyproject.toml               ✅ v0.5.0 (bump to v0.7.0 at v6.0 release)
+│       ├── bug_report.yml       ✅
+│       └── new_domain.yml       ✅
+├── README.md                    ✅ Rewritten (§15.3 spec, DiagonalKernel, CLAIM-W2 context)
+├── CONTRIBUTING.md              ✅
+├── CHANGELOG.md                 ✅ v0.1.0 → v0.7.17
+├── SECURITY.md                  ✅
+├── CODE_OF_CONDUCT.md           ✅
+├── pyproject.toml               ✅ v0.7.20
 └── LICENSE                      ✅ Apache 2.0
 ```
 
@@ -1738,15 +2619,21 @@ graph-attention-engine/
 
 ---
 
-*Graph Attention Engine — Design & Architecture v10.1 | March 21, 2026*
-*v6.0 KERNEL + REFERRAL ARCHITECTURE SETTLED: 478 tests. DiagonalKernel validated (+13pp SOC, +7pp S2P). ShrinkageKernel deprioritized to v7.0.*
-*Five new v6.0 modules: kernels.py (L2+Diagonal), covariance.py (Ledoit-Wolf, collects only), kernel_selector.py (Phase 2/3/4), referral.py (ReferralEngine+OverrideDetector), calibration.py extensions.*
-*Referral routing: Rules R1-R7 = 72.7% DR, 12% FPR. Confidence gate REJECTED for referral (14% precision). Referral is VETO — independent of scoring.*
-*P0 fix: Asymmetric η (η_confirm=0.05, η_override=0.01). Prevents 13-27pp centroid degradation. Validated across 24 personas.*
-*AMBER auto-pause: Conservation AMBER/RED → freeze learning automatically.*
-*Kernel selection rule (settled): noise_ratio > 1.5 → DiagonalKernel, else L2. One parameter. Explanation A confirmed.*
-*Noise ceiling kernel-dependent: L2 GREEN ≤0.157. Diagonal GREEN ≤0.25. Healthcare opens at v6.0.*
+*Graph Attention Engine — Design & Architecture v10.3 | April 6, 2026*
+*Phase 0 ✅ Phase 1 ✅ Phase 2 ✅ Phase 3 Priority 1 ✅. 527 tests. v0.7.20.*
+*v6.0 COMPLETE: DiagonalKernel (+13pp SOC, +7pp S2P), KernelSelector, CovarianceEstimator, ReferralEngine, OLSMonitor, enrichment_advisor.*
+*CRITICAL FIX: DiagonalKernel gradient = W/W.max()*(f-mu) — GAE-GRADIENT-001 fix v0.7.7. η_neg guard v0.7.8.*
+*W2 flywheel: CLAIM-W2 +10.13pp (p=0.0002). Third compounding pathway: CLAIM-59 54.4% faster (p<0.0001).*
+*Enrichment Day-1 lift: CLAIM-62 +42.69pp. Fisher info path: CLAIM-64 r=0.9669 (raw_weights, GAE 0.7.20).*
+*Economics: CL-ECON-MEASURED 30.85 min/alert, $523K–$2.8M/year. Innovation 10 CLOSED.*
+*Flywheel Health Monitor: CLAIM-OLS-01 0% miss rate, p90≥50d lead time. CUSUM h=5.0 OLS scale.*
+*Var(q) gating: PERMANENT HARD STOP (Bernoulli mixture theorem). Logged metric only.*
+*Convergence calendar: CLAIM-CONV-01 MAE=1.55d. V no causal effect on N_half.*
+*Poisoning resilience: CLAIM-SK-01 (0.850pp at 20% σ-perturbation) + CLAIM-LP-01 (3.20pp at 20% label).*
+*Enrichment safety: CLAIM-65 <1.2pp at adversarial multi-factor contamination.*
+*ShrinkageKernel deprioritized to v7.0. Off-diagonal adds <1pp in all current tests.*
 *Two levels of institutional judgment: ProfileScorer = Level 1 (Decision Intelligence). AgentEvolver = Level 2 (Deployment Intelligence). GAE owns Level 1.*
-*Three referral phases: Rules (v6.0, Day 1) → OverrideDetector (v6.5, data-gated ≥50 positives) → Monthly retrain (v7.0).*
-*"The distance metric itself compounds — Day 1: L2. Day 30: Diagonal calibrated to YOUR factor noise. A competitor starts with W=I."*
-*"The math is open. The competitive moat is the accumulated graph."*
+*Three referral phases: Rules (v6.0) → OverrideDetector (v6.5, ≥50 positives) → Monthly retrain (v7.0).*
+*Block 9.1-9.5 CLAIM-66-70 all shipped. CLAIM-67 (η rate cap) UNCONDITIONAL (F=8.14).*
+*raw_weights (true 1/σ²) for η_eff. weights (pre-normalized) for scoring. Distinction is a hard architectural rule.*
+*"The math is open. The moat is the accumulated graph. The gradient fix makes the flywheel real. The graph compounds while centroids wait. Recovery is not coincidence — γ > 1 is proven. Test every invariant before every release."*

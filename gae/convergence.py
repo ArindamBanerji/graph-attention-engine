@@ -48,24 +48,55 @@ EPSILON_DEFAULT: float = 0.10  # Noise-aware convergence threshold (PROD-5 valid
 
 def compute_n_half(eta: float = ETA_DEFAULT) -> float:
     """
-    Half-life of centroid error in decisions.
+    Scalar convergence half-life.
 
-    N_half = ln(2) / ln(1/(1−η))
+    N_half = ln(2) / ln(1/(1-η))
 
-    At η=0.05: N_half = 13.51 decisions per (category, action) pair.
-    Source: math_synopsis_v9 §5.
+    This is the exact discrete-time half-life (not the
+    continuous approximation ln(2)/η ≈ 13.86).
 
-    Parameters
-    ----------
-    eta : float
-        Learning rate.
+    SCOPE: Correct for L2 kernel, or for the maximum-weighted
+    factor under DiagonalKernel. For per-factor half-lives
+    under DiagonalKernel, use compute_per_factor_n_half().
 
-    Returns
-    -------
-    float
-        N_half in decisions.
+    At eta=0.05: N_half ≈ 13.51 (rounded to 14 in materials).
     """
     return float(np.log(2) / np.log(1.0 / (1.0 - eta)))
+
+
+def compute_per_factor_n_half(
+    weights: np.ndarray,
+    eta: float = 0.05,
+) -> np.ndarray:
+    """
+    Per-factor convergence half-life under DiagonalKernel
+    with max-normalization.
+
+    Returns N_half_j = (w_max / w_j) · ln(2) / eta for each factor.
+
+    Under L2 (uniform weights), all entries equal ln(2)/eta ≈ 14.
+    Under DiagonalKernel, the maximum-weighted factor retains ~14;
+    others scale as w_max/w_j.
+
+    Args:
+        weights: per-factor kernel weights (w_j), shape (d,).
+                 Typically from DiagonalKernel.weights (already
+                 normalized as 1/σ² / max(1/σ²)).
+        eta: confirm-path learning rate (default 0.05).
+    Returns:
+        np.ndarray of shape (d,) — per-factor half-life in
+        verified decisions.
+    Raises:
+        ValueError: if any weight is zero or negative.
+    """
+    weights = np.asarray(weights, dtype=np.float64)
+    if weights.size == 0:
+        return np.array([], dtype=np.float64)
+    if np.any(weights <= 0):
+        raise ValueError(
+            f"All weights must be positive, got min={weights.min()}"
+        )
+    return (weights.max() / weights) * (np.log(2) / eta)
 
 
 def compute_steady_state_mse(
@@ -1064,7 +1095,7 @@ def gamma_threshold(
     Theorem (April 8, 2026): γ > 1 ↔ ε_firm > gamma_threshold(α_cat, ‖Δ‖, θ)
 
     Production values: alpha_cat=2/6≈0.33, delta_norm≈0.25, theta=0.85
-    → threshold ≈ 0.128
+    → threshold ≈ 0.125
 
     Production ε_firm ∈ [0.15, 0.40] — every real deployment clears this.
 

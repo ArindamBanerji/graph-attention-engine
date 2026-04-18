@@ -920,3 +920,26 @@ class TestVBootstrapGeom:
         assert W_geom[0] == pytest.approx(1e-6), (
             f"Dominant factor (axis=1.0) must be clipped to 1e-6, got {W_geom[0]:.2e}"
         )
+
+
+# ── MR-B04: compute_eta_override worst_case_quality ──────────────────────────
+
+def test_compute_eta_override_worst_case_soc():
+    """SOC worst-case q̄=0.60 produces η_override=0.01."""
+    from gae.calibration import compute_eta_override
+    result = compute_eta_override(eta_confirm=0.05, worst_case_quality=0.60)
+    assert abs(result - 0.01) < 1e-10
+
+
+def test_compute_eta_override_worst_case_boundary():
+    """q̄=0.50 produces η_override=0 (pure noise, no learning)."""
+    from gae.calibration import compute_eta_override
+    result = compute_eta_override(eta_confirm=0.05, worst_case_quality=0.50)
+    assert result == 0.0
+
+
+def test_compute_eta_override_worst_case_below_half():
+    """q̄ < 0.5 returns 0.0 (learning disabled)."""
+    from gae.calibration import compute_eta_override
+    result = compute_eta_override(eta_confirm=0.05, worst_case_quality=0.40)
+    assert result == 0.0

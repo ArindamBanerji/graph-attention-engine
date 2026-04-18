@@ -107,19 +107,26 @@ class L2Kernel:
 
 class DiagonalKernel:
     """
-    Weighted L2 distance. Continuous replacement for binary factor mask.
+    Diagonal kernel: K(f, μ) = (f−μ)ᵀ W (f−μ), W = diag(1/σ²).
 
-    distance(f, μ_a) = Σ_j w_j (f_j − μ_{a,j})²
-    gradient(f, μ)   = W ⊙ (f − μ)   where W = diag(weights)
+    v6.0 default for deployments with noise_ratio > 1.5.
 
-    High weight = trust this dimension. Low weight = attenuate.
-    When all weights = 1.0: identical to L2Kernel.
-    When weights are 0/1:   equivalent to factor_mask.
+    GRADIENT: max-normalized kernel-aware gradient.
+        G(f, μ) = (W / W.max()) · (f − μ)
 
-    v6.0: ships alongside L2Kernel. Customer choice via DomainConfig.
-    v7.0 research (not committed): replaced by ShrinkageKernel (W derived from Σ̂ automatically).
+    The max-normalization bounds gradient magnitude across
+    heterogeneous factor weights (GAE-GRADIENT-001 fix, v0.7.7).
+    Preserves gradient DIRECTION while preventing the highest-
+    weighted factor from dominating learning by magnitude.
 
-    Reference: docs/gae_design_v5.md §9; v6.0 kernel roadmap.
+    Per-factor effective learning rate: η · w_j / w_max.
+    Per-factor convergence half-life: N_half_j = (w_max/w_j) · ln(2)/η.
+
+    The maximum-weighted factor retains the canonical L2 half-life
+    of ln(2)/η ≈ 14 verified decisions at η=0.05.
+
+    All 390 factorial validation cells (V-MV-KERNEL) used this
+    gradient form. When W = I (uniform σ): reduces to L2.
     """
 
     def __init__(self, sigma: np.ndarray) -> None:

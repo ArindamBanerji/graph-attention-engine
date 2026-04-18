@@ -9,7 +9,8 @@
       "Bash(for i:*)",
       "Bash(do python:*)",
       "Bash(done)",
-      "Bash(do echo:*)"
+      "Bash(do echo:*)",
+      "Bash(echo \"exit:$?\")"
     ]
   },
   "enabledMcpjsonServers": [

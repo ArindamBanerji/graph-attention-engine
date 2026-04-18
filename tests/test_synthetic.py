@@ -48,14 +48,14 @@ def _make_exp(epsilon_firm, scorer=None, C=3, A=2, d=4):
 
 def test_oracle_separation_gamma_lt_1_below_threshold():
     """ε_firm < threshold → γ < 1 (theorem prediction)."""
-    exp = _make_exp(epsilon_firm=0.05)   # below threshold ≈ 0.128
+    exp = _make_exp(epsilon_firm=0.05)   # below threshold ≈ 0.125
     assert not exp.is_above_threshold
     assert exp.theorem_prediction == "gamma_lt_1"
 
 
 def test_oracle_separation_gamma_gt_1_above_threshold():
     """ε_firm > threshold → γ > 1 (theorem prediction)."""
-    exp = _make_exp(epsilon_firm=0.20)   # above threshold ≈ 0.128
+    exp = _make_exp(epsilon_firm=0.20)   # above threshold ≈ 0.125
     assert exp.is_above_threshold
     assert exp.theorem_prediction == "gamma_gt_1"
 
@@ -98,7 +98,7 @@ def test_gamma_result_n_half_gap_detection():
         centroid_dist_phase2=[2.8, 2.7, 2.6],
         n_half_gap_detected=True,
         epsilon_firm=0.05,
-        threshold=0.128,
+        threshold=0.125,
         theorem_prediction="gamma_lt_1",
         simulation_confirms=True,
         note="test",

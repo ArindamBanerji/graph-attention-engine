@@ -1,9 +1,8 @@
 """
 Adversarial input tests for GAE.
 
-Verifies that the library survives hostile inputs without producing
-silent corruption. Where behaviour is intentionally permissive (e.g. NaN
-propagation) the test documents it rather than asserting an error.
+Verifies that the library raises ValueError on NaN/Inf inputs and
+survives other hostile inputs without producing silent corruption.
 
 All tests must pass — no skips, no xfail.
 """
@@ -39,67 +38,50 @@ def make_profile(tau=0.1, eta=0.05, eta_neg=0.05, decay=0.001):
 
 class TestNaNInputs:
     def test_score_nan_single_dim(self):
-        """NaN in one factor dimension: current behaviour propagates NaN (caller sanitizes)."""
+        """NaN in one factor dimension raises ValueError."""
         scorer = make_scorer()
         f = np.array([np.nan, 0.5, 0.5, 0.5, 0.5, 0.5])
-        try:
-            result = scorer.score(f, 0)
-            # Document current behaviour: NaN propagates to probabilities
-        except (ValueError, AssertionError, FloatingPointError):
-            pass  # Raising cleanly is equally acceptable
+        with pytest.raises(ValueError, match="NaN or Inf"):
+            scorer.score(f, 0)
 
     def test_score_nan_all_dims(self):
-        """All-NaN factor vector: behaviour documented (NaN propagates or exception)."""
+        """All-NaN factor vector raises ValueError."""
         scorer = make_scorer()
         f = np.full(6, np.nan)
-        try:
+        with pytest.raises(ValueError, match="NaN or Inf"):
             scorer.score(f, 0)
-        except (ValueError, AssertionError, FloatingPointError):
-            pass
 
     def test_score_mixed_nan_and_valid(self):
-        """Partial NaN (first half NaN, second half valid): documents propagation."""
+        """Partial NaN raises ValueError."""
         scorer = make_scorer()
         f = np.array([np.nan, np.nan, np.nan, 0.3, 0.6, 0.9])
-        try:
+        with pytest.raises(ValueError, match="NaN or Inf"):
             scorer.score(f, 0)
-        except (ValueError, AssertionError, FloatingPointError):
-            pass
 
     def test_update_nan_factor_centralizes_cleanly(self):
-        """update() with NaN f: centroids must not silently become finite after NaN injection."""
+        """update() with NaN f raises ValueError before touching centroids."""
         scorer = make_scorer(n_cat=1, n_act=2, n_fac=3)
         f_nan = np.full(3, np.nan)
-        try:
+        with pytest.raises(ValueError, match="NaN or Inf"):
             scorer.update(f_nan, 0, 0, correct=True)
-            # If update completed, centroids are either NaN or unchanged — not silently corrupted
-        except (ValueError, AssertionError, FloatingPointError):
-            pass  # Raising is acceptable
 
 
 # ── Inf inputs ────────────────────────────────────────────────────────────────
 
 class TestInfInputs:
     def test_score_positive_inf(self):
-        """Positive Inf in factor: softmax stabilization via max-shift should absorb it."""
+        """Positive Inf in factor raises ValueError."""
         scorer = make_scorer()
         f = np.array([np.inf, 0.5, 0.5, 0.5, 0.5, 0.5])
-        try:
-            result = scorer.score(f, 0)
-            # If no crash, probabilities should sum to 1 or be NaN (documented)
-            if not np.any(np.isnan(result.probabilities)):
-                assert abs(result.probabilities.sum() - 1.0) < 1e-6
-        except (ValueError, AssertionError):
-            pass
+        with pytest.raises(ValueError, match="NaN or Inf"):
+            scorer.score(f, 0)
 
     def test_score_negative_inf(self):
-        """Negative Inf in factor: documents current behaviour."""
+        """Negative Inf in factor raises ValueError."""
         scorer = make_scorer()
         f = np.array([-np.inf, 0.5, 0.5, 0.5, 0.5, 0.5])
-        try:
+        with pytest.raises(ValueError, match="NaN or Inf"):
             scorer.score(f, 0)
-        except (ValueError, AssertionError):
-            pass
 
 
 # ── Boundary factor values ────────────────────────────────────────────────────
@@ -337,8 +319,8 @@ class TestTemperatureEdgeCases:
         assert np.all(result.probabilities > 0.20)
         assert np.all(result.probabilities < 0.50)
 
-    def test_score_tau_zero_returns_nan_or_raises(self):
-        """tau=0 causes division-by-zero; result must be NaN or exception (not silently uniform)."""
+    def test_score_tau_zero_raises(self):
+        """tau=0 raises ValueError before computing distances."""
         mu = np.zeros((1, 2, 3))
         mu[0, 0, :] = [0.1, 0.2, 0.3]
         mu[0, 1, :] = [0.7, 0.8, 0.9]
@@ -347,11 +329,8 @@ class TestTemperatureEdgeCases:
             actions=["a", "b"],
             profile=make_profile(tau=0.0),
         )
-        try:
-            result = scorer.score(np.array([0.5, 0.5, 0.5]), 0)
-            # Documents current behavior: NaN propagates
-        except (ValueError, AssertionError, ZeroDivisionError, FloatingPointError):
-            pass  # Raising cleanly is acceptable
+        with pytest.raises(ValueError, match="tau"):
+            scorer.score(np.array([0.5, 0.5, 0.5]), 0)
 
 
 # ── Long-running stability ────────────────────────────────────────────────────
@@ -401,3 +380,11 @@ class TestLongRunningStability:
         for _ in range(100):
             scorer.update(np.ones(4), 0, 0, correct=True)
         np.testing.assert_array_equal(scorer.mu, mu_before)
+
+
+def test_score_tau_negative_raises():
+    """Negative tau raises ValueError."""
+    scorer = make_scorer()
+    scorer.tau = -0.1
+    with pytest.raises(ValueError, match="tau"):
+        scorer.score(np.random.rand(6), 0)

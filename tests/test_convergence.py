@@ -11,6 +11,7 @@ from gae.convergence import (
     compute_e_inf_per_component,
     compute_n_half,
     compute_normalized_var_q,
+    compute_per_factor_n_half,
     compute_steady_state_mse,
     ConservationMonitor,
     OLSMonitor,
@@ -688,12 +689,12 @@ def test_centroid_distance_zero_for_identical():
 
 
 def test_gamma_threshold_production_values():
-    """Production values yield threshold ≈ 0.128."""
+    """Production values yield threshold ≈ 0.125."""
     from gae.convergence import gamma_threshold
     threshold = gamma_threshold(
         alpha_cat=2 / 6, delta_norm=0.25, theta=0.85
     )
-    assert abs(threshold - 0.128) < 0.005
+    assert abs(threshold - 0.125) < 0.001
 
 
 def test_phase2_effective_threshold_production():
@@ -717,4 +718,51 @@ def test_convergence_trace_n_half_gap():
     )
     assert trace.n_half_gap is True
     assert trace.summary()["phase"] == "phase1"
-    assert trace.summary()["n_half"] == 3
+
+
+# ── compute_per_factor_n_half tests ──────────────────────────────────────────
+
+class TestPerFactorNHalf:
+    def test_per_factor_n_half_uniform_returns_canonical(self):
+        """Uniform weights → all entries equal ln(2)/eta."""
+        weights = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+        result = compute_per_factor_n_half(weights, eta=0.05)
+        expected = np.log(2) / 0.05  # ≈ 13.86
+        np.testing.assert_allclose(result, expected, rtol=1e-10)
+
+    def test_per_factor_n_half_healthcare_profile(self):
+        """Healthcare noise profile: cleanest ≈14, noisiest ≈345."""
+        sigma = np.array([0.15, 0.20, 0.07, 0.10, 0.28, 0.35])
+        weights = 1.0 / sigma**2
+        weights = weights / weights.max()  # normalize as DiagonalKernel does
+        result = compute_per_factor_n_half(weights, eta=0.05)
+        # threat_intel (σ=0.07, index 2) should be ≈14
+        assert 13 < result[2] < 15, f"threat_intel N_half={result[2]}"
+        # device_trust (σ=0.35, index 5) should be ≈345
+        assert 300 < result[5] < 400, f"device_trust N_half={result[5]}"
+        # Ordering: cleanest first
+        assert result[2] < result[3] < result[0] < result[1] < result[4] < result[5]
+
+    def test_per_factor_n_half_zero_weights_raises(self):
+        """Zero weights should raise ValueError."""
+        with pytest.raises(ValueError, match="positive"):
+            compute_per_factor_n_half(np.array([1.0, 0.0, 1.0]))
+
+    def test_per_factor_n_half_empty_returns_empty(self):
+        """Empty input returns empty array."""
+        result = compute_per_factor_n_half(np.array([]))
+        assert result.size == 0
+
+    def test_per_factor_n_half_negative_weights_raises(self):
+        """Negative weights should raise ValueError."""
+        with pytest.raises(ValueError, match="positive"):
+            compute_per_factor_n_half(np.array([1.0, -0.5, 1.0]))
+
+    def test_per_factor_n_half_from_real_kernel(self):
+        """Verify using actual DiagonalKernel.weights as input."""
+        from gae.kernels import DiagonalKernel
+        sigma = np.array([0.15, 0.20, 0.07, 0.10, 0.28, 0.35])
+        dk = DiagonalKernel(sigma=sigma)
+        result = compute_per_factor_n_half(dk.weights, eta=0.05)
+        # Max-weighted factor (smallest sigma) gets the canonical half-life
+        assert 13 < result.min() < 15

@@ -992,3 +992,64 @@ def test_calibrating_status_does_not_pause():
     assert scorer.is_paused is False
     result = scorer.update(factors, 0, 1, True)
     assert result.centroid_delta_norm > 0.0
+
+
+# ── MR-B03: η_override RuntimeWarning ────────────────────────────────────────
+
+def _make_asymmetric_scorer():
+    profile = SimpleNamespace(
+        temperature=0.1,
+        extensions={"eta": 0.05, "eta_neg": 0.03, "count_decay": 0.001},
+    )
+    return ProfileScorer(
+        mu=np.random.default_rng(0).uniform(0.1, 0.9, (6, 4, 6)),
+        actions=["a", "b", "c", "d"],
+        profile=profile,
+    )
+
+
+def test_eta_override_none_asymmetric_warns():
+    """Warning fires when eta != eta_neg and eta_override is None."""
+    scorer = _make_asymmetric_scorer()
+    f = np.random.default_rng(1).uniform(0.1, 0.9, 6)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        scorer.update(f, 0, 0, correct=True)
+        runtime_warnings = [x for x in w if issubclass(x.category, RuntimeWarning)]
+        assert len(runtime_warnings) == 1
+        assert "eta_override" in str(runtime_warnings[0].message)
+
+
+def test_eta_override_none_symmetric_no_warning():
+    """No RuntimeWarning when eta == eta_neg (symmetric defaults)."""
+    scorer = ProfileScorer(
+        mu=np.random.default_rng(0).uniform(0.1, 0.9, (6, 4, 6)),
+        actions=["a", "b", "c", "d"],
+    )
+    f = np.random.default_rng(1).uniform(0.1, 0.9, 6)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        scorer.update(f, 0, 0, correct=True)
+        runtime_warnings = [x for x in w if issubclass(x.category, RuntimeWarning)]
+        assert len(runtime_warnings) == 0
+
+
+# ── MR-B05: ProfileScorer.for_soc() factory ──────────────────────────────────
+
+def test_for_soc_factory_defaults():
+    """for_soc() sets P0 fix and auto-pause defaults."""
+    mu = np.random.default_rng(0).uniform(0.1, 0.9, (6, 4, 6))
+    scorer = ProfileScorer.for_soc(mu=mu)
+    assert scorer.eta_override == 0.01
+    assert scorer.auto_pause_on_amber is True
+    assert len(scorer.actions) == 4
+
+
+def test_for_soc_factory_override():
+    """for_soc() allows overriding defaults."""
+    mu = np.random.default_rng(0).uniform(0.1, 0.9, (6, 4, 6))
+    scorer = ProfileScorer.for_soc(
+        mu=mu, eta_override=0.02, auto_pause_on_amber=False
+    )
+    assert scorer.eta_override == 0.02
+    assert scorer.auto_pause_on_amber is False

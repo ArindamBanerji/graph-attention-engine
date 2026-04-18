@@ -9,8 +9,8 @@ alert_category_distribution) are logged in the SOC triage path
 
 Validated: oracle separation experiments April 2026.
   Exp A: factor quality clean, regime differentiation confirmed.
-  v8 (ε_sim=0.05 < 0.128): γ=0.714 < 1 ✓ (theorem prediction correct)
-  v3 (ε_sim=0.20 > 0.128): γ=1.033 > 1 ✓ (theorem prediction correct)
+  v8 (ε_sim=0.05 < 0.125): γ=0.714 < 1 ✓ (theorem prediction correct)
+  v3 (ε_sim=0.20 > 0.125): γ=1.033 > 1 ✓ (theorem prediction correct)
 """
 
 from __future__ import annotations
@@ -188,8 +188,8 @@ class OracleSeparationExperiment:
     Correctness labeled by oracle distance, not LLM judgment.
 
     Binary validation (April 2026):
-      v8 (ε_sim=0.05 < 0.128): γ=0.714 < 1 ✓
-      v3 (ε_sim=0.20 > 0.128): γ=1.033 > 1 ✓
+      v8 (ε_sim=0.05 < 0.125): γ=0.714 < 1 ✓
+      v3 (ε_sim=0.20 > 0.125): γ=1.033 > 1 ✓
     """
 
     def __init__(
