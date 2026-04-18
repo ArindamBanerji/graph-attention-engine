@@ -7,7 +7,7 @@ a warm-started scorer that has "learned" from its own priors.
 
 Deterministic given a seed. No domain-specific code.
 
-Reference: docs/gae_design_v8_3.md §17; GAE-BOOT-1.
+Reference: docs/gae_design_v10_6.md §17; GAE-BOOT-1.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ class BootstrapResult:
     """
     Result of a bootstrap_calibration() run.
 
-    Reference: docs/gae_design_v8_3.md §17; GAE-BOOT-1.
+    Reference: docs/gae_design_v10_6.md §17; GAE-BOOT-1.
 
     Attributes
     ----------
@@ -136,7 +136,7 @@ def bootstrap_calibration(
     Raises:
       ValueError: if len(categories) != scorer.n_categories.
 
-    Reference: docs/gae_design_v8_3.md §17; GAE-BOOT-1.
+    Reference: docs/gae_design_v10_6.md §17; GAE-BOOT-1.
     """
     if len(categories) != scorer.n_categories:
         raise ValueError(

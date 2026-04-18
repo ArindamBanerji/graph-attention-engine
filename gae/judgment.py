@@ -7,7 +7,7 @@ how confident the system is.
 
 Zero SOC knowledge. NumPy only.
 
-Reference: docs/gae_design_v8_3.md §18 (judgment framework); GAE-JUDG-1.
+Reference: docs/gae_design_v10_6.md §18 (judgment framework); GAE-JUDG-1.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ class JudgmentResult:
     """
     Human-readable rationale for a ProfileScorer decision.
 
-    Reference: docs/gae_design_v8_3.md §18.1; GAE-JUDG-1.
+    Reference: docs/gae_design_v10_6.md §18.1; GAE-JUDG-1.
 
     Attributes
     ----------
@@ -71,7 +71,7 @@ def _confidence_tier(confidence: float) -> str:
       "medium"    confidence >= CONFIDENCE_MEDIUM (0.50)
       "discovery" confidence <  CONFIDENCE_MEDIUM (0.50)
 
-    Reference: docs/gae_design_v8_3.md §18.2; GAE-JUDG-1.
+    Reference: docs/gae_design_v10_6.md §18.2; GAE-JUDG-1.
     """
     if confidence >= CONFIDENCE_HIGH:
         return "high"
@@ -106,7 +106,7 @@ def _dominant_factors(
     Returns:
       (dominant_factor_names, factor_contributions_dict)
 
-    Reference: docs/gae_design_v8_3.md §18.3; GAE-JUDG-1.
+    Reference: docs/gae_design_v10_6.md §18.3; GAE-JUDG-1.
     """
     assert f.ndim == 1, f"f must be 1-D, got {f.shape}"
     assert mu_row.ndim == 1, f"mu_row must be 1-D, got {mu_row.shape}"
@@ -161,7 +161,7 @@ def compute_judgment(
     Returns:
       JudgmentResult with rationale, dominant factors, and transparency scores.
 
-    Reference: docs/gae_design_v8_3.md §18.4; GAE-JUDG-1.
+    Reference: docs/gae_design_v10_6.md §18.4; GAE-JUDG-1.
     """
     assert f.ndim == 1, f"f must be 1-D, got {f.shape}"
     assert mu.ndim == 3, f"mu must be 3-D (n_cat, n_act, n_fac), got {mu.shape}"

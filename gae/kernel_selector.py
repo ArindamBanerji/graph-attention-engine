@@ -36,6 +36,7 @@ class KernelScore:
     agreements: int = 0
     disagreements: int = 0
     cumulative_confidence: float = 0.0
+    cumulative_analyst_prob: float = 0.0
 
     @property
     def agreement_rate(self) -> float:
@@ -50,6 +51,18 @@ class KernelScore:
         if self.total_decisions == 0:
             return 0.0
         return self.cumulative_confidence / self.total_decisions
+
+    @property
+    def mean_analyst_action_prob(self) -> float:
+        """Mean P(analyst_action | f) — proper scoring rule metric.
+
+        Unlike mean_confidence (which rewards sharpness regardless
+        of correctness), this rewards confident-correct predictions
+        and penalizes confident-wrong predictions in the same number.
+        """
+        if self.total_decisions == 0:
+            return 0.0
+        return self.cumulative_analyst_prob / self.total_decisions
 
 
 @dataclass
@@ -85,7 +98,7 @@ class KernelSelector:
         should_reconsider() fires if σ, ρ_max, or covariance λ change enough
         to invalidate the earlier selection. Returns a reason string or None.
 
-    Reference: docs/gae_design_v5.md §9; v6.0 kernel roadmap.
+    Reference: docs/gae_design_v10_6.md §9; v6.0 kernel roadmap.
     """
 
     MIN_DECISIONS_FOR_RECOMMENDATION: int = 100
@@ -278,6 +291,8 @@ class KernelSelector:
             score = self.scores[name]
             score.total_decisions += 1
             score.cumulative_confidence += confidence
+            analyst_prob = float(probs[analyst_action_index])
+            score.cumulative_analyst_prob += analyst_prob
             if agreed:
                 score.agreements += 1
             else:
@@ -370,6 +385,7 @@ class KernelSelector:
                     sum(self._buffers[name]) / max(len(self._buffers[name]), 1)
                 ),
                 "mean_confidence": s.mean_confidence,
+                "mean_analyst_action_prob": s.mean_analyst_action_prob,
                 "total_decisions": s.total_decisions,
                 "agreements": s.agreements,
             }

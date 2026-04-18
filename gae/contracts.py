@@ -6,7 +6,7 @@ These are pure value objects; no I/O, no domain logic.
 Callers use them to validate factor vector assembly and embedding shapes
 before passing data into scoring or learning pipelines.
 
-Reference: docs/gae_design_v5.md §4 (Schema contracts).
+Reference: docs/gae_design_v10_6.md §4 (Schema contracts).
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ class PropertySpec:
     """
     Declares one scalar property that a node type exposes.
 
-    Reference: docs/gae_design_v5.md §4.1.
+    Reference: docs/gae_design_v10_6.md §4.1.
 
     Attributes
     ----------
@@ -65,7 +65,7 @@ class PropertySpec:
         """
         Return True if *value* satisfies the bounds declared in this spec.
 
-        Reference: docs/gae_design_v5.md §4.1 (validation rule).
+        Reference: docs/gae_design_v10_6.md §4.1 (validation rule).
 
         Parameters
         ----------
@@ -94,7 +94,7 @@ class EmbeddingContract:
     """
     Declares the expected shape and numeric properties of an embedding vector.
 
-    Reference: docs/gae_design_v5.md §4.2.
+    Reference: docs/gae_design_v10_6.md §4.2.
 
     Attributes
     ----------
@@ -125,7 +125,7 @@ class SchemaContract:
     Full schema declaration for one node type: its scalar properties and
     optional embedding contract.
 
-    Reference: docs/gae_design_v5.md §4.3.
+    Reference: docs/gae_design_v10_6.md §4.3.
 
     Attributes
     ----------
@@ -157,7 +157,7 @@ class SchemaContract:
         """
         Number of scalar factors in the packed factor vector.
 
-        Reference: docs/gae_design_v5.md §4.3.
+        Reference: docs/gae_design_v10_6.md §4.3.
 
         Returns
         -------
@@ -170,7 +170,7 @@ class SchemaContract:
         """
         Ordered property names, matching the factor_vector layout.
 
-        Reference: docs/gae_design_v5.md §4.3.
+        Reference: docs/gae_design_v10_6.md §4.3.
 
         Returns
         -------
@@ -183,7 +183,7 @@ class SchemaContract:
         Look up *name* in *raw*, falling back to the spec default when the
         property is optional and absent.
 
-        Reference: docs/gae_design_v5.md §4.3 (resolution rule).
+        Reference: docs/gae_design_v10_6.md §4.3 (resolution rule).
 
         Parameters
         ----------

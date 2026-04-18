@@ -8,7 +8,7 @@ is zeroed means X is important.
 Zero SOC knowledge. NumPy only.
 Builds on gae/evaluation.py (run_evaluation, EvaluationScenario).
 
-Reference: docs/gae_design_v8_3.md §20 (ablation framework); GAE-ABL-1.
+Reference: docs/gae_design_v10_6.md §20 (ablation framework); GAE-ABL-1.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ class AblationResult:
     """
     Result of ablating one factor from the evaluation.
 
-    Reference: docs/gae_design_v8_3.md §20.1; GAE-ABL-1.
+    Reference: docs/gae_design_v10_6.md §20.1; GAE-ABL-1.
 
     Attributes
     ----------
@@ -58,7 +58,7 @@ class AblationReport:
     """
     Full ablation study results across all factors.
 
-    Reference: docs/gae_design_v8_3.md §20.2; GAE-ABL-1.
+    Reference: docs/gae_design_v10_6.md §20.2; GAE-ABL-1.
 
     Attributes
     ----------
@@ -101,7 +101,7 @@ def _zero_factor(
     Returns:
       New list of EvaluationScenario with factor_index set to 0.0.
 
-    Reference: docs/gae_design_v8_3.md §20.3; GAE-ABL-1.
+    Reference: docs/gae_design_v10_6.md §20.3; GAE-ABL-1.
     """
     ablated = []
     for s in scenarios:
@@ -153,7 +153,7 @@ def run_ablation(
       ValueError: if scenarios is empty or factor_names is empty.
       ValueError: if len(factor_names) != factors vector length.
 
-    Reference: docs/gae_design_v8_3.md §20.4; GAE-ABL-1.
+    Reference: docs/gae_design_v10_6.md §20.4; GAE-ABL-1.
     """
     if not scenarios:
         raise ValueError("scenarios must not be empty")

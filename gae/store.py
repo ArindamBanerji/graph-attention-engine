@@ -5,7 +5,7 @@ LearningState holds the learned factor weights and the current training step.
 save_state / load_state use atomic write (temp-file + rename) to avoid
 partial writes on crash.
 
-Reference: docs/gae_design_v5.md §6 (Persistence).
+Reference: docs/gae_design_v10_6.md §6 (Persistence).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ class LearningState:
     """
     Mutable container for the current learning state.
 
-    Reference: docs/gae_design_v5.md §6.1.
+    Reference: docs/gae_design_v10_6.md §6.1.
 
     Attributes
     ----------
@@ -69,7 +69,7 @@ class LearningState:
         """
         Convert to a JSON-serialisable dict.
 
-        Reference: docs/gae_design_v5.md §6.1 (serialisation format).
+        Reference: docs/gae_design_v10_6.md §6.1 (serialisation format).
 
         Returns
         -------
@@ -87,7 +87,7 @@ class LearningState:
         """
         Reconstruct a LearningState from a dict produced by *to_dict*.
 
-        Reference: docs/gae_design_v5.md §6.1 (deserialisation).
+        Reference: docs/gae_design_v10_6.md §6.1 (deserialisation).
 
         Parameters
         ----------
@@ -130,7 +130,7 @@ def save_state(state: LearningState, path: str | Path) -> None:
     then renames it over *path*.  This prevents partial-write corruption on
     crash or KeyboardInterrupt.
 
-    Reference: docs/gae_design_v5.md §6.2 (atomic write).
+    Reference: docs/gae_design_v10_6.md §6.2 (atomic write).
 
     Parameters
     ----------
@@ -171,7 +171,7 @@ def load_state(path: str | Path) -> LearningState:
     """
     Load and return a LearningState from a JSON file written by *save_state*.
 
-    Reference: docs/gae_design_v5.md §6.2 (load).
+    Reference: docs/gae_design_v10_6.md §6.2 (load).
 
     Parameters
     ----------

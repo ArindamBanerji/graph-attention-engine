@@ -8,7 +8,7 @@ One estimator per (category, action) pair. SOC: 6×4 = 24 estimators.
 Uses exponentially-weighted Welford-style accumulation so recent decisions
 weight more — tracks regime shifts without discarding history entirely.
 
-Reference: docs/gae_design_v5.md §9; v6.5 kernel roadmap.
+Reference: docs/gae_design_v10_6.md §9; v6.5 kernel roadmap.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ class CovarianceEstimator:
         est.update(factor_vector)
     snapshot = est.get_snapshot()
 
-    Reference: docs/gae_design_v5.md §9; Ledoit & Wolf (2004).
+    Reference: docs/gae_design_v10_6.md §9; Ledoit & Wolf (2004).
     """
 
     MIN_SAMPLES_FOR_SIGMA: int = 50

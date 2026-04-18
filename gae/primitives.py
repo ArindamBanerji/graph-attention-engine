@@ -12,7 +12,7 @@ where:
 
     softmax is applied row-wise over the (n, m) logit matrix.
 
-Reference: docs/gae_design_v5.md §2.1; blog Eq. 1.
+Reference: docs/gae_design_v10_6.md §2.1; blog Eq. 1.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
 
     Implements:  softmax(x_i) = exp(x_i - max(x)) / sum(exp(x_j - max(x)))
 
-    Reference: docs/gae_design_v5.md §2.1 (stability note); blog Eq. 1 denominator.
+    Reference: docs/gae_design_v10_6.md §2.1 (stability note); blog Eq. 1 denominator.
 
     Parameters
     ----------
@@ -73,7 +73,7 @@ def scaled_dot_product_attention(
         weights = softmax(scores + mask)                     [Eq. 1b]
         output  = weights V                                  [Eq. 1c]
 
-    Reference: docs/gae_design_v5.md §2.1; blog Eq. 1.
+    Reference: docs/gae_design_v10_6.md §2.1; blog Eq. 1.
 
     Parameters
     ----------

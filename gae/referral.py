@@ -17,7 +17,7 @@ Phase 2 (v6.5):
   OverrideDetector (R8) activates once 50+ production positives collected.
   Stub defined here — interface contract only, NotImplementedError at v6.0.
 
-Reference: docs/gae_design_v5.md §10; EXP-REFER-LAYERED.
+Reference: docs/gae_design_v10_6.md §10; EXP-REFER-LAYERED.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ class ReferralReason(Enum):
     SOC implements R1-R7 as concrete ReferralRule objects in the SOC repo.
     S2P implements its own set. gae/ defines only the protocol.
 
-    Reference: EXP-REFER-LAYERED §3; docs/gae_design_v5.md §10.
+    Reference: EXP-REFER-LAYERED §3; docs/gae_design_v10_6.md §10.
     """
 
     EXECUTIVE_ACCOUNT  = "R1"
@@ -78,7 +78,7 @@ class ReferralDecision:
         Per-rule detail dicts keyed by reason code string (e.g. "R1").
         Empty if should_refer=False.
 
-    Reference: EXP-REFER-LAYERED §4; docs/gae_design_v5.md §10.
+    Reference: EXP-REFER-LAYERED §4; docs/gae_design_v10_6.md §10.
     """
 
     should_refer: bool
@@ -147,7 +147,7 @@ class ReferralRule(Protocol):
         Returns (fires: bool, detail: dict) where detail is included
         in the audit trail when fires=True.
 
-    Reference: EXP-REFER-LAYERED §2; docs/gae_design_v5.md §10.
+    Reference: EXP-REFER-LAYERED §2; docs/gae_design_v10_6.md §10.
     """
 
     @property
@@ -197,7 +197,7 @@ class ReferralEngine:
     if decision.should_refer:
         route_to_analyst(alert, decision.audit_summary)
 
-    Reference: EXP-REFER-LAYERED §2; docs/gae_design_v5.md §10.
+    Reference: EXP-REFER-LAYERED §2; docs/gae_design_v10_6.md §10.
     """
 
     rules: List  # list of objects implementing ReferralRule protocol
@@ -271,7 +271,7 @@ class OverrideDetector:
     This prevents accidental activation before sufficient data exists.
     50 positives ≈ 6-12 months of referral feedback at typical volumes.
 
-    Reference: EXP-REFER-LAYERED §5; docs/gae_design_v5.md §10.
+    Reference: EXP-REFER-LAYERED §5; docs/gae_design_v10_6.md §10.
     """
 
     def __init__(self, config: OverrideDetectorConfig) -> None:

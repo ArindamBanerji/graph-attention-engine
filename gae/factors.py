@@ -9,7 +9,7 @@ vector in the order declared by a SchemaContract:
 where each raw[prop_i] is resolved through the SchemaContract (required /
 optional / default logic).
 
-Reference: docs/gae_design_v5.md §5; blog Eq. 2 (factor vector assembly).
+Reference: docs/gae_design_v10_6.md §5; blog Eq. 2 (factor vector assembly).
 
 Note on async
 -------------
@@ -41,7 +41,7 @@ class FactorComputer(Protocol):
     They may use async I/O — hence the async signature — but the library
     never drives the event loop itself.
 
-    Reference: docs/gae_design_v5.md §5.1.
+    Reference: docs/gae_design_v10_6.md §5.1.
     """
 
     async def compute(self, entity_id: str, context: Any = None) -> float:
@@ -85,7 +85,7 @@ def assemble_factor_vector(
     where resolve() applies required/optional/default logic from the
     SchemaContract (see contracts.SchemaContract.resolve_value).
 
-    Reference: docs/gae_design_v5.md §5.2; blog Eq. 2.
+    Reference: docs/gae_design_v10_6.md §5.2; blog Eq. 2.
 
     Parameters
     ----------

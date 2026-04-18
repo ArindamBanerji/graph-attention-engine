@@ -3,7 +3,7 @@
 > One new theorem, four document locations updated.
 >
 > **(1) §3.2 NEW:** Re-Convergence Theorem. γ > 1 proven analytically for category-sparse
->     disruption when ε_firm > ε_firm★ ≈ 0.125. Three proof paths. Simulation confirmation.
+>     disruption when ε_firm > ε_firm★ ≈ 0.125. Four proof paths. Simulation confirmation.
 >     **Formula confirmed correct (coding session April 8 + April 9):** ε_firm★ = α·‖Δ‖/(1−α) — also written as `alpha*delta/(1-alpha)` in code.
 >     θ cancels in correct derivation. Value ≈ 0.125 (was approximated as 0.128, diff = 0.003).
 >     OracleSeparationExperiment in gae/experiments/ validates both directions: ε=0.05 → γ=0.714 < 1; ε=0.20 → γ=1.033 > 1.
@@ -15,6 +15,9 @@
 > **(3) §12 UPDATED:** Re-Convergence Theorem added as RESOLVED open math issue.
 >
 > **(4) §13 UPDATED:** Gate GAMMA added after Gate REFERRAL.
+>
+> **(5) §3.2 UPDATED:** Fourth proof path added (centroid-distance
+>     derivation, Grok primary, April 16 math poll).
 >
 > Sources: GPT-4.1, Claude Opus 4, Grok 3, Gemini 1.5 Pro (April 8, 2026).
 > Simulation: oracle separation v3/v8/final (oracle_separation_validation files).
@@ -504,7 +507,7 @@ This correctly predicts γ < 1 in simulation, as observed.
 
 ---
 
-**Three Structural Proof Paths (all confirmed independently)**
+**Four Structural Proof Paths (all confirmed independently)**
 
 *Path 1 — Geometric (primary):*
 Phase 1's convergence challenge (all C categories, from ε_firm) exceeds Phase 2's
@@ -523,6 +526,15 @@ Phase 2 maintains η_eff near η₊ = 0.05 because 67% of decisions are undisrup
 where low initial accuracy → η_eff ≈ η₋ = 0.01 → learning near-stalled.
 Effective learning rate ratio: η_eff,2 / η_eff,1 > 1 when ε_firm is large.
 This means true production γ exceeds the geometric lower bound.
+
+*Path 4 — Centroid-Distance (Grok, April 16, 2026):*
+Phase 1 challenge: D₁ = ε_firm (all C categories cold-start from expert prior).
+Phase 2 challenge: D₂ = (α_cat/(1−α_cat))·‖Δ‖ (only disrupted categories
+reconverge; undisrupted contribute free rolling-window accuracy via the
+1/(1−α_cat) scaling). Solving D₁ > D₂ gives
+ε_firm > α_cat·‖Δ‖/(1−α_cat) ≈ 0.125. θ never enters because challenge is
+measured in centroid-distance space, not accuracy-gap space — θ governs the
+operational observable, not the mathematical contraction dynamics.
 
 ---
 
@@ -1138,7 +1150,9 @@ code inspection (GAE implements A=4, 478 tests). V-MV-KERNEL ran at A=4.
 confirmed. EXP-G1 provides Tier 1 (empirical measurement from pilot data).
 
 **Prerequisites:** Oracle separation validation (v6/v8/v11/v2/v3/final, April 8, 2026).
-LLM math poll v4: GPT-4.1, Claude Opus 4, Grok 3, Gemini 1.5 Pro.
+LLM math polls: v4 (GPT-4.1, Claude Opus 4, Grok 3, Gemini 1.5 Pro, April 8, 2026) and
+v5 (Grok primary, April 16, 2026).
+Four structural proof paths, confirmed across two four-judge math polls (April 8 and April 16, 2026).
 BACKLOG-015: EXP-G1 logging active from pilot Day 1.
 
 **The theorem (see §3.2 for full derivation):**

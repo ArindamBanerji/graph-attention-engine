@@ -509,3 +509,29 @@ class TestRollingWindow:
     def test_invalid_window_size_raises(self, hetero_sigma):
         with pytest.raises(AssertionError):
             KernelSelector(d=6, sigma_per_factor=hetero_sigma, window_size=0)
+
+
+def test_kernel_score_tracks_analyst_action_prob():
+    """KernelScore accumulates P(analyst_action|f)."""
+    from gae.kernel_selector import KernelScore
+    ks = KernelScore(kernel_name="test")
+    ks.total_decisions = 3
+    ks.cumulative_analyst_prob = 0.6 + 0.8 + 0.3
+    assert abs(ks.mean_analyst_action_prob - 0.5667) < 0.001
+
+
+def test_comparison_summary_includes_analyst_prob():
+    """get_comparison_summary() exposes mean_analyst_action_prob."""
+    import numpy as np
+    from gae.kernel_selector import KernelSelector
+    sigma = np.array([0.10, 0.20, 0.30, 0.40, 0.50, 0.60])
+    sel = KernelSelector(d=6, sigma_per_factor=sigma)
+    mu = np.random.rand(6, 4, 6)
+    actions = ["a", "b", "c", "d"]
+    for i in range(10):
+        sel.record_comparison(np.random.rand(6), 0, mu,
+                              np.random.randint(4), actions)
+    summary = sel.get_comparison_summary()
+    for kernel_name, stats in summary.items():
+        assert "mean_analyst_action_prob" in stats
+        assert isinstance(stats["mean_analyst_action_prob"], float)

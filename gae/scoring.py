@@ -15,7 +15,7 @@ Shape annotation (from math blog §3):
 τ (temperature) controls sharpness:
     small τ → hard argmax;  τ = 1.0 → uniform mixing
 
-Reference: docs/gae_design_v5.md §7; blog Eq. 4.
+Reference: docs/gae_design_v10_6.md §7; blog Eq. 4.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ class ScoringResult:
     """
     Full output of one Eq. 4 scoring call.
 
-    Reference: docs/gae_design_v5.md §7.2.
+    Reference: docs/gae_design_v10_6.md §7.2.
 
     Attributes
     ----------
@@ -93,7 +93,7 @@ def score_entity(
         raw   = f · Wᵀ / τ                                 [Eq. 4, numerator]
         probs = softmax(raw)                                [Eq. 4, softmax]
 
-    Reference: docs/gae_design_v5.md §7.1; blog Eq. 4.
+    Reference: docs/gae_design_v10_6.md §7.1; blog Eq. 4.
 
     Parameters
     ----------
@@ -205,6 +205,6 @@ def score_with_profile(
       f:              Factor vector, shape (n_factors,).
       category_index: Category index for routing.
 
-    Reference: docs/gae_design_v5.md §9.4; blog Eq. 4-final.
+    Reference: docs/gae_design_v10_6.md §9.4; blog Eq. 4-final.
     """
     return scorer.score(f, category_index)

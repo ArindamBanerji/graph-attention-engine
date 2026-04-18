@@ -7,7 +7,7 @@ per-category accuracy, per-action precision/recall, and ECE.
 
 Zero SOC knowledge. NumPy only.
 
-Reference: docs/gae_design_v8_3.md §17 (evaluation framework); GAE-EVAL-1.
+Reference: docs/gae_design_v10_6.md §17 (evaluation framework); GAE-EVAL-1.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ class EvaluationScenario:
     """
     A structured test case with known factor vector and expected action.
 
-    Reference: docs/gae_design_v8_3.md §17.1.
+    Reference: docs/gae_design_v10_6.md §17.1.
 
     Attributes
     ----------
@@ -69,7 +69,7 @@ class EvaluationReport:
     """
     Aggregated results from run_evaluation().
 
-    Reference: docs/gae_design_v8_3.md §17.2.
+    Reference: docs/gae_design_v10_6.md §17.2.
 
     Attributes
     ----------
@@ -124,7 +124,7 @@ def compute_ece(
     Returns:
       ECE as a float rounded to 6 decimal places.
 
-    Reference: docs/gae_design_v8_3.md §17.3; blog Eq. 4-final calibration (V3B).
+    Reference: docs/gae_design_v10_6.md §17.3; blog Eq. 4-final calibration (V3B).
     """
     assert len(confidences) == len(correct_flags), (
         f"confidences length {len(confidences)} != correct_flags length "
@@ -190,7 +190,7 @@ def run_evaluation(
     Returns:
       EvaluationReport with accuracy, per-category, per-action, and ECE metrics.
 
-    Reference: docs/gae_design_v8_3.md §17.4; GAE-EVAL-1.
+    Reference: docs/gae_design_v10_6.md §17.4; GAE-EVAL-1.
     """
     if not scenarios:
         return EvaluationReport(

@@ -5,7 +5,7 @@ These are *data containers only*.  No event bus.  No async dispatch.
 Callers receive them as return values or can pass them to logging/monitoring
 hooks they own.
 
-Reference: docs/gae_design_v5.md §3 (Event model).
+Reference: docs/gae_design_v10_6.md §3 (Event model).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ class FactorComputedEvent:
     """
     Emitted when a single factor vector has been assembled for one node.
 
-    Reference: docs/gae_design_v5.md §3.1; blog factor assembly section.
+    Reference: docs/gae_design_v10_6.md §3.1; blog factor assembly section.
 
     Attributes
     ----------
@@ -54,7 +54,7 @@ class WeightsUpdatedEvent:
     """
     Emitted after the learning rule updates factor weights.
 
-    Reference: docs/gae_design_v5.md §3.2; blog Eq. 4b/4c weight update.
+    Reference: docs/gae_design_v10_6.md §3.2; blog Eq. 4b/4c weight update.
 
     Attributes
     ----------
@@ -95,7 +95,7 @@ class ConvergenceEvent:
     """
     Emitted when the convergence monitor detects a state change.
 
-    Reference: docs/gae_design_v5.md §3.3; blog convergence criterion.
+    Reference: docs/gae_design_v10_6.md §3.3; blog convergence criterion.
 
     Attributes
     ----------

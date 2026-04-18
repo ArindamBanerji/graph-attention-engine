@@ -10,7 +10,7 @@ Used by evaluation suite (GAE-EVAL-1) and ablation baselines (GAE-ABL-1).
 
 Retained from retired bridge_layer design (TD-032).
 
-Reference: docs/gae_design_v5.md §10; EXP-C1 (GTAlignedOracle accuracy).
+Reference: docs/gae_design_v10_6.md §10; EXP-C1 (GTAlignedOracle accuracy).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class OracleResult:
     """
     Result from an OracleProvider query.
 
-    Reference: docs/gae_design_v5.md §10.1.
+    Reference: docs/gae_design_v10_6.md §10.1.
 
     Attributes
     ----------
@@ -58,7 +58,7 @@ class OracleProvider(Protocol):
 
     Used by: GAE-EVAL-1, GAE-ABL-1, SOC simulation mode.
 
-    Reference: docs/gae_design_v5.md §10.2.
+    Reference: docs/gae_design_v10_6.md §10.2.
     """
 
     def query(
@@ -93,7 +93,7 @@ class GTAlignedOracle:
     action. On well-separated bimodal centroids produces ~97.89% accuracy
     (EXP-C1 reference).
 
-    Reference: docs/gae_design_v5.md §10.3; EXP-C1.
+    Reference: docs/gae_design_v10_6.md §10.3; EXP-C1.
     """
 
     def __init__(self, mu: np.ndarray, actions: list[str]) -> None:
@@ -103,7 +103,7 @@ class GTAlignedOracle:
                    Copied — caller's array is not mutated.
           actions: Ordered action names. len(actions) == mu.shape[1].
 
-        Reference: docs/gae_design_v5.md §10.3.
+        Reference: docs/gae_design_v10_6.md §10.3.
         """
         assert mu.ndim == 3, (
             f"mu must be 3-D (n_cat, n_act, n_fac), got shape {mu.shape}"
@@ -131,7 +131,7 @@ class GTAlignedOracle:
         Returns:
           OracleResult. confidence=1.0 (deterministic).
 
-        Reference: docs/gae_design_v5.md §10.3; blog Eq. 4-final (L2 kernel).
+        Reference: docs/gae_design_v10_6.md §10.3; blog Eq. 4-final (L2 kernel).
         """
         f = np.asarray(f, dtype=np.float64)
         mu_c = self.mu[category_index]              # (n_actions, n_factors)
@@ -163,7 +163,7 @@ class GTAlignedOracle:
         Args:
           scorer: A ProfileScorer instance (duck-typed; reads .mu, .actions).
 
-        Reference: docs/gae_design_v5.md §10.3.
+        Reference: docs/gae_design_v10_6.md §10.3.
         """
         return cls(mu=scorer.mu, actions=scorer.actions)
 
@@ -176,7 +176,7 @@ class BernoulliOracle:
     experiments. When incorrect, GT is drawn uniformly from non-taken
     actions.
 
-    Reference: docs/gae_design_v5.md §10.4; GAE-ABL-1.
+    Reference: docs/gae_design_v10_6.md §10.4; GAE-ABL-1.
     """
 
     def __init__(
@@ -194,7 +194,7 @@ class BernoulliOracle:
                         4-action problems.
           seed:         Random seed for reproducibility.
 
-        Reference: docs/gae_design_v5.md §10.4.
+        Reference: docs/gae_design_v10_6.md §10.4.
         """
         assert 0.0 <= correct_rate <= 1.0, (
             f"correct_rate {correct_rate} must be in [0.0, 1.0]"
@@ -227,7 +227,7 @@ class BernoulliOracle:
         Returns:
           OracleResult. confidence = self.correct_rate.
 
-        Reference: docs/gae_design_v5.md §10.4; GAE-ABL-1.
+        Reference: docs/gae_design_v10_6.md §10.4; GAE-ABL-1.
         """
         if self.rng.random() < self.correct_rate:
             gt_idx = taken_action_index

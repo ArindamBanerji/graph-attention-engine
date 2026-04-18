@@ -9,7 +9,7 @@ experiments. Key validated numbers:
   - Global Mahalanobis: harmful on multi-category data (FX-1-CORRECTED)
   - DOT product: 61% on [0,1] factors (EXP-C1)
 
-Reference: docs/gae_design_v5.md §9; blog Eq. 4-final, 4b-final.
+Reference: docs/gae_design_v10_6.md §9; blog Eq. 4-final, 4b-final.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ class CentroidUpdate:
     Captures the magnitude of centroid movement for a single learning step.
     Used for visualization, Neo4j persistence, and drift monitoring.
 
-    Reference: docs/gae_design_v5.md §9.5; IKS pipeline.
+    Reference: docs/gae_design_v10_6.md §9.5; IKS pipeline.
     """
 
     centroid_delta_norm: float   # ‖η*(f - μ[c,a,:])‖₂ before in-place update (predicted push)
@@ -63,7 +63,7 @@ class KernelType(Enum):
       COSINE:      96.4% on [0,1], 61.2% on mixed-scale
       DOT:         61.0% on [0,1] — WARNING emitted at init
 
-    Reference: docs/gae_design_v5.md §9.1; EXP-E1.
+    Reference: docs/gae_design_v10_6.md §9.1; EXP-E1.
     """
 
     L2 = "l2"
@@ -78,7 +78,7 @@ class ScoringResult:
     """
     Result of ProfileScorer.score().
 
-    Reference: docs/gae_design_v5.md §9.2; blog Eq. 4-final.
+    Reference: docs/gae_design_v10_6.md §9.2; blog Eq. 4-final.
 
     Attributes
     ----------
@@ -123,7 +123,7 @@ class ProfileScorer:
       V3B:    ECE=0.036 at τ=0.1
       V2:     Clipping prevents centroid escape under adversarial updates
 
-    Reference: docs/gae_design_v5.md §9; blog Eq. 4-final, 4b-final.
+    Reference: docs/gae_design_v10_6.md §9; blog Eq. 4-final, 4b-final.
     """
 
     def __init__(
@@ -188,7 +188,7 @@ class ProfileScorer:
                           Call set_conservation_status() to update.
                           Source: G6a three-judge consensus (v6.0 blunt freeze).
 
-        Reference: docs/gae_design_v5.md §9.3; V3B (τ), V2 (clipping).
+        Reference: docs/gae_design_v10_6.md §9.3; V3B (τ), V2 (clipping).
         """
         assert mu.ndim == 3, (
             f"mu must be shape (n_cat, n_act, n_fac), got {mu.shape}"
@@ -319,7 +319,7 @@ class ProfileScorer:
         Returns:
           ScoringResult with recommended action and full probability distribution.
 
-        Reference: docs/gae_design_v5.md §9.4; blog Eq. 4-final.
+        Reference: docs/gae_design_v10_6.md §9.4; blog Eq. 4-final.
         """
         assert 0 <= category_index < self.n_categories, (
             f"category_index {category_index} out of range [0, {self.n_categories})"
@@ -385,7 +385,7 @@ class ProfileScorer:
 
         Returns shape (n_actions,). Lower = more similar (for L2/Mahalanobis).
 
-        Reference: docs/gae_design_v5.md §9.1; EXP-E1 (kernel comparison).
+        Reference: docs/gae_design_v10_6.md §9.1; EXP-E1 (kernel comparison).
         """
         if self.kernel == KernelType.L2:
             diff = f - mu_c                          # (n_actions, n_factors)
@@ -457,7 +457,7 @@ class ProfileScorer:
         Freeze all centroid learning. Subsequent update() calls return a
         CentroidUpdate with centroid_delta_norm=0.0 and do not mutate mu.
 
-        Reference: docs/gae_design_v5.md §9.5.
+        Reference: docs/gae_design_v10_6.md §9.5.
         """
         self._frozen = True
 
@@ -478,7 +478,7 @@ class ProfileScorer:
         kernel : ScoringKernel
             New kernel instance (L2Kernel, DiagonalKernel, …).
 
-        Reference: docs/gae_design_v5.md §9; V-CGA-FROZEN gap closure.
+        Reference: docs/gae_design_v10_6.md §9; V-CGA-FROZEN gap closure.
         """
         self.scoring_kernel = kernel
 
@@ -503,7 +503,7 @@ class ProfileScorer:
             - current scoring_kernel is not a DiagonalKernel (L2 has no weights), or
             - covariance_estimator has fewer than MIN_SAMPLES_FOR_SIGMA observations.
 
-        Reference: V-CGA-FROZEN gap closure; docs/gae_design_v5.md §9.
+        Reference: V-CGA-FROZEN gap closure; docs/gae_design_v10_6.md §9.
         """
         from gae.kernels import DiagonalKernel as _DiagonalKernel
         if not isinstance(self.scoring_kernel, _DiagonalKernel):
@@ -559,7 +559,7 @@ class ProfileScorer:
             One of 'GREEN', 'AMBER', 'RED', 'CALIBRATING'.
             AMBER/RED → freeze learning. GREEN → resume learning.
 
-        Reference: G6a three-judge consensus; docs/gae_design_v5.md §9.6.
+        Reference: G6a three-judge consensus; docs/gae_design_v10_6.md §9.6.
         """
         self._conservation_status = status
         if self.auto_pause_on_amber and status in ('AMBER', 'RED'):
@@ -644,7 +644,7 @@ class ProfileScorer:
           CentroidUpdate capturing the magnitude of centroid movement.
           outcome='gated_low_confidence' when the gate fires (centroid_delta_norm=0.0).
 
-        Reference: docs/gae_design_v5.md §9.5; blog Eq. 4b-final; V2 (clipping).
+        Reference: docs/gae_design_v10_6.md §9.5; blog Eq. 4b-final; V2 (clipping).
         """
         f = np.asarray(f, dtype=np.float64)
         assert f.shape == (self.n_factors,), (
@@ -815,7 +815,7 @@ class ProfileScorer:
           overall_mean_separation: float
           decisions_per_category: list of per-action counts summed per category
 
-        Reference: docs/gae_design_v5.md §9.6.
+        Reference: docs/gae_design_v10_6.md §9.6.
         """
         per_category: Dict = {}
         separations: List[float] = []
@@ -856,7 +856,7 @@ class ProfileScorer:
                    Compute from category-filtered training data only.
                    Global covariance is harmful — FX-1-CORRECTED.
 
-        Reference: docs/gae_design_v5.md §9.1; FX-1-CORRECTED.
+        Reference: docs/gae_design_v10_6.md §9.1; FX-1-CORRECTED.
         """
         assert self.kernel == KernelType.MAHALANOBIS, (
             "set_covariance() is only for KernelType.MAHALANOBIS"
@@ -896,7 +896,7 @@ class ProfileScorer:
 
         Missing category/action combinations default to 0.5 (uniform prior).
 
-        Reference: docs/gae_design_v5.md §9.7.
+        Reference: docs/gae_design_v10_6.md §9.7.
         """
         categories = config_dict["categories"]
         centroids  = config_dict["centroids"]
@@ -972,7 +972,7 @@ def build_profile_scorer(
       kernel:     Distance kernel (default L2).
       profile:    CalibrationProfile for hyperparameters.
 
-    Reference: docs/gae_design_v5.md §9.7.
+    Reference: docs/gae_design_v10_6.md §9.7.
     """
     config_dict = {
         "categories": categories,

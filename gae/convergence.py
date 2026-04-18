@@ -4,7 +4,7 @@ GAE Convergence — monitoring weight learning stability and accuracy.
 Provides a standalone function that inspects a LearningState and returns
 diagnostic metrics used to determine whether training has converged.
 
-Convergence criterion (docs/gae_design_v5.md §8.3):
+Convergence criterion (docs/gae_design_v10_6.md §8.3):
     converged := stability < STABILITY_THRESHOLD AND accuracy > ACCURACY_THRESHOLD
 
 Where:
@@ -16,7 +16,7 @@ Three failure modes detected via the returned metrics:
     FM2 — Asymmetric oscillation : alternating correct/incorrect → accuracy ≈ 0.5
     FM3 — Decay competition  : stability is high → W norm never stabilises
 
-Reference: docs/gae_design_v5.md §8.3; blog convergence criterion.
+Reference: docs/gae_design_v10_6.md §8.3; blog convergence criterion.
 """
 
 from __future__ import annotations
@@ -483,7 +483,7 @@ def get_convergence_metrics(state: "LearningState") -> dict:
     Accuracy is the fraction of outcome == +1 among the last RECENCY_WINDOW
     (20) history entries.
 
-    Reference: docs/gae_design_v5.md §8.3; blog convergence criterion.
+    Reference: docs/gae_design_v10_6.md §8.3; blog convergence criterion.
 
     Parameters
     ----------

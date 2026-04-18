@@ -11,7 +11,7 @@ All kernels implement ScoringKernel protocol:
   compute_distance(f, mu_matrix) -> distances array, shape (A,)
   compute_gradient(f, mu_single) -> gradient vector, shape (d,)
 
-Reference: docs/gae_design_v5.md §9; v6.0 kernel roadmap.
+Reference: docs/gae_design_v10_6.md §9; v6.0 kernel roadmap.
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ class L2Kernel:
 
     All dimensions weighted equally. Default kernel for ProfileScorer.
 
-    Reference: docs/gae_design_v5.md §9.1; EXP-C1 (97.89% accuracy).
+    Reference: docs/gae_design_v10_6.md §9.1; EXP-C1 (97.89% accuracy).
     """
 
     def compute_distance(self, f: np.ndarray, mu: np.ndarray) -> np.ndarray:
@@ -209,7 +209,7 @@ class DiagonalKernel:
 
         KernelSelector trigger criterion: recommend DiagonalKernel when > 1.5.
 
-        Reference: V-MV-KERNEL; docs/gae_design_v5.md §9.
+        Reference: V-MV-KERNEL; docs/gae_design_v10_6.md §9.
         """
         w_min = max(float(self.weights.min()), 1e-12)
         return float(np.sqrt(self._W_baseline_max / w_min))
@@ -240,7 +240,7 @@ class DiagonalKernel:
         Returns:
             New DiagonalKernel with weights = 1 / sigma_per_factor**2
 
-        Reference: V-CGA-FROZEN gap closure; docs/gae_design_v5.md §9.
+        Reference: V-CGA-FROZEN gap closure; docs/gae_design_v10_6.md §9.
         """
         sigma_per_factor = np.asarray(sigma_per_factor, dtype=np.float64)
         assert sigma_per_factor.shape == self.weights.shape, (

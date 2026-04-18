@@ -26,7 +26,7 @@ Hardening:
     A1: Confidence-discounted α — reduces learning rate when the system was
         already confident at decision time (confirmation bias mitigation).
     A2: Per-factor ε_vector — permanent factors decay slowly, campaign factors
-        decay fast (see docs/gae_design_v5.md §8.4).
+        decay fast (see docs/gae_design_v10_6.md §8.4).
     A4: Provisional dimension tracking — newly discovered dimensions enter with
         10× accelerated decay; auto-pruned if they fail to earn reinforcement.
     C3: Deferred validation for autonomous decisions — they enter
@@ -38,7 +38,7 @@ Default values are set for NO-OP behaviour:
     dimension_metadata = []  → no provisional dimensions tracked
     pending_validations = [] → no deferred validations
 
-Reference: docs/gae_design_v5.md §8, §8.3; blog Eq. 4b, 4c.
+Reference: docs/gae_design_v10_6.md §8, §8.3; blog Eq. 4b, 4c.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ class DimensionMetadata:
     cross-graph patterns) enter with accelerated decay and are pruned if
     they fail to earn reinforcement within the establishment window.
 
-    Reference: docs/gae_design_v5.md §8.3 (A4 hardening).
+    Reference: docs/gae_design_v10_6.md §8.3 (A4 hardening).
 
     Attributes
     ----------
@@ -123,7 +123,7 @@ class PendingValidation:
     Instead they are held here until the validation window expires, then
     processed by process_pending_validations().
 
-    Reference: docs/gae_design_v5.md §8.2 (C3 hardening).
+    Reference: docs/gae_design_v10_6.md §8.2 (C3 hardening).
 
     Attributes
     ----------
@@ -160,7 +160,7 @@ class WeightUpdate:
 
     Carries full provenance: who decided, what outcome, how W changed.
 
-    Reference: docs/gae_design_v5.md §8.2; blog Eq. 4b.
+    Reference: docs/gae_design_v10_6.md §8.2; blog Eq. 4b.
 
     Attributes
     ----------
@@ -211,7 +211,7 @@ class LearningState:
     """
     Persistent state for the Tier 3 weight matrix and its learning history.
 
-    Reference: docs/gae_design_v5.md §8.2; blog Eq. 4b, 4c.
+    Reference: docs/gae_design_v10_6.md §8.2; blog Eq. 4b, 4c.
 
     Attributes
     ----------
@@ -301,7 +301,7 @@ class LearningState:
         Decay classes absent from profile.decay_class_rates fall back to
         profile.epsilon_default.
 
-        Reference: docs/gae_design_v5.md §8.4 (A2 hardening); blog Eq. 4c.
+        Reference: docs/gae_design_v10_6.md §8.4 (A2 hardening); blog Eq. 4c.
 
         Returns
         -------
@@ -343,7 +343,7 @@ class LearningState:
 
         where δ(t) = 1.0 if outcome == +1, else profile.penalty_ratio.
 
-        Reference: docs/gae_design_v5.md §8.2; blog Eq. 4b, 4c.
+        Reference: docs/gae_design_v10_6.md §8.2; blog Eq. 4b, 4c.
 
         Parameters
         ----------
@@ -500,7 +500,7 @@ class LearningState:
 
         Used by SOC-PROF-2 to switch from W-matrix to profile learning.
 
-        Reference: docs/gae_design_v5.md §9.5; GAE-PROF-3.
+        Reference: docs/gae_design_v10_6.md §9.5; GAE-PROF-3.
         """
         self.profile_scorer = scorer
 
@@ -508,7 +508,7 @@ class LearningState:
     def is_profile_mode(self) -> bool:
         """True if update() delegates to ProfileScorer.
 
-        Reference: docs/gae_design_v5.md §9.5; GAE-PROF-3.
+        Reference: docs/gae_design_v10_6.md §9.5; GAE-PROF-3.
         """
         return self.profile_scorer is not None
 
@@ -528,7 +528,7 @@ class LearningState:
         as "provisional" with accelerated decay (10× standard) and is
         auto-pruned if it fails to earn reinforcement (A4 hardening).
 
-        Reference: docs/gae_design_v5.md §8.3; blog R5.
+        Reference: docs/gae_design_v10_6.md §8.3; blog R5.
 
         Parameters
         ----------
@@ -598,7 +598,7 @@ class LearningState:
         identify the target W column regardless of how many original dimensions
         were present at construction time.
 
-        Reference: docs/gae_design_v5.md §8.3 (A4 pruning).
+        Reference: docs/gae_design_v10_6.md §8.3 (A4 pruning).
 
         Parameters
         ----------
@@ -646,7 +646,7 @@ class LearningState:
         When the validation window expires, outcome is inferred from
         *incident_checker* and the learning update is applied.
 
-        Reference: docs/gae_design_v5.md §8.2 (C3 hardening).
+        Reference: docs/gae_design_v10_6.md §8.2 (C3 hardening).
 
         Parameters
         ----------

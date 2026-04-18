@@ -4,7 +4,7 @@ GAE Calibration — domain-configurable learning hyperparameters.
 CalibrationProfile replaces hardcoded constants (ALPHA, LAMBDA_NEG,
 EPSILON_DEFAULT) with a structured object that each domain provides.
 
-Reference: docs/gae_design_v5.md §8; blog Eq. 4b, 4c.
+Reference: docs/gae_design_v10_6.md §8; blog Eq. 4b, 4c.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ class CalibrationProfile:
     Replaces hardcoded constants (ALPHA, LAMBDA_NEG, EPSILON_DEFAULT).
     Each domain provides its own profile via DomainConfig.
 
-    Reference: docs/gae_design_v5.md §8; blog Eq. 4b, 4c.
+    Reference: docs/gae_design_v10_6.md §8; blog Eq. 4b, 4c.
 
     Attributes
     ----------
@@ -63,7 +63,7 @@ class CalibrationProfile:
     def validate(self) -> list[str]:
         """Return list of warnings if parameters are out of expected range.
 
-        Reference: docs/gae_design_v5.md §8 (CalibrationProfile validation).
+        Reference: docs/gae_design_v10_6.md §8 (CalibrationProfile validation).
 
         Returns
         -------
@@ -94,7 +94,7 @@ class CalibrationProfile:
 def soc_calibration_profile() -> CalibrationProfile:
     """SOC domain defaults. 20:1 penalty, sharp temperature.
 
-    Reference: docs/gae_design_v5.md §8 (SOC calibration).
+    Reference: docs/gae_design_v10_6.md §8 (SOC calibration).
 
     Returns
     -------
@@ -119,7 +119,7 @@ def soc_calibration_profile() -> CalibrationProfile:
 def s2p_calibration_profile() -> CalibrationProfile:
     """S2P domain defaults. 5:1 penalty, softer temperature.
 
-    Reference: docs/gae_design_v5.md §8 (S2P calibration).
+    Reference: docs/gae_design_v10_6.md §8 (S2P calibration).
 
     Returns
     -------
@@ -579,7 +579,7 @@ def compute_enriched_bootstrap_prior(
     The Loop 2 firewall is maintained: σ enters the prior computation
     at initialization time only, not during live learning.
 
-    Reference: docs/gae_design_v5.md §9; T1 architecture — μ₀ enrichment.
+    Reference: docs/gae_design_v10_6.md §9; T1 architecture — μ₀ enrichment.
     """
     assert n_factors > 0, f"n_factors must be positive, got {n_factors}"
     assert n_cat > 0, f"n_cat must be positive, got {n_cat}"
@@ -731,7 +731,7 @@ def compute_enriched_bootstrap_prior_geom(
     Returns:
         μ₀_geom: np.ndarray shape (n_cat, n_act, n_factors)
 
-    Reference: docs/gae_design_v5.md §9; V-BOOTSTRAP-GEOM §4.5.
+    Reference: docs/gae_design_v10_6.md §9; V-BOOTSTRAP-GEOM §4.5.
     """
     assert n_factors > 0, f"n_factors must be positive, got {n_factors}"
     assert n_cat > 0, f"n_cat must be positive, got {n_cat}"
