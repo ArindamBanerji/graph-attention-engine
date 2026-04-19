@@ -24,6 +24,25 @@ import numpy as np
 # softmax
 # ---------------------------------------------------------------------------
 
+def compute_entropy(p: np.ndarray, eps: float = 1e-10) -> float:
+    """Shannon entropy of probability distribution.
+
+    H(p) = -sum(p * log(p + eps))
+
+    eps guard prevents log(0) = -inf when softmax underflows to exact zero
+    on extreme logits.
+
+    Args:
+        p: np.ndarray, probability distribution (sums to 1)
+        eps: float, small constant for numerical stability
+
+    Returns:
+        float, entropy in nats (natural log)
+    """
+    p_safe = np.maximum(p, eps)
+    return float(-np.sum(p_safe * np.log(p_safe)))
+
+
 def softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
     """
     Numerically-stable row-wise softmax.

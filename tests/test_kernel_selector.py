@@ -193,12 +193,16 @@ class TestRecommend:
         assert rec.sufficient_data is False
         assert rec.method == "rule"
 
-    def test_insufficient_data_reason_mentions_threshold(self, hetero_sigma):
+    def test_insufficient_data_reason_is_rule_based(self, hetero_sigma):
+        """With no shadow data, reason is the rule-based explanation."""
         sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
         rec = sel.recommend()
-        assert str(KernelSelector.MIN_DECISIONS_FOR_RECOMMENDATION) in rec.reason
+        assert rec.sufficient_data is False
+        assert rec.method == "rule"
+        assert rec.reason  # non-empty
 
-    def test_after_enough_data_method_is_empirical(self, hetero_sigma, mu):
+    def test_after_enough_data_method_is_still_rule(self, hetero_sigma, mu):
+        """method='rule' even after enough shadow data — rule is always primary."""
         sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
         rng = np.random.default_rng(42)
         for _ in range(150):
@@ -207,7 +211,7 @@ class TestRecommend:
                                   ["a", "b", "c", "d"])
         rec = sel.recommend()
         assert rec.sufficient_data is True
-        assert rec.method == "empirical"
+        assert rec.method == "rule"
 
     def test_recommended_kernel_is_valid(self, hetero_sigma, mu):
         sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
@@ -219,7 +223,26 @@ class TestRecommend:
         rec = sel.recommend()
         assert rec.recommended_kernel in {"l2", "diagonal", "shrinkage"}
 
-    def test_picks_highest_agreement(self, hetero_sigma):
+    def test_picks_rule_kernel_regardless_of_shadow_data(self, hetero_sigma):
+        """recommend() returns rule kernel even when shadow data favors a different kernel."""
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
+        # l2 wins in shadow data, but rule (noise_ratio≈4.0) picks diagonal
+        sel.scores["l2"].total_decisions = 100
+        sel.scores["l2"].agreements = 80
+        sel.scores["diagonal"].total_decisions = 100
+        sel.scores["diagonal"].agreements = 60
+        sel.scores["shrinkage"].total_decisions = 100
+        sel.scores["shrinkage"].agreements = 55
+        sel._buffers["l2"] = [True] * 80 + [False] * 20
+        sel._buffers["diagonal"] = [True] * 60 + [False] * 40
+        sel._buffers["shrinkage"] = [True] * 55 + [False] * 45
+        rec = sel.recommend()
+        prelim = KernelSelector(d=6, sigma_per_factor=hetero_sigma).preliminary_recommendation()
+        assert rec.recommended_kernel == prelim.recommended_kernel
+        assert rec.method == 'rule'
+
+    def test_confidence_is_zero_for_rule_based(self, hetero_sigma):
+        """recommend() confidence is 0.0 — rule-based has no margin concept."""
         sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
         sel.scores["l2"].total_decisions = 100
         sel.scores["l2"].agreements = 60
@@ -227,31 +250,15 @@ class TestRecommend:
         sel.scores["diagonal"].agreements = 80
         sel.scores["shrinkage"].total_decisions = 100
         sel.scores["shrinkage"].agreements = 75
-        # Rolling buffers must match so recommend() uses rolling rates
         sel._buffers["l2"] = [True] * 60 + [False] * 40
         sel._buffers["diagonal"] = [True] * 80 + [False] * 20
         sel._buffers["shrinkage"] = [True] * 75 + [False] * 25
         rec = sel.recommend()
-        assert rec.recommended_kernel == "diagonal"
-        assert rec.confidence > 0.0
+        assert rec.method == 'rule'
+        assert rec.confidence == 0.0
 
-    def test_confidence_is_margin_over_runner_up(self, hetero_sigma):
-        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
-        sel.scores["l2"].total_decisions = 100
-        sel.scores["l2"].agreements = 60
-        sel.scores["diagonal"].total_decisions = 100
-        sel.scores["diagonal"].agreements = 80
-        sel.scores["shrinkage"].total_decisions = 100
-        sel.scores["shrinkage"].agreements = 75
-        # Rolling buffers must match so recommend() uses rolling rates
-        sel._buffers["l2"] = [True] * 60 + [False] * 40
-        sel._buffers["diagonal"] = [True] * 80 + [False] * 20
-        sel._buffers["shrinkage"] = [True] * 75 + [False] * 25
-        rec = sel.recommend()
-        # diagonal rolling(0.80) - shrinkage rolling(0.75) = 0.05
-        assert rec.confidence == pytest.approx(0.05, abs=1e-9)
-
-    def test_reason_contains_winner_name(self, hetero_sigma):
+    def test_reason_contains_rule_kernel_and_monitoring_note(self, hetero_sigma):
+        """reason names rule kernel and includes Shadow monitoring note."""
         sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
         sel.scores["l2"].total_decisions = 100
         sel.scores["l2"].agreements = 55
@@ -264,6 +271,8 @@ class TestRecommend:
         sel._buffers["shrinkage"] = [True] * 60 + [False] * 40
         rec = sel.recommend()
         assert "diagonal" in rec.reason
+        assert "Rule-based" in rec.reason
+        assert "Shadow monitoring" in rec.reason
 
     def test_scores_dict_in_recommendation(self, hetero_sigma):
         sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
@@ -273,39 +282,41 @@ class TestRecommend:
             assert "agreement_rate" in v
             assert "total" in v
 
-    def test_tiebreaker_uses_noise_ratio_when_margin_small(self):
-        # noise_ratio = 0.2/0.1 = 2.0 > 1.5 → tiebreaker picks diagonal
-        sigma = np.array([0.1, 0.2])
+    def test_rule_selects_diagonal_for_high_noise_ratio(self):
+        """noise_ratio > 1.5 → rule picks diagonal regardless of shadow data."""
+        sigma = np.array([0.1, 0.2])  # noise_ratio = 2.0
         sel = KernelSelector(d=2, sigma_per_factor=sigma)
-        # margin = 0.005 (< 1pp threshold): diagonal 101/200, l2 100/200
+        # l2 wins in shadow data — rule should still pick diagonal
         sel.scores["diagonal"].total_decisions = 200
         sel.scores["l2"].total_decisions = 200
         sel.scores["shrinkage"].total_decisions = 200
-        sel._buffers["diagonal"] = [True] * 101 + [False] * 99
-        sel._buffers["l2"]       = [True] * 100 + [False] * 100
-        sel._buffers["shrinkage"] = [True] * 99  + [False] * 101
+        sel._buffers["l2"] = [True] * 150 + [False] * 50
+        sel._buffers["diagonal"] = [True] * 100 + [False] * 100
+        sel._buffers["shrinkage"] = [True] * 90 + [False] * 110
         rec = sel.recommend()
         assert rec.recommended_kernel == "diagonal", (
-            f"Tiebreaker with noise_ratio=2.0 > 1.5 should pick diagonal, "
+            f"Rule with noise_ratio=2.0 > 1.5 should select diagonal, "
             f"got {rec.recommended_kernel!r}"
         )
+        assert rec.method == 'rule'
 
-    def test_tiebreaker_l2_when_low_noise_ratio(self):
-        # noise_ratio = 0.12/0.1 = 1.2 < 1.5 → tiebreaker picks l2
-        sigma = np.array([0.1, 0.12])
+    def test_rule_selects_l2_for_low_noise_ratio(self):
+        """noise_ratio < 1.5 → rule picks l2 regardless of shadow data."""
+        sigma = np.array([0.1, 0.12])  # noise_ratio = 1.2
         sel = KernelSelector(d=2, sigma_per_factor=sigma)
-        # margin = 0.005 (< 1pp threshold): diagonal 101/200, l2 100/200
+        # diagonal wins in shadow data — rule should still pick l2
         sel.scores["diagonal"].total_decisions = 200
         sel.scores["l2"].total_decisions = 200
         sel.scores["shrinkage"].total_decisions = 200
-        sel._buffers["diagonal"] = [True] * 101 + [False] * 99
-        sel._buffers["l2"]       = [True] * 100 + [False] * 100
-        sel._buffers["shrinkage"] = [True] * 99  + [False] * 101
+        sel._buffers["diagonal"] = [True] * 150 + [False] * 50
+        sel._buffers["l2"] = [True] * 100 + [False] * 100
+        sel._buffers["shrinkage"] = [True] * 90 + [False] * 110
         rec = sel.recommend()
         assert rec.recommended_kernel == "l2", (
-            f"Tiebreaker with noise_ratio=1.2 < 1.5 should pick l2, "
+            f"Rule with noise_ratio=1.2 < 1.5 should select l2, "
             f"got {rec.recommended_kernel!r}"
         )
+        assert rec.method == 'rule'
 
 
 # ------------------------------------------------------------------ #
@@ -465,22 +476,24 @@ class TestRollingWindow:
             sel.record_comparison(rng.random(6), 0, mu, 0, ["a", "b", "c", "d"])
         assert all(len(buf) == 30 for buf in sel._buffers.values())
 
-    def test_rolling_beats_cumulative_on_improving_kernel(self, hetero_sigma):
-        """Kernel B wins recently but A leads cumulatively. Rolling picks B."""
+    def test_monitoring_note_reflects_data_vs_rule_disagreement(self, hetero_sigma):
+        """When data-driven and rule disagree, reason says 'Shadow monitoring disagrees'."""
         sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
-        # Cumulative: l2 wins (110 vs 100 agreements)
+        # All kernels have enough decisions
         sel.scores["l2"].total_decisions = 200
         sel.scores["l2"].agreements = 110
         sel.scores["diagonal"].total_decisions = 200
         sel.scores["diagonal"].agreements = 100
         sel.scores["shrinkage"].total_decisions = 200
         sel.scores["shrinkage"].agreements = 95
-        # Rolling: diagonal wins recently (70% vs l2 40%)
-        sel._buffers["l2"] = [True] * 40 + [False] * 60
-        sel._buffers["diagonal"] = [True] * 70 + [False] * 30
-        sel._buffers["shrinkage"] = [True] * 65 + [False] * 35
+        # Rolling: l2 wins (70%), but rule picks diagonal for hetero_sigma
+        sel._buffers["l2"] = [True] * 70 + [False] * 30
+        sel._buffers["diagonal"] = [True] * 60 + [False] * 40
+        sel._buffers["shrinkage"] = [True] * 55 + [False] * 45
         rec = sel.recommend()
         assert rec.recommended_kernel == "diagonal"
+        assert rec.method == 'rule'
+        assert "Shadow monitoring disagrees" in rec.reason
 
     def test_rolling_summary_includes_both_rates(self, hetero_sigma, mu):
         sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)

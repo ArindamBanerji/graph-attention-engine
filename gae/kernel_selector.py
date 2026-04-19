@@ -312,58 +312,62 @@ class KernelSelector:
 
     def recommend(self) -> KernelRecommendation:
         """
-        Phase 4: empirical kernel recommendation from accumulated shadow data.
+        v10.7 architecture: rule-based PRIMARY, data-driven MONITOR.
 
-        Returns the kernel with the highest analyst agreement rate once at
-        least MIN_DECISIONS labelled decisions have been collected.
-        Falls back to rule-based preliminary recommendation if data is scarce.
+        Returns the rule-based recommendation. If sufficient shadow
+        data exists (>= MIN_DECISIONS), includes a monitoring note
+        about whether data-driven agrees or disagrees with the rule.
 
-        Returns
-        -------
-        KernelRecommendation
-            method='empirical' when sufficient data exists; 'rule' otherwise.
+        The data-driven opinion is DIAGNOSTIC — it does not drive
+        kernel selection. See UNI-DK-01 v5.3 E1/E3/E4.
         """
-        has_enough = any(
+        rule_rec = self.preliminary_recommendation()
+
+        has_enough = all(
             s.total_decisions >= self.MIN_DECISIONS_FOR_RECOMMENDATION
             for s in self.scores.values()
         )
-        if not has_enough:
-            prelim = self.preliminary_recommendation()
-            prelim.sufficient_data = False
-            prelim.reason = (
-                f"Insufficient shadow data "
-                f"(need {self.MIN_DECISIONS_FOR_RECOMMENDATION} decisions). "
-                f"Using rule-based recommendation: {prelim.reason}"
-            )
-            return prelim
 
-        def _rolling_rate(name: str) -> float:
+        if not has_enough:
+            rule_rec.sufficient_data = False
+            return rule_rec
+
+        def _rolling_rate(name):
             buf = self._buffers[name]
             return sum(buf) / max(len(buf), 1)
 
-        best_name = max(self.scores, key=_rolling_rate)
-        best_score = self.scores[best_name]
+        data_winner = max(self.scores, key=_rolling_rate)
+        data_rate = _rolling_rate(data_winner)
+        rule_kernel = rule_rec.recommended_kernel
+        noise_ratio = float(self.sigma.max() / max(float(self.sigma.min()), 0.001))
 
-        others = {k: v for k, v in self.scores.items() if k != best_name}
-        runner_up = max(others, key=_rolling_rate)
-        margin = _rolling_rate(best_name) - _rolling_rate(runner_up)
-
-        # Tiebreaker: margin < 1pp → fall back to Phase 2 noise_ratio rule
-        if margin < 0.01:
-            noise_ratio = float(self.sigma.max() / max(float(self.sigma.min()), 0.001))
-            best_name = "diagonal" if noise_ratio > 1.5 else "l2"
+        if data_winner == rule_kernel:
+            monitor_note = (
+                f"Shadow monitoring agrees: {data_winner} "
+                f"(rolling agreement {data_rate:.1%})."
+            )
+        else:
+            monitor_note = (
+                f"Shadow monitoring disagrees: data-driven would pick "
+                f"{data_winner} (rolling {data_rate:.1%}), but rule-based "
+                f"selected {rule_kernel} (noise_ratio={noise_ratio:.2f}). "
+                f"Rule is authoritative — see UNI-DK-01 v5.3 E3."
+            )
 
         reason = (
-            f"{best_name} had highest rolling agreement: "
-            f"{_rolling_rate(best_name):.1%} "
-            f"(last {len(self._buffers[best_name])} decisions). "
-            f"Runner-up {runner_up}: "
-            f"{_rolling_rate(runner_up):.1%}. "
-            f"Margin: {margin:+.1%}."
+            f"Rule-based: {rule_kernel} "
+            f"(noise_ratio={noise_ratio:.2f}). "
+            f"{monitor_note}"
         )
 
-        return self._make_rec(best_name, "empirical", reason,
-                              margin=margin, sufficient=True)
+        return KernelRecommendation(
+            recommended_kernel=rule_kernel,
+            confidence=rule_rec.confidence,
+            scores=self._build_scores_dict(),
+            method='rule',
+            reason=reason,
+            sufficient_data=True,
+        )
 
     # ------------------------------------------------------------------ #
     # Monitoring                                                          #
@@ -458,6 +462,15 @@ class KernelSelector:
     # Internal                                                            #
     # ------------------------------------------------------------------ #
 
+    def _build_scores_dict(self) -> Dict[str, Dict]:
+        return {
+            name: {
+                "agreement_rate": s.agreement_rate,
+                "total": s.total_decisions,
+            }
+            for name, s in self.scores.items()
+        }
+
     def _make_rec(
         self,
         kernel: str,
@@ -469,13 +482,7 @@ class KernelSelector:
         return KernelRecommendation(
             recommended_kernel=kernel,
             confidence=margin,
-            scores={
-                name: {
-                    "agreement_rate": s.agreement_rate,
-                    "total": s.total_decisions,
-                }
-                for name, s in self.scores.items()
-            },
+            scores=self._build_scores_dict(),
             method=method,
             reason=reason,
             sufficient_data=sufficient,

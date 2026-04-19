@@ -24,6 +24,8 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from gae.calibration import CalibrationProfile
 
+from gae.primitives import compute_entropy
+
 # V-STABILITY F=8.14 — η change-rate cap (UNCONDITIONAL).
 # No single η × gradient step may move any centroid coordinate by more than
 # ±MAX_ETA_DELTA, regardless of η value or gradient magnitude.
@@ -92,6 +94,10 @@ class ScoringResult:
         Raw L2/kernel distances. Lower = more similar for L2.
     confidence : float
         Probability of recommended action (max of probabilities).
+    entropy : float
+        Shannon entropy of probabilities in nats. 0.0 default.
+    confidence_gap : float
+        top_p - second_p. 0.0 if n_actions < 2. 0.0 default.
     """
 
     action_index: int
@@ -99,6 +105,8 @@ class ScoringResult:
     probabilities: np.ndarray   # shape (n_actions,)
     distances: np.ndarray       # shape (n_actions,)
     confidence: float
+    entropy: float = 0.0
+    confidence_gap: float = 0.0
 
 
 class ProfileScorer:
@@ -366,12 +374,20 @@ class ProfileScorer:
         )
 
         action_idx = int(np.argmax(probs))
+        entropy_val = compute_entropy(probs)
+        if len(probs) >= 2:
+            sorted_p = np.sort(probs)[::-1]
+            gap_val = float(sorted_p[0] - sorted_p[1])
+        else:
+            gap_val = 0.0
         return ScoringResult(
             action_index=action_idx,
             action_name=self.actions[action_idx],
             probabilities=probs,
             distances=distances,
             confidence=float(probs[action_idx]),
+            entropy=entropy_val,
+            confidence_gap=gap_val,
         )
 
     def _compute_distances(

@@ -47,7 +47,7 @@ class TestScoringResultContract:
         assert not isinstance(result, np.ndarray)
 
     def test_scoring_result_has_required_fields(self):
-        """ScoringResult exposes action_index, probabilities, confidence."""
+        """ScoringResult exposes action_index, probabilities, confidence, entropy, confidence_gap."""
         from gae.profile_scorer import ProfileScorer
         scorer = ProfileScorer.for_soc(mu=np.random.rand(6, 4, 6))
         result = scorer.score(np.random.rand(6), 0)
@@ -56,6 +56,8 @@ class TestScoringResultContract:
         assert hasattr(result, 'probabilities')
         assert hasattr(result, 'distances')
         assert hasattr(result, 'confidence')
+        assert hasattr(result, 'entropy')
+        assert hasattr(result, 'confidence_gap')
 
     def test_probabilities_sum_to_one(self):
         """result.probabilities is a valid probability distribution."""
@@ -167,10 +169,10 @@ class TestConsumerSequences:
             selector.record_comparison(
                 f, i % 6, mu, np.random.randint(4), actions)
 
-        # Phase 4: empirical recommendation
+        # Phase 4: rule-based recommendation with monitoring note
         rec = selector.recommend()
         assert rec.sufficient_data == True
-        assert rec.method == 'empirical'
+        assert rec.method == 'rule'
 
     def test_sequence_d_conservation_wiring(self):
         """derive_theta_min → check_conservation → set_conservation_status."""
@@ -188,3 +190,59 @@ class TestConsumerSequences:
         scorer = ProfileScorer.for_soc(mu=np.random.rand(6, 4, 6))
         scorer.set_conservation_status(status.status)
         assert scorer.conservation_status == status.status
+
+
+class TestEntropyAndConfidenceGap:
+    """ScoringResult entropy and confidence_gap field contracts."""
+
+    def test_entropy_uniform_distribution(self):
+        """Uniform probs → maximum entropy."""
+        from gae.primitives import compute_entropy
+        p = np.array([0.25, 0.25, 0.25, 0.25])
+        e = compute_entropy(p)
+        assert abs(e - np.log(4)) < 1e-6
+
+    def test_entropy_one_hot(self):
+        """One-hot probs → near-zero entropy."""
+        from gae.primitives import compute_entropy
+        p = np.array([1.0, 0.0, 0.0, 0.0])
+        e = compute_entropy(p)
+        assert e >= 0.0
+        assert e < 0.01
+
+    def test_scoring_result_has_entropy_and_gap(self):
+        """ScoringResult includes entropy and confidence_gap."""
+        from gae.profile_scorer import ProfileScorer
+        scorer = ProfileScorer.for_soc(mu=np.random.rand(6, 4, 6))
+        result = scorer.score(np.random.rand(6), 0)
+        assert hasattr(result, 'entropy')
+        assert hasattr(result, 'confidence_gap')
+        assert result.entropy >= 0.0
+        assert result.confidence_gap >= 0.0
+        assert result.confidence_gap <= 1.0
+
+    def test_confidence_gap_single_action(self):
+        """Single action → confidence_gap = 0.0."""
+        from gae.profile_scorer import ProfileScorer
+        scorer = ProfileScorer(
+            mu=np.random.rand(1, 1, 4),
+            actions=["only_action"],
+        )
+        result = scorer.score(np.random.rand(4), 0)
+        assert result.confidence_gap == 0.0
+        assert result.entropy >= 0.0
+
+    def test_entropy_decreases_with_confidence(self):
+        """Higher confidence → lower entropy (more decisive)."""
+        from gae.profile_scorer import ProfileScorer
+        mu = np.zeros((2, 4, 6))
+        mu[0, 0, :] = 0.5
+        mu[0, 1, :] = 0.9
+        mu[0, 2, :] = 0.9
+        mu[0, 3, :] = 0.9
+        scorer = ProfileScorer.for_soc(mu=mu)
+        f_near = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+        r_near = scorer.score(f_near, 0)
+        f_mid = np.array([0.7, 0.7, 0.7, 0.7, 0.7, 0.7])
+        r_mid = scorer.score(f_mid, 0)
+        assert r_near.entropy < r_mid.entropy
