@@ -72,7 +72,7 @@ class KernelRecommendation:
     recommended_kernel: str   # 'l2', 'diagonal', or 'shrinkage'
     confidence: float         # margin over runner-up (0.0 for rule-based)
     scores: Dict[str, Dict]   # per-kernel snapshot: agreement_rate, total
-    method: str               # 'empirical' (Phase 4) or 'rule' (Phase 2)
+    method: str               # 'rule' (always — v10.7 architecture)
     reason: str               # human-readable explanation
     sufficient_data: bool     # True when shadow data meets MIN_DECISIONS
 
@@ -321,6 +321,9 @@ class KernelSelector:
         The data-driven opinion is DIAGNOSTIC — it does not drive
         kernel selection. See UNI-DK-01 v5.3 E1/E3/E4.
         """
+        if not self.scores:
+            return self.preliminary_recommendation()
+
         rule_rec = self.preliminary_recommendation()
 
         has_enough = all(
