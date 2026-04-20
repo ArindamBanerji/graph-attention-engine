@@ -34,10 +34,10 @@ class TestBootstrapReturnsResult:
 class TestBootstrapMutatesScorer:
     def test_bootstrap_mutates_scorer(self):
         scorer = make_scorer()
-        mu_before = scorer.mu.copy()
+        mu_before = scorer.centroids.copy()
         bootstrap_calibration(scorer, CATEGORIES, n_rounds=3, seed=42)
-        assert not np.allclose(scorer.mu, mu_before), (
-            "scorer.mu should have changed after bootstrap"
+        assert not np.allclose(scorer.centroids, mu_before), (
+            "scorer.centroids should have changed after bootstrap"
         )
 
 
@@ -53,7 +53,7 @@ class TestBootstrapDeterministic:
         )
         assert result_a.final_drift == result_b.final_drift
         assert result_a.n_decisions == result_b.n_decisions
-        np.testing.assert_array_equal(scorer_a.mu, scorer_b.mu)
+        np.testing.assert_array_equal(scorer_a.centroids, scorer_b.centroids)
 
 
 class TestBootstrapDriftNonnegative:
@@ -89,8 +89,8 @@ class TestBootstrapCentroidsClipped:
         bootstrap_calibration(
             scorer, CATEGORIES, n_rounds=5, sigma=0.5, seed=42
         )
-        assert np.all(scorer.mu >= 0.0), "centroid values must be >= 0.0"
-        assert np.all(scorer.mu <= 1.0), "centroid values must be <= 1.0"
+        assert np.all(scorer.centroids >= 0.0), "centroid values must be >= 0.0"
+        assert np.all(scorer.centroids <= 1.0), "centroid values must be <= 1.0"
 
 
 class TestBootstrapZeroRounds:

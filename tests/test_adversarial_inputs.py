@@ -134,16 +134,16 @@ class TestBoundaryFactorValues:
         scorer = make_scorer(n_cat=1, n_act=2, n_fac=4)
         for _ in range(50):
             scorer.update(np.zeros(4), 0, 0, correct=True)
-        assert scorer.mu.min() >= 0.0
-        assert scorer.mu.max() <= 1.0
+        assert scorer.centroids.min() >= 0.0
+        assert scorer.centroids.max() <= 1.0
 
     def test_update_boundary_f_all_ones(self):
         """update() with f=ones: centroids move toward 1, stay in [0,1]."""
         scorer = make_scorer(n_cat=1, n_act=2, n_fac=4)
         for _ in range(50):
             scorer.update(np.ones(4), 0, 0, correct=True)
-        assert scorer.mu.min() >= 0.0
-        assert scorer.mu.max() <= 1.0
+        assert scorer.centroids.min() >= 0.0
+        assert scorer.centroids.max() <= 1.0
 
 
 # ── Shape errors ──────────────────────────────────────────────────────────────
@@ -259,9 +259,9 @@ class TestLearningRateEdgeCases:
             actions=["a", "b"],
             profile=make_profile(eta=0.0),
         )
-        mu_before = scorer.mu.copy()
+        mu_before = scorer.centroids.copy()
         scorer.update(np.ones(4), 0, 0, correct=True)
-        np.testing.assert_array_equal(scorer.mu, mu_before)
+        np.testing.assert_array_equal(scorer.centroids, mu_before)
 
     def test_update_eta_neg_ge_1_raises(self):
         """eta_neg >= 1.0 must be rejected at construction time."""
@@ -345,8 +345,8 @@ class TestLongRunningStability:
             c = int(rng.integers(2))
             a = int(rng.integers(4))
             scorer.update(f, c, a, correct=bool(rng.integers(2)))
-        assert not np.any(np.isnan(scorer.mu)), "Centroid NaN after 10000 updates"
-        assert not np.any(np.isinf(scorer.mu)), "Centroid Inf after 10000 updates"
+        assert not np.any(np.isnan(scorer.centroids)), "Centroid NaN after 10000 updates"
+        assert not np.any(np.isinf(scorer.centroids)), "Centroid Inf after 10000 updates"
 
     def test_10000_sequential_updates_stay_in_bounds(self):
         """10000 updates must keep all centroids in [0.0, 1.0]."""
@@ -357,8 +357,12 @@ class TestLongRunningStability:
             c = int(rng.integers(2))
             a = int(rng.integers(4))
             scorer.update(f, c, a, correct=bool(rng.integers(2)))
-        assert scorer.mu.min() >= 0.0, f"mu.min={scorer.mu.min()} < 0"
-        assert scorer.mu.max() <= 1.0, f"mu.max={scorer.mu.max()} > 1"
+        assert scorer.centroids.min() >= 0.0, (
+            f"mu.min={scorer.centroids.min()} < 0"
+        )
+        assert scorer.centroids.max() <= 1.0, (
+            f"mu.max={scorer.centroids.max()} > 1"
+        )
 
     def test_score_after_many_updates_still_valid(self):
         """score() must return valid ScoringResult after 1000 updates."""
@@ -375,11 +379,11 @@ class TestLongRunningStability:
     def test_frozen_scorer_update_is_noop(self):
         """After freeze(), update() must not change centroids."""
         scorer = make_scorer(n_cat=1, n_act=2, n_fac=4)
-        mu_before = scorer.mu.copy()
+        mu_before = scorer.centroids.copy()
         scorer.freeze()
         for _ in range(100):
             scorer.update(np.ones(4), 0, 0, correct=True)
-        np.testing.assert_array_equal(scorer.mu, mu_before)
+        np.testing.assert_array_equal(scorer.centroids, mu_before)
 
 
 def test_score_tau_negative_raises():

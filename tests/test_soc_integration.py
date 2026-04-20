@@ -70,7 +70,7 @@ class TestSOCTensorConfiguration:
         """Centroid tensor is exactly (6,4,6) as required by SOC domain."""
         scorer = make_soc_scorer()
         assert scorer.centroids.shape == (N_CAT, N_ACT, N_FAC)
-        assert scorer.mu.shape == (N_CAT, N_ACT, N_FAC)
+        assert scorer.centroids.shape == (N_CAT, N_ACT, N_FAC)
 
     def test_travel_login_score_valid(self):
         """[0.25,0.5,0.0,0.4,0.7,1.0] — travel login alert scores without error."""
@@ -149,10 +149,10 @@ class TestSOCLearningLoop:
         """100 correct updates toward fixed f: centroid moves closer to f."""
         scorer = make_soc_scorer(seed=1)
         f_target = np.array([0.9, 0.8, 0.7, 0.6, 0.5, 0.4])
-        dist_before = np.linalg.norm(scorer.mu[0, 0, :] - f_target)
+        dist_before = np.linalg.norm(scorer.centroids[0, 0, :] - f_target)
         for _ in range(100):
             scorer.update(f_target, category_index=0, action_index=0, correct=True)
-        dist_after = np.linalg.norm(scorer.mu[0, 0, :] - f_target)
+        dist_after = np.linalg.norm(scorer.centroids[0, 0, :] - f_target)
         assert dist_after < dist_before
 
     def test_alternating_correct_incorrect_maintains_stability(self):
@@ -165,8 +165,8 @@ class TestSOCLearningLoop:
             with np.errstate(all="ignore"):
                 scorer.update(f, 0, 0, correct=correct,
                               gt_action_index=1 if not correct else None)
-        assert not np.any(np.isnan(scorer.mu))
-        assert not np.any(np.isinf(scorer.mu))
+        assert not np.any(np.isnan(scorer.centroids))
+        assert not np.any(np.isinf(scorer.centroids))
 
     def test_centroids_stay_in_01_after_500_iterations(self):
         """500 mixed updates with SOC (6,4,6): mu stays in [0,1] — V2 invariant."""
@@ -177,17 +177,17 @@ class TestSOCLearningLoop:
             c = int(rng.integers(N_CAT))
             a = int(rng.integers(N_ACT))
             scorer.update(f, c, a, correct=True)
-        assert scorer.mu.min() >= 0.0
-        assert scorer.mu.max() <= 1.0
+        assert scorer.centroids.min() >= 0.0
+        assert scorer.centroids.max() <= 1.0
 
     def test_all_6_categories_evolve_independently(self):
         """Updates to category 0 must not modify category 5 centroids."""
         scorer = make_soc_scorer()
-        mu_cat5_before = scorer.mu[5, :, :].copy()
+        mu_cat5_before = scorer.centroids[5, :, :].copy()
         for _ in range(100):
             scorer.update(np.full(N_FAC, 0.9), category_index=0,
                           action_index=0, correct=True)
-        np.testing.assert_array_equal(scorer.mu[5, :, :], mu_cat5_before)
+        np.testing.assert_array_equal(scorer.centroids[5, :, :], mu_cat5_before)
 
     def test_mu_stays_finite_after_500_updates(self):
         """After 500 updates mu contains no NaN or Inf."""
@@ -198,8 +198,8 @@ class TestSOCLearningLoop:
             c = int(rng.integers(N_CAT))
             a = int(rng.integers(N_ACT))
             scorer.update(f, c, a, correct=True)
-        assert not np.any(np.isnan(scorer.mu))
-        assert not np.any(np.isinf(scorer.mu))
+        assert not np.any(np.isnan(scorer.centroids))
+        assert not np.any(np.isinf(scorer.centroids))
 
     def test_score_still_deterministic_after_learning_loop(self):
         """After 200 updates, score() remains deterministic for same input."""
@@ -217,9 +217,9 @@ class TestSOCLearningLoop:
         """Default η_confirm=0.05: one correct update pulls centroid toward f."""
         scorer = make_soc_scorer()
         f = np.array([0.9, 0.9, 0.9, 0.9, 0.9, 0.9])
-        dist_before = np.linalg.norm(scorer.mu[0, 0, :] - f)
+        dist_before = np.linalg.norm(scorer.centroids[0, 0, :] - f)
         scorer.update(f, category_index=0, action_index=0, correct=True)
-        dist_after = np.linalg.norm(scorer.mu[0, 0, :] - f)
+        dist_after = np.linalg.norm(scorer.centroids[0, 0, :] - f)
         assert dist_after < dist_before
 
     def test_eta_override_gt_pull_smaller_than_confirm(self):
@@ -234,8 +234,8 @@ class TestSOCLearningLoop:
         # Small f-mu gap (0.05/dim) so neither scorer hits the MAX_ETA_DELTA cap
         f = np.clip(mu[0, 1, :] + 0.05, 0.0, 1.0)
 
-        mu1_gt_before = scorer_confirm.mu[0, 1, :].copy()
-        mu2_gt_before = scorer_override.mu[0, 1, :].copy()
+        mu1_gt_before = scorer_confirm.centroids[0, 1, :].copy()
+        mu2_gt_before = scorer_override.centroids[0, 1, :].copy()
 
         # Confirm: pulls action-1 centroid toward f at rate η=0.05
         scorer_confirm.update(f, category_index=0, action_index=1, correct=True)
@@ -243,8 +243,12 @@ class TestSOCLearningLoop:
         scorer_override.update(f, category_index=0, action_index=0,
                                correct=False, gt_action_index=1)
 
-        delta_confirm  = np.linalg.norm(scorer_confirm.mu[0, 1, :]  - mu1_gt_before)
-        delta_override = np.linalg.norm(scorer_override.mu[0, 1, :] - mu2_gt_before)
+        delta_confirm = np.linalg.norm(
+            scorer_confirm.centroids[0, 1, :] - mu1_gt_before
+        )
+        delta_override = np.linalg.norm(
+            scorer_override.centroids[0, 1, :] - mu2_gt_before
+        )
         assert delta_override < delta_confirm, (
             f"η_override GT pull ({delta_override:.6f}) must be smaller "
             f"than η_confirm pull ({delta_confirm:.6f})"
@@ -258,7 +262,7 @@ class TestSOCCentroidManagement:
         """Zeroing all centroids produces uniform scores (all-equal distances)."""
         scorer = make_soc_scorer()
         # With all centroids equal (all zeros), probabilities must be uniform
-        scorer.mu[:] = 0.0
+        scorer.centroids[:] = 0.0
         result = scorer.score(np.full(N_FAC, 0.5), category_index=0)
         assert abs(result.probabilities.sum() - 1.0) < 1e-9
         np.testing.assert_allclose(result.probabilities,
@@ -403,11 +407,11 @@ class TestSOCCheckpointPattern:
             scorer.update(f, category_index=0, action_index=0, correct=True)
 
         mu_checkpoint = scorer.centroids.copy()
-        dist_at_checkpoint = np.linalg.norm(scorer.mu[0, 0, :] - f)
+        dist_at_checkpoint = np.linalg.norm(scorer.centroids[0, 0, :] - f)
 
         scorer2 = ProfileScorer(mu=mu_checkpoint, actions=SOC_ACTIONS)
         scorer2.update(f, category_index=0, action_index=0, correct=True)
-        dist_after = np.linalg.norm(scorer2.mu[0, 0, :] - f)
+        dist_after = np.linalg.norm(scorer2.centroids[0, 0, :] - f)
         assert dist_after < dist_at_checkpoint
 
     def test_checkpoint_with_10000_accumulated_updates(self):
@@ -474,13 +478,13 @@ class TestSOCProductionEdgeCases:
         """Same factor vector 100 times: centroid moves toward f monotonically."""
         scorer = make_soc_scorer()
         f = np.array([0.9, 0.8, 0.7, 0.6, 0.5, 0.4])
-        dist_before = np.linalg.norm(scorer.mu[0, 0, :] - f)
+        dist_before = np.linalg.norm(scorer.centroids[0, 0, :] - f)
         for _ in range(100):
             scorer.update(f, category_index=0, action_index=0, correct=True)
-        dist_after = np.linalg.norm(scorer.mu[0, 0, :] - f)
+        dist_after = np.linalg.norm(scorer.centroids[0, 0, :] - f)
         assert dist_after < dist_before
-        assert scorer.mu.min() >= 0.0
-        assert scorer.mu.max() <= 1.0
+        assert scorer.centroids.min() >= 0.0
+        assert scorer.centroids.max() <= 1.0
 
     def test_two_soc_instances_completely_independent(self):
         """Two SOC scorer instances with identical config share no state."""
@@ -488,14 +492,17 @@ class TestSOCProductionEdgeCases:
         mu = rng.uniform(0.1, 0.9, (N_CAT, N_ACT, N_FAC))
         s1 = ProfileScorer(mu=mu.copy(), actions=SOC_ACTIONS)
         s2 = ProfileScorer(mu=mu.copy(), actions=SOC_ACTIONS)
-        mu2_before = s2.mu.copy()
+        mu2_before = s2.centroids.copy()
 
         for _ in range(100):
             s1.update(np.full(N_FAC, 0.9), category_index=0,
                       action_index=0, correct=True)
 
-        np.testing.assert_array_equal(s2.mu, mu2_before,
-                                      err_msg="s2 must not be affected by s1 updates")
+        np.testing.assert_array_equal(
+            s2.centroids,
+            mu2_before,
+            err_msg="s2 must not be affected by s1 updates",
+        )
 
     def test_category_0_score_unchanged_after_scoring_category_5(self):
         """Scoring category 5 must not affect category 0 (categories are independent)."""

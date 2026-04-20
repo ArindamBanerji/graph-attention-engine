@@ -36,8 +36,8 @@ class TestSequentialUpdateStability:
         f_target = rng.uniform(0.0, 1.0, 6)
         for _ in range(10_000):
             scorer.update(f_target, 0, int(rng.integers(3)), correct=True)
-        assert scorer.mu.min() >= 0.0
-        assert scorer.mu.max() <= 1.0
+        assert scorer.centroids.min() >= 0.0
+        assert scorer.centroids.max() <= 1.0
 
     def test_10k_incorrect_updates_no_nan(self):
         """10K incorrect updates: centroids never go NaN."""
@@ -50,8 +50,8 @@ class TestSequentialUpdateStability:
             gt = int(rng.integers(4))
             with np.errstate(all="ignore"):
                 scorer.update(f, c, a, correct=False, gt_action_index=gt)
-        assert not np.any(np.isnan(scorer.mu))
-        assert not np.any(np.isinf(scorer.mu))
+        assert not np.any(np.isnan(scorer.centroids))
+        assert not np.any(np.isinf(scorer.centroids))
 
     def test_10k_alternating_correct_incorrect_no_nan(self):
         """Alternating correct/incorrect updates: centroids stay finite."""
@@ -64,9 +64,9 @@ class TestSequentialUpdateStability:
             with np.errstate(all="ignore"):
                 scorer.update(f, 0, 0, correct=correct,
                               gt_action_index=None if correct else gt)
-        assert not np.any(np.isnan(scorer.mu))
-        assert scorer.mu.min() >= 0.0
-        assert scorer.mu.max() <= 1.0
+        assert not np.any(np.isnan(scorer.centroids))
+        assert scorer.centroids.min() >= 0.0
+        assert scorer.centroids.max() <= 1.0
 
     def test_10k_rapid_alternation_between_two_f(self):
         """Rapidly alternate between two very different factor vectors."""
@@ -76,18 +76,18 @@ class TestSequentialUpdateStability:
         for i in range(10_000):
             f = f_a if i % 2 == 0 else f_b
             scorer.update(f, 0, 0, correct=True)
-        assert scorer.mu.min() >= 0.0
-        assert scorer.mu.max() <= 1.0
-        assert not np.any(np.isnan(scorer.mu))
+        assert scorer.centroids.min() >= 0.0
+        assert scorer.centroids.max() <= 1.0
+        assert not np.any(np.isnan(scorer.centroids))
 
     def test_centroid_converges_under_constant_input(self):
         """After many correct updates toward same f, centroid moves toward f."""
         scorer = make_scorer(n_cat=1, n_act=2, n_fac=6, seed=10)
         f_target = np.full(6, 0.9)
-        dist_before = np.linalg.norm(scorer.mu[0, 0, :] - f_target)
+        dist_before = np.linalg.norm(scorer.centroids[0, 0, :] - f_target)
         for _ in range(500):
             scorer.update(f_target, 0, 0, correct=True)
-        dist_after = np.linalg.norm(scorer.mu[0, 0, :] - f_target)
+        dist_after = np.linalg.norm(scorer.centroids[0, 0, :] - f_target)
         assert dist_after < dist_before, "Centroid must move toward f_target after 500 updates"
 
 
@@ -186,9 +186,9 @@ class TestGradientBounds:
         mu = np.zeros((1, 1, 6))  # centroid at 0
         scorer = ProfileScorer(mu=mu, actions=["a"])
         f = np.ones(6)            # f at 1 — max gap
-        mu_before = scorer.mu.copy()
+        mu_before = scorer.centroids.copy()
         scorer.update(f, 0, 0, correct=True)
-        delta = np.abs(scorer.mu - mu_before)
+        delta = np.abs(scorer.centroids - mu_before)
         assert delta.max() <= MAX_ETA_DELTA + 1e-10, (
             f"Max delta {delta.max()} exceeds MAX_ETA_DELTA={MAX_ETA_DELTA}"
         )
@@ -197,9 +197,9 @@ class TestGradientBounds:
         """Incorrect update also respects MAX_ETA_DELTA cap."""
         mu = np.full((1, 2, 6), 0.5)
         scorer = ProfileScorer(mu=mu, actions=["a", "b"])
-        mu_before = scorer.mu.copy()
+        mu_before = scorer.centroids.copy()
         scorer.update(np.zeros(6), 0, 0, correct=False, gt_action_index=1)
-        delta = np.abs(scorer.mu - mu_before)
+        delta = np.abs(scorer.centroids - mu_before)
         assert delta.max() <= MAX_ETA_DELTA + 1e-10
 
     def test_diagonal_kernel_gradient_bounded_by_unity(self):

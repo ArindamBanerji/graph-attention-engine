@@ -127,7 +127,7 @@ class TestLearningChangesScoreOutput:
         from gae.oracle import GTAlignedOracle
 
         scorer, scenarios = make_scorer_and_scenarios()
-        oracle = GTAlignedOracle(mu=scorer.mu, actions=scorer.actions)
+        oracle = GTAlignedOracle(mu=scorer.centroids, actions=scorer.actions)
 
         f0 = scenarios[0].factors
         result_before = scorer.score(f0, scenarios[0].category_index)

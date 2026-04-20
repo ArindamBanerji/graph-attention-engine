@@ -76,7 +76,7 @@ class BootstrapResult:
     converged : bool
         True if final centroid drift < convergence_tol AND n_rounds > 0.
     final_drift : float
-        Mean L2 drift of scorer.mu from the prior centroids after all rounds.
+        Mean L2 drift of scorer.centroids from the prior centroids after all rounds.
     decisions_per_category : dict[str, int]
         Number of synthetic decisions made per category name.
     metadata : dict
@@ -104,7 +104,7 @@ def bootstrap_calibration(
     Run synthetic calibration rounds using the scorer's own prior as oracle.
 
     Algorithm:
-      1. Capture prior centroids: prior_mu = scorer.mu.copy()
+      1. Capture prior centroids: prior_mu = scorer.centroids.copy()
          Shape: (n_categories, n_actions, n_factors)
       2. For each round in range(n_rounds):
          For each (category_idx, category_name):
@@ -114,7 +114,7 @@ def bootstrap_calibration(
              For each f:
                oracle_action_idx = argmin ||f - prior_mu[cat, a, :]||^2
                scorer.update(f, category_idx, oracle_action_idx, correct=True)
-      3. Compute final_drift = mean(||scorer.mu - prior_mu||)
+      3. Compute final_drift = mean(||scorer.centroids - prior_mu||)
          converged = (n_rounds > 0) and (final_drift < convergence_tol)
       4. Return BootstrapResult.
 
@@ -153,9 +153,10 @@ def bootstrap_calibration(
     )
 
     # Step 1: capture prior centroids
-    prior_mu = scorer.mu.copy()
-    assert prior_mu.shape == scorer.mu.shape, (
-        f"prior_mu.shape={prior_mu.shape} != scorer.mu.shape={scorer.mu.shape}"
+    prior_mu = scorer.centroids.copy()
+    assert prior_mu.shape == scorer.centroids.shape, (
+        f"prior_mu.shape={prior_mu.shape} != "
+        f"scorer.centroids.shape={scorer.centroids.shape}"
     )
 
     rng = np.random.default_rng(seed)
@@ -215,14 +216,14 @@ def bootstrap_calibration(
                     decisions_per_category[cat_name] += 1
 
         # Compute drift after this round for progress log
-        drift = float(np.mean(np.abs(scorer.mu - prior_mu)))
+        drift = float(np.mean(np.abs(scorer.centroids - prior_mu)))
         print(
             f"[BOOTSTRAP] Round {round_idx + 1}/{n_rounds} complete — "
             f"drift={drift:.4f}"
         )
 
     # Step 3: final drift and convergence
-    final_drift_arr = np.abs(scorer.mu - prior_mu)
+    final_drift_arr = np.abs(scorer.centroids - prior_mu)
     assert final_drift_arr.shape == prior_mu.shape, (
         f"final_drift_arr.shape={final_drift_arr.shape} != {prior_mu.shape}"
     )

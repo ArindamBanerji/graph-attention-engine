@@ -135,9 +135,9 @@ def test_gt_aligned_from_profile_scorer():
     scorer = ProfileScorer(mu=mu, actions=["a0", "a1", "a2"])
     oracle = GTAlignedOracle.from_profile_scorer(scorer)
 
-    assert oracle.mu.shape == scorer.mu.shape
+    assert oracle.mu.shape == scorer.centroids.shape
     assert oracle.actions == scorer.actions
-    np.testing.assert_array_equal(oracle.mu, scorer.mu)
+    np.testing.assert_array_equal(oracle.mu, scorer.centroids)
 
 
 # ---------------------------------------------------------------------------

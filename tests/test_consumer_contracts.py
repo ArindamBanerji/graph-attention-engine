@@ -121,7 +121,7 @@ class TestConsumerSequences:
                               gt_action_index=gt)
 
         # Centroids should have moved
-        assert not np.allclose(scorer.mu, mu_init)
+        assert not np.allclose(scorer.centroids, mu_init)
 
     def test_sequence_b_diagonal_kernel_lifecycle(self):
         """DiagonalKernel construction → for_soc → per-factor N_half."""

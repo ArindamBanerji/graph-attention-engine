@@ -165,7 +165,7 @@ class GTAlignedOracle:
 
         Reference: docs/gae_design_v10_6.md §10.3.
         """
-        return cls(mu=scorer.mu, actions=scorer.actions)
+        return cls(mu=scorer.centroids, actions=scorer.actions)
 
 
 class BernoulliOracle:

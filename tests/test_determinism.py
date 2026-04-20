@@ -100,7 +100,7 @@ class TestUpdateDeterminism:
             s1.update(f, c, a, correct=correct)
             s2.update(f, c, a, correct=correct)
 
-        np.testing.assert_array_equal(s1.mu, s2.mu)
+        np.testing.assert_array_equal(s1.centroids, s2.centroids)
 
     def test_update_does_not_mutate_input_array(self):
         """update() must not mutate the caller's f array."""
@@ -131,12 +131,16 @@ class TestInstanceIsolation:
         mu = rng.uniform(0.0, 1.0, (1, 2, 4))
         s1 = ProfileScorer(mu=mu.copy(), actions=["a", "b"])
         s2 = ProfileScorer(mu=mu.copy(), actions=["a", "b"])
-        mu2_before = s2.mu.copy()
+        mu2_before = s2.centroids.copy()
 
         for _ in range(100):
             s1.update(np.ones(4), 0, 0, correct=True)
 
-        np.testing.assert_array_equal(s2.mu, mu2_before, err_msg="s2 must not be affected by s1 updates")
+        np.testing.assert_array_equal(
+            s2.centroids,
+            mu2_before,
+            err_msg="s2 must not be affected by s1 updates",
+        )
 
     def test_constructor_copies_mu(self):
         """ProfileScorer must copy mu at construction; external mutation must not propagate."""
@@ -147,7 +151,7 @@ class TestInstanceIsolation:
         # Mutate the external array
         mu[:] = 999.0
         # Scorer's centroids must be unaffected
-        np.testing.assert_array_equal(scorer.mu, mu_original)
+        np.testing.assert_array_equal(scorer.centroids, mu_original)
 
     def test_centroids_property_is_same_object_as_mu(self):
         """scorer.centroids is an alias for scorer.mu (not a copy)."""

@@ -90,9 +90,9 @@ def test_score_output_length_equals_n_act():
 def test_update_correct_pulls_centroid_toward_f():
     scorer = make_scorer(n_cat=1, n_act=2, n_fac=6)
     f = np.ones(6)  # target well-separated from centroid [0,1] range
-    dist_before = float(np.linalg.norm(scorer.mu[0, 0, :] - f))
+    dist_before = float(np.linalg.norm(scorer.centroids[0, 0, :] - f))
     scorer.update(f, category_index=0, action_index=0, correct=True)
-    dist_after = float(np.linalg.norm(scorer.mu[0, 0, :] - f))
+    dist_after = float(np.linalg.norm(scorer.centroids[0, 0, :] - f))
     assert dist_after < dist_before, (
         f"Correct update should pull centroid toward f: "
         f"dist_before={dist_before:.4f}, dist_after={dist_after:.4f}"
@@ -107,12 +107,12 @@ def test_update_incorrect_pushes_centroid_away():
     actions = ["predicted", "gt"]
     scorer = ProfileScorer(mu=mu, actions=actions)
     f = np.zeros(6)
-    dist_before = float(np.linalg.norm(scorer.mu[0, 0, :] - f))
+    dist_before = float(np.linalg.norm(scorer.centroids[0, 0, :] - f))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # DeprecationWarning if gt not provided elsewhere
         scorer.update(f, category_index=0, action_index=0, correct=False,
                       gt_action_index=1)
-    dist_after = float(np.linalg.norm(scorer.mu[0, 0, :] - f))
+    dist_after = float(np.linalg.norm(scorer.centroids[0, 0, :] - f))
     assert dist_after > dist_before, (
         f"Incorrect update should push predicted centroid away: "
         f"dist_before={dist_before:.4f}, dist_after={dist_after:.4f}"
@@ -126,13 +126,40 @@ def test_centroids_roundtrip():
     orig = scorer.centroids.copy()
     # Replace mu and verify .centroids reflects the change
     new_mu = np.full_like(orig, 0.7)
-    scorer.mu = new_mu
+    scorer.centroids = new_mu
     np.testing.assert_allclose(
         scorer.centroids, new_mu,
-        err_msg=".centroids must reflect updated .mu",
+        err_msg=".centroids must reflect updated centroids",
     )
-    assert scorer.centroids.shape == orig.shape, (
-        "Shape must be preserved after mu assignment"
+
+
+def test_centroids_setter_preserves_alias():
+    scorer = make_scorer(n_cat=2, n_act=3, n_fac=4)
+    new_mu = np.full_like(scorer.centroids, 0.7)
+
+    scorer.centroids = new_mu
+
+    assert scorer.centroids is scorer.mu
+    np.testing.assert_allclose(scorer.centroids, new_mu)
+
+
+def test_centroids_setter_wrong_shape_raises():
+    scorer = make_scorer(n_cat=2, n_act=3, n_fac=4)
+
+    with pytest.raises(ValueError, match="centroids shape"):
+        scorer.centroids = np.full((2, 3, 5), 0.7)
+
+
+def test_centroids_setter_casts_float32_to_float64():
+    scorer = make_scorer(n_cat=2, n_act=3, n_fac=4)
+    expected_shape = scorer.centroids.shape
+    new_mu = np.full(scorer.centroids.shape, 0.7, dtype=np.float32)
+
+    scorer.centroids = new_mu
+
+    assert scorer.centroids.dtype == np.float64
+    assert scorer.centroids.shape == expected_shape, (
+        "Shape must be preserved after centroid assignment"
     )
 
 
@@ -155,8 +182,12 @@ def test_mu_clipped_after_adversarial_inputs():
     for _ in range(30):
         scorer.update(f_high, category_index=0, action_index=0, correct=True)
         scorer.update(f_low,  category_index=0, action_index=1, correct=True)
-    assert scorer.mu.min() >= 0.0, f"mu.min()={scorer.mu.min()} < 0.0 (V2 violation)"
-    assert scorer.mu.max() <= 1.0, f"mu.max()={scorer.mu.max()} > 1.0 (V2 violation)"
+    assert scorer.centroids.min() >= 0.0, (
+        f"mu.min()={scorer.centroids.min()} < 0.0 (V2 violation)"
+    )
+    assert scorer.centroids.max() <= 1.0, (
+        f"mu.max()={scorer.centroids.max()} > 1.0 (V2 violation)"
+    )
 
 
 # ── Test 9: τ=0.1 is the default ─────────────────────────────────────────────

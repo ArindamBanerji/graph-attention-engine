@@ -239,9 +239,9 @@ class TestLearningMathProperties:
         mu = rng.uniform(0.1, 0.9, (1, 2, 5))
         scorer = ProfileScorer(mu=mu, actions=["a", "b"])
         f = rng.uniform(0.0, 1.0, 5)
-        dist_before = np.linalg.norm(scorer.mu[0, 0, :] - f)
+        dist_before = np.linalg.norm(scorer.centroids[0, 0, :] - f)
         scorer.update(f, 0, 0, correct=True)
-        dist_after = np.linalg.norm(scorer.mu[0, 0, :] - f)
+        dist_after = np.linalg.norm(scorer.centroids[0, 0, :] - f)
         assert dist_after < dist_before
 
     def test_incorrect_update_increases_predicted_distance(self):
@@ -249,9 +249,9 @@ class TestLearningMathProperties:
         mu = np.full((1, 2, 4), 0.5)
         scorer = ProfileScorer(mu=mu, actions=["a", "b"])
         f = np.zeros(4)
-        dist_before = np.linalg.norm(scorer.mu[0, 0, :] - f)
+        dist_before = np.linalg.norm(scorer.centroids[0, 0, :] - f)
         scorer.update(f, 0, 0, correct=False, gt_action_index=1)
-        dist_after = np.linalg.norm(scorer.mu[0, 0, :] - f)
+        dist_after = np.linalg.norm(scorer.centroids[0, 0, :] - f)
         assert dist_after > dist_before
 
     def test_incorrect_update_decreases_gt_distance(self):
@@ -260,9 +260,9 @@ class TestLearningMathProperties:
         mu[0, 1, :] = 0.8   # GT centroid starts far from f=0
         scorer = ProfileScorer(mu=mu, actions=["a", "b"])
         f = np.zeros(4)
-        dist_gt_before = np.linalg.norm(scorer.mu[0, 1, :] - f)
+        dist_gt_before = np.linalg.norm(scorer.centroids[0, 1, :] - f)
         scorer.update(f, 0, 0, correct=False, gt_action_index=1)
-        dist_gt_after = np.linalg.norm(scorer.mu[0, 1, :] - f)
+        dist_gt_after = np.linalg.norm(scorer.centroids[0, 1, :] - f)
         assert dist_gt_after < dist_gt_before
 
     def test_eta_confirm_ge_eta_neg_eff(self):
@@ -279,15 +279,17 @@ class TestLearningMathProperties:
         s_without = ProfileScorer(mu=mu.copy(), actions=["a", "b"])
         f = np.zeros(4)
 
-        mu_with_before    = s_with.mu[0, 0, :].copy()
-        mu_without_before = s_without.mu[0, 0, :].copy()
+        mu_with_before = s_with.centroids[0, 0, :].copy()
+        mu_without_before = s_without.centroids[0, 0, :].copy()
 
         r_with    = s_with.update(f, 0, 0, correct=False, gt_action_index=1)
         r_without = s_without.update(f, 0, 0, correct=False, gt_action_index=1)
 
         # With eta_override=0.01, push step is smaller
-        delta_with    = np.abs(s_with.mu[0, 0, :] - mu_with_before).sum()
-        delta_without = np.abs(s_without.mu[0, 0, :] - mu_without_before).sum()
+        delta_with = np.abs(s_with.centroids[0, 0, :] - mu_with_before).sum()
+        delta_without = np.abs(
+            s_without.centroids[0, 0, :] - mu_without_before
+        ).sum()
         assert delta_with <= delta_without, (
             f"eta_override=0.01 should produce smaller push: {delta_with} vs {delta_without}"
         )
@@ -299,7 +301,7 @@ class TestLearningMathProperties:
         f_target = np.full(6, 0.8)
         for _ in range(200):
             scorer.update(f_target, 0, 0, correct=True)
-        dist = np.linalg.norm(scorer.mu[0, 0, :] - f_target)
+        dist = np.linalg.norm(scorer.centroids[0, 0, :] - f_target)
         assert dist < 0.10, (
             f"After 200 correct updates, centroid distance {dist:.4f} to target should be < 0.10"
         )
@@ -310,9 +312,9 @@ class TestLearningMathProperties:
         mu[0, 0, :] = [0.3, 0.3, 0.3]
         scorer = ProfileScorer(mu=mu, actions=["a", "b"])
         f = np.array([0.8, 0.8, 0.8])
-        mu_before = scorer.mu[0, 0, :].copy()
+        mu_before = scorer.centroids[0, 0, :].copy()
         scorer.update(f, 0, 0, correct=True)
-        delta = scorer.mu[0, 0, :] - mu_before
+        delta = scorer.centroids[0, 0, :] - mu_before
         direction = f - mu_before
         # delta should be parallel to direction (f - mu) with positive sign
         assert np.all(delta * direction >= -1e-12), (

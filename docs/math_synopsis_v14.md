@@ -1946,7 +1946,7 @@ is built, fuzzy matching is not. Confirmed by code audit April 1, 2026.]
 | e_n | Centroid error at step n | (d,) | μ_n − μ* | ✅ |
 | N_half | Convergence half-life | scalar | ln(2)/η ≈ 14 at η=0.05. **Qualifier: q̄≥0.70 AND σ≤0.157(L2)/0.25(Diag). UNI-DK-01 v5.3 confirms positive learning at every NR.** | ✅ |
 | N_converge | Decisions to calibration neighborhood | scalar | Eq. N_CONV | ✅ |
-| α(t) | Analyst override rate | scalar | [0, 1] — fraction disagreeing | ✅ |
+| α(t) | Analyst override rate among verified decisions | scalar | [0, 1] — fraction of verified decisions where analyst disagreed with system recommendation | ✅ |
 | **q(t)** | **Decision quality (operational definition)** | **scalar** | **[0, 1] — rolling verified accuracy over last 400 decisions. Calibration-independent. v14 operational definition replaces confidence-based q. See §5, §9, §16.** | **✅ v6.0** [UPDATED v14] |
 | V_verified | Verified decisions per day | scalar | ℕ | ✅ |
 | ρ_j | Cross-source correlation for factor j | scalar | [0, 1] — ρ=0.8 typical for SIEMs | ✅ |

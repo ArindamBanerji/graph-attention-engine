@@ -542,6 +542,22 @@ class ProfileScorer:
         """
         return self.mu
 
+    @centroids.setter
+    def centroids(self, value: np.ndarray) -> None:
+        """
+        Set centroid tensor. Validates shape matches current mu.
+
+        This is the public write API for centroids. Internal code
+        uses self.mu directly. Consumer code should use
+        scorer.centroids = new_value.
+        """
+        value = np.asarray(value, dtype=np.float64)
+        if value.shape != self.mu.shape:
+            raise ValueError(
+                f"centroids shape {value.shape} != expected {self.mu.shape}"
+            )
+        self.mu = value
+
     @property
     def update_gate_stats(self) -> Dict:
         """

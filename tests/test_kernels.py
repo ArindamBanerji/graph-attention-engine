@@ -282,14 +282,14 @@ class TestKernelWeightRefresh:
         scorer.freeze()
         assert scorer._frozen is True
 
-        mu_before = scorer.mu.copy()
+        mu_before = scorer.centroids.copy()
         est = self._make_estimator_with_n(d=4, n=100)
 
         result = scorer.kernel_weight_refresh(est)
         assert result is True
 
         # Centroid tensor must not change — kernel refresh only
-        np.testing.assert_array_equal(scorer.mu, mu_before)
+        np.testing.assert_array_equal(scorer.centroids, mu_before)
 
         # Kernel weights must have changed (were all-ones, now (1/σ²)/max)
         sigma = est.get_per_factor_sigma()
@@ -508,9 +508,9 @@ class TestDiagonalGradientNormalisation:
 
         for _ in range(200):
             scorer.update(f, category_index=0, action_index=0, correct=True)
-            centroid_history.append(scorer.mu[0, 0, :].copy())
+            centroid_history.append(scorer.centroids[0, 0, :].copy())
 
-        final_centroid = scorer.mu[0, 0, :]
+        final_centroid = scorer.centroids[0, 0, :]
 
         # No dimension stuck at hard boundary
         assert not np.any(final_centroid == 0.0), (

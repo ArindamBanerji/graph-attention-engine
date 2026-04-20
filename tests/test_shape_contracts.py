@@ -33,7 +33,7 @@ class TestCentroidShapeContracts:
             profile=soc_calibration_profile(),
         )
         assert scorer.centroids.shape == (n_cat, n_act, n_fac)
-        assert scorer.mu.shape == (n_cat, n_act, n_fac)
+        assert scorer.centroids.shape == (n_cat, n_act, n_fac)
 
     def test_s2p_config_shape(self):
         n_cat, n_act, n_fac = 5, 5, 8
@@ -134,12 +134,12 @@ class TestUpdateShapeContracts:
 
     def test_update_does_not_change_centroid_shape(self):
         scorer = make_scorer(n_cat=2, n_act=3, n_fac=6)
-        shape_before = scorer.mu.shape
+        shape_before = scorer.centroids.shape
         scorer.update(
             np.full(6, 0.5), category_index=0, action_index=1,
             correct=False, gt_action_index=2,
         )
-        assert scorer.mu.shape == shape_before
+        assert scorer.centroids.shape == shape_before
 
     def test_update_preserves_n_categories(self):
         scorer = make_scorer(n_cat=3, n_act=4, n_fac=6)

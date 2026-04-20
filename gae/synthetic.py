@@ -213,7 +213,7 @@ class OracleSeparationExperiment:
         self.theta = theta
         self.max_decisions = max_decisions
 
-        C, A, d = scorer.mu.shape
+        C, A, d = scorer.centroids.shape
         self.alpha_cat = alpha_cat or len(disrupted_categories) / C
         self.threshold = gamma_threshold(
             self.alpha_cat, disruption_magnitude, theta
@@ -259,7 +259,7 @@ class OracleSeparationExperiment:
             if len(correct_window) > self.window:
                 correct_window.pop(0)
 
-            dist = canonical.distance_from(self.scorer.mu)
+            dist = canonical.distance_from(self.scorer.centroids)
             distances.append(dist)
 
             acc = float(np.mean(correct_window))
@@ -297,7 +297,7 @@ class OracleSeparationExperiment:
         )
         return Phase1Result(
             n_half=n_half,
-            mu_final=self.scorer.mu.copy(),
+            mu_final=self.scorer.centroids.copy(),
             trace=trace,
             dnf=n_half is None,
         )
@@ -309,9 +309,9 @@ class OracleSeparationExperiment:
     ) -> Phase2Result:
         # Apply disruption to GT
         delta = np.full(
-            self.scorer.mu.shape[1:],
+            self.scorer.centroids.shape[1:],
             self.disruption_magnitude / np.sqrt(
-                self.scorer.mu.shape[1] * self.scorer.mu.shape[2]
+                self.scorer.centroids.shape[1] * self.scorer.centroids.shape[2]
             )
         )
         canonical_gt2 = self.canonical_gt1.apply_disruption(
@@ -319,7 +319,7 @@ class OracleSeparationExperiment:
         )
 
         # Reset scorer to phase1 final state
-        self.scorer.mu = phase1_result.mu_final.copy()
+        self.scorer.centroids = phase1_result.mu_final.copy()
 
         n_half, distances, trace = self._run_phase(
             factor_samples, canonical_gt2, "phase2"
