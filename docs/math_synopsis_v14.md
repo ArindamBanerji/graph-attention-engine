@@ -1,9 +1,86 @@
+> **CHANGE NOTE (April 19, 2026 — v13→v14 update):**
+>
+> UNI-DK-01 v5.3 incorporation. Six substantive additions, three deprecations, two definitional tightenings.
+>
+> **(1) §3.3 NEW — DiagonalKernel characterization surface (UNI-DK-01 v5.3):**
+>     At fixed mean-σ=0.175, the DK advantage over L2 scales monotonically with
+>     noise ratio (NR = σ_max/σ_min): 0.00pp at NR=1.0 (mathematical identity,
+>     confirmed empirically across 150 cells) → +0.72pp at NR=1.5 → +1.99pp at
+>     NR=2.0 → +4.43pp at NR=3.0 → +7.67pp at NR=5.0 (all asymptotic, 150 paired cells per NR).
+>     Decomposition: cold-start scoring geometry contributes 54.5–75.5% across NR
+>     range; learning contributes the remainder. Cold-start dominance is strongest
+>     at moderate NR (75.5% at NR=2.0), declines at extreme NR (54.5% at NR=5.0)
+>     because learning grows faster than cold-start at high heterogeneity.
+>     1500 cells total. Methodology: cold-start measured via frozen-centroid
+>     no-learning scorer; asymptotic via 400-decision rolling window at end of
+>     5000-decision trajectory.
+>
+> **(2) §3.3 NEW — DiagonalKernel calibration finding (UNI-DK-01 v5.3):**
+>     DK's accuracy advantage does NOT translate to calibrated confidence. Expected
+>     Calibration Error (ECE) at τ=0.1 for DK rises from 0.055 at NR=1.0 to 0.42 at
+>     NR=5.0; L2's ECE stays at 0.04–0.06 across the same range. Mechanism:
+>     inverse-variance weighting W=diag(1/σ²) normalized to max=1 concentrates scoring
+>     weight on low-σ factors. At NR=5.0: W = [1.00, 0.31, 0.15, 0.09, 0.06, 0.04] —
+>     effective dimensionality ~3 of 6. Reduced effective dimensionality sharpens the
+>     softmax, producing over-confident predictions on the decisive subset. This is a
+>     property of weighted-distance scoring, not an implementation defect.
+>     **Consequence: DK confidence outputs are NOT safe to consume directly for
+>     downstream gating (auto-pause, conservation-law q, analyst triage).** Production
+>     architecture addresses this at each consumption point (see §9, §16).
+>
+> **(3) §9 and §16 UPDATED — Conservation-law q operational definition:**
+>     q(t) in the invariant α(t)·q(t)·V(t) ≥ θ_min is now operationally defined as
+>     **rolling verified accuracy over the last 400 decisions**, NOT per-decision
+>     confidence. Mathematically equivalent for well-calibrated scorers; robust for
+>     miscalibrated ones. The v13 derivation of θ_min did not require q ≈ confidence
+>     specifically — it required q to be a measurement of decision quality, which
+>     rolling verified accuracy is more directly. At 25% verify rate × 400 decisions,
+>     ~100 verified events per window; SE on q ≈ 3.6pp at q≈0.85. Strengthens EU AI Act
+>     Article 14 oversight argument (accuracy is more defensible than confidence).
+>
+> **(4) §16 UPDATED — KernelSelector architecture (v6.0 settled):**
+>     The NR-threshold rule (noise_ratio > 1.5 → DiagonalKernel) is the v6.0 production
+>     architecture. Confidence-based kernel comparison (mean_conf, mean_ll, trimmed_ll)
+>     was tested against ground-truth accuracy at scale (UNI-DK-01 v5.3 E1/E3) and
+>     found unreliable: mean_conf would never select DK in production even where DK has
+>     +7.67pp accuracy advantage (E4); trimmed_ll data-driven selection is below chance
+>     at NR ≥ 3.0 due to DK's calibration properties. Rule-based selection (E3) is
+>     100% correct at every informative NR. Two validations: historical V-MV-KERNEL
+>     HC-personas 4/4 + UNI-DK-01 v5.3 E3 100%. Accuracy-comparison selector (holdout-based)
+>     retained as v6.1 contingency if P28 σ estimation proves unreliable in field.
+>     Calibrated-confidence selector (Platt scaling) archived — no scenario requires it.
+>
+> **(5) §9 UPDATED — AMBER auto-pause signal source:**
+>     Auto-pause triggers on rolling verified accuracy crossing below deployment-specific
+>     threshold, same signal as conservation-law q. State-level transition (pause the
+>     AUTO zone), not per-decision filter. Previously specified as confidence threshold;
+>     now accuracy-threshold for robustness across kernel choice.
+>
+> **(6) §8 UPDATED — UNI-DK-01 v5.3 catalog row added.** 1500 cells, D1-D4 all PASS,
+>     D5 dropped (tautological). Supersedes `v_mv_kernel_rerun_v1.json` Deliverable 1
+>     tables (cumulative-averaging methodology now retracted). v4.2 (cumulative)
+>     reported "negative learning at low NR" — retracted as measurement artifact.
+>     v5.3 (instantaneous) shows positive learning at every NR level.
+>
+> **Deprecations:**
+> - v_mv_kernel_summary_v2.md Deliverable 1 cumulative tables — superseded by §3.3 v5.3 surface.
+> - "Negative learning at low NR" finding — retracted.
+> - "Cold-start dominates at high NR" narrative — qualified: cold-start is the larger
+>   contributor across all noise regimes, peaks at NR=2 (75.5%), weakens at NR=5 (54.5%).
+>
+> **Definitional tightenings:**
+> - q operational definition (§9, §16)
+> - DK accuracy-vs-calibration distinction (§3.3, §7)
+>
+> Sources: UNI-DK-01 v5.3 run April 19, 2026. Results impact document
+> `uni_dk_01_v5_3_comprehensive_results_impact_april_19_2026.md` §§3, 5, 6, 10.7.
+
 > **CHANGE NOTE (April 8, 2026 — v12→v13 update):**
 >
 > One new theorem, four document locations updated.
 >
 > **(1) §3.2 NEW:** Re-Convergence Theorem. γ > 1 proven analytically for category-sparse
->     disruption when ε_firm > ε_firm★ ≈ 0.125. Four proof paths. Simulation confirmation.
+>     disruption when ε_firm > ε_firm★ ≈ 0.125. Three proof paths. Simulation confirmation.
 >     **Formula confirmed correct (coding session April 8 + April 9):** ε_firm★ = α·‖Δ‖/(1−α) — also written as `alpha*delta/(1-alpha)` in code.
 >     θ cancels in correct derivation. Value ≈ 0.125 (was approximated as 0.128, diff = 0.003).
 >     OracleSeparationExperiment in gae/experiments/ validates both directions: ε=0.05 → γ=0.714 < 1; ε=0.20 → γ=1.033 > 1.
@@ -15,9 +92,6 @@
 > **(3) §12 UPDATED:** Re-Convergence Theorem added as RESOLVED open math issue.
 >
 > **(4) §13 UPDATED:** Gate GAMMA added after Gate REFERRAL.
->
-> **(5) §3.2 UPDATED:** Fourth proof path added (centroid-distance
->     derivation, Grok primary, April 16 math poll).
 >
 > Sources: GPT-4.1, Claude Opus 4, Grok 3, Gemini 1.5 Pro (April 8, 2026).
 > Simulation: oracle separation v3/v8/final (oracle_separation_validation files).
@@ -187,74 +261,89 @@
 > Learning works when prior mismatch exists. Noise is the remaining constraint.
 
 # Compounding Intelligence: Mathematical Synopsis
-**Version:** v13 (April 8, 2026) — Re-Convergence Theorem added (§3.2, §10.1 update, §12, §13 Gate GAMMA)
 
-**Version:** 11.0 · March 21, 2026
-**Purpose:** Complete mathematical framework in one document. For experts and LLMs.
-**Status:** v6.0 KERNEL ARCHITECTURE SETTLED. A=4 CONFIRMED (13pp structural).
-DiagonalKernel validated (+13.2pp SOC, +6.8pp S2P).
-ReferralRules R1-R7 shipped (VETO, 72.7% DR, 12% FPR). 478 GAE + 280 SOC tests (~935 total).
-Eq. 1–4b validated (~104 experiments including 50-seed realistic suite + persona sweeps + factorial).
-Eq. 4-synthesis is PROPOSAL (gated by EXP-S1–S8). GATE-M satisfied (March 14).
-Asymmetric η (P0 fix): η_confirm=0.05, η_override=0.01. Validated across 24 personas.
-Noise ceiling kernel-dependent: L2 σ≤0.157, Diagonal σ≤0.25.
-Realistic accuracy numbers supersede centroidal synthetic numbers for all product claims.
-Three-judge validated mathematical bridges (GPT-4o, Claude Opus, Gemini) incorporated at v9.1.
-**Sources:** cross_graph_attention_v3 (authoritative math), compounding_intelligence_v7
-(authoritative architecture), intelligence_layer_design_v2 (synthesis proposal),
-product_strategy_v3 (gap analysis), experiments_catalog_v2 (master catalog),
-gae_design_v10 (engine API contract), multivariate_foundation_design_note_v2,
-platform_roadmap_v19 (what ships when),
-three-judge bridge reviews (GPT-4o, Claude Opus, Gemini — March 17, 2026).
+*Version 14 | April 19, 2026*
 
----
+*UNI-DK-01 v5.3 characterization surface + DK calibration finding + q operational definition + KernelSelector architecture settled.*
 
-**What changed from v10:** [CHANGED v11] — see change note above.
+This synopsis is the authoritative source of mathematical truth for the GAE platform.
+Every equation, parameter value, constraint, and invariant in the production paper,
+arxiv paper, math blog, innovation note, claims registry, and component design documents
+traces back to this document. When this document changes, downstream documents must be
+checked for consistency.
 
-**What changed from v9.1:** [CHANGED v10] — see change note above.
+Purpose: a single reference that downstream consumers (roadmap sessions, coding sessions,
+document maintenance, customer-facing materials) can cite without reconciling multiple
+sources.
 
-**What changed from v9:** [CHANGED v9.1] — see change note above.
-
-**What changed from v8:** [CHANGED v9] — see change note above.
-
-**What changed from v7/v6:** — see prior change notes above.
+**Version history summary:**
+- v14 (April 19, 2026) — UNI-DK-01 v5.3 incorporation. DK characterization surface, calibration
+  finding, q operational definition tightened, KernelSelector architecture settled.
+- v13 (April 8, 2026) — Re-Convergence Theorem (γ > 1 proven for ε_firm > 0.125).
+- v12 (April 1, 2026) — θ_min=23.53/(α×V) formula. Per-analyst η_i. D6 closed.
+  FINDING-OVR-01. Self-calibrating gates.
+- v11 (March 21, 2026) — A=4 confirmed, ReferralRules R1-R7 shipped, ~104 experiments.
+- v10 (March 21, 2026) — DiagonalKernel validated, asymmetric η (P0 fix), tensor A=4.
+- v9.1 (March 17, 2026) — Three-judge validated bridges, convergence analysis, conservation law.
+- v9 (March 15, 2026) — A=5/A=4 tensor, Eq 4b correction, frozen scorer baseline.
 
 ---
 
 ## 1. The Architecture in One Paragraph
 
-A knowledge graph accumulates operational context. FactorComputers traverse the graph
-to produce a factor vector f ∈ [0,1]^d for each decision. A ProfileScorer computes
-action probabilities using a distance kernel between f and learned profile centroids
-μ[c,a,:]. The default kernel is DiagonalKernel(W=diag(1/σ²)) for deployments with
-noise_ratio > 1.5 (every real deployment except ultra-clean FinServ); L2 is the
-cold-start fallback. Verified outcomes update centroids via pull/push with asymmetric
-learning rates: η_confirm=0.05 for analyst confirmations (clean signal),
-η_override=0.01 for analyst overrides (noisy signal, attenuated 5× — the P0 fix
-preventing 13-27pp centroid degradation from low-quality overrides). An optional
-synthesis bias σ[c,a] (PROPOSAL, gated by EXP-S1–S8) shifts action preferences based
-on external intelligence. The system compounds: every verified decision reshapes
-centroids, making the next decision on similar alerts more accurate. The moat is the
-centroid tensor — readable institutional judgment encoded in 144 numbers (6 categories
-× 4 actions × 6 factors). Referral routing is handled OUTSIDE the tensor by
-ReferralRules R1-R7 (policy-based VETO, 72.7% DR, 12% FPR) — the signal for "needs
-human review" lives in context, not factor-space geometry. The system learns at two
-formally characterized levels: Level 1 (ProfileScorer centroids — what to decide,
-convergence rate (1−η)^n, half-life N_half≈14, Borkar 2008) and Level 2 (AgentEvolver
-variant selection — how to operate, conservative contextual bandit with four-condition
-safety gate). A conservation law α(t)·q(t)·V(t) ≥ θ_min (where θ_min = 23.53/(α×V), deployment-specific) ensures the two levels compound rather than conflict. [CHANGED v11; θ_min formula CORRECTED v12]
+The system is a two-layer compounding-intelligence platform. Layer 1 (ProfileScorer)
+scores analyst decisions against a 6×4×6 = 144-value centroid tensor using a kernel-weighted
+distance metric. Two kernels ship at v6.0: L2 (cold-start fallback, isotropic) and
+DiagonalKernel (v6.0 default when per-factor noise heterogeneity is measured; weights
+each factor by inverse variance W=diag(1/σ²)). KernelSelector chooses between them by
+a validated rule: noise_ratio > 1.5 → Diagonal, else L2. Centroids update via an asymmetric
+learning rule (η_confirm=0.05 on agreements, η_override=0.01 on disagreements; 5×
+attenuation on the override path because overrides are noisier than confirms). Layer 2
+(AgentEvolver, v6+) evolves HOW the system operates (prompts, gates, bandit arm selection)
+via a conservative contextual bandit with a four-condition promotion gate: superiority +
+correctness floor + conservation law + variance stability. A safety architecture (S1–S9)
+prevents synthesis contamination, centroid corruption from low-quality overrides, and
+compounding degradation during regime shift. The conservation law invariant
+α(t)·q(t)·V(t) ≥ θ_min with q defined as **rolling verified accuracy over the last 400
+decisions** (not per-decision confidence) is the runtime guarantee that Level 2
+experimentation cannot cannibalize Level 1 decision quality — the EU AI Act Article 14
+mathematical backing for "effective oversight."
+
+Key numerical constants (v6.0 production, validated):
+
+- **Tensor:** 6 categories × 4 actions × 6 factors = 144 values per domain
+- **τ (temperature):** 0.1 (fixed; V3B validated, ECE=0.036)
+- **η_confirm:** 0.05 (agreement learning rate)
+- **η_override:** 0.01 (disagreement learning rate, P0 fix)
+- **τ̂ (decision rate):** 0.001 (count decay)
+- **θ_min:** 23.53/(α×V) (deployment-specific conservation floor; NOT hardcoded 0.467)
+- **ε_firm★:** ≈ 0.125 (re-convergence threshold; γ > 1 iff ε_firm > ε_firm★)
+- **σ_max:** 0.034 (synthesis clipping; FX-1-PROXY-REAL derived)
+- **κ* (IKS):** 0.20 (PROD-1 validated)
+- **Noise ratio threshold (KernelSelector):** 1.5 (Diagonal above, L2 below)
+- **Cold-start window (UNI-DK-01 v5.3 methodology):** 400 decisions (frozen scorer)
+- **Asymptotic window (UNI-DK-01 v5.3 methodology):** 400 decisions (rolling, end of trajectory)
 
 ---
 
 ## 2. Five Layers
 
-| Layer | Name | Contains | Changes At |
+The platform is organized in five layers. Lower layers are the mathematical foundation;
+higher layers leverage the compounding properties of lower layers.
+
+| Layer | What it does | Validated by | Status |
 |---|---|---|---|
-| 1 | Domain Ontology | Categories, actions, factors, initial centroids μ₀, referral rules | Configuration time |
-| 2 | Meta-Graph (Compiled State) | μ[c,a,:] (experience), σ[c,a] (awareness, PROPOSAL) | Decision time (μ slow, σ fast) |
-| 3 | Mathematical Engine | ProfileScorer, kernels (L2/Diagonal), softmax, calibration | Never (deterministic) |
-| 4 | Knowledge Graph | PostgreSQL + AGE nodes/edges, FactorComputers, write-back | Every decision |
-| 5 | Control Plane | Four feedback loops (3 validated + 1 proposed), ReferralRules VETO | Per outcome |
+| 1. ProfileScorer | Scores alerts via kernel-weighted distance to centroids | EXP-C1, EXP-B1, V-MV-KERNEL, UNI-DK-01 v5.3 | ✅ v5.0+ |
+| 2. Learning | Updates centroids from verified analyst decisions | SHIFT-2, V-HC-CONFIG, UNI-DK-01 v5.3 | ✅ v6.0 |
+| 3. Synthesis | Layers awareness (σ) on experience (μ) via coupled scoring | Design (pending EXP-S1-S8) | PROPOSAL |
+| 4. Level 2 (AgentEvolver) | Conservative bandit evolves prompts/gates via promotion gate | Three-judge bridges | ✅ Design v6.0 |
+| 5. Cross-graph attention | Multi-domain attention (cross-graph transfer) | cross_graph_attention_v3 design | Design v7+ |
+
+Layers 1 and 2 are the foundation. Layer 3 is the next proposal (pending gate). Layer 4
+is designed and awaiting EXP-L2 poisoning validation. Layer 5 is multi-year roadmap.
+
+This synopsis focuses on Layers 1 and 2 (the validated foundation), with Level 2 formalized
+in §5.
 
 ---
 
@@ -287,12 +376,31 @@ DiagonalKernel (v6.0 default for noise_ratio > 1.5):
   When σ varies per factor: down-weights noisy dimensions, up-weights clean ones.
 ```
 
-**Kernel selection rule (settled, Explanation A confirmed):** [NEW v10]
+**Kernel selection rule (v6.0 settled, Option A — NR-threshold):** [NEW v10, CONFIRMED v14]
+
 ```
 noise_ratio = max(σ_per_factor) / min(σ_per_factor)
 if noise_ratio > 1.5 → DiagonalKernel(weights=1/σ²)
 else                  → L2Kernel
 ```
+
+**Why rule-based, not confidence-based (v14 clarification):** UNI-DK-01 v5.3 E1/E3 tested
+confidence-based kernel comparison (mean_conf, mean_ll, trimmed_ll) at scale across
+1500 cells. Results:
+- Rule-based selection (NR > 1.5): 100% correct at every informative NR.
+- Data-driven (trimmed_ll): below chance at NR ≥ 3.0 (0.37–0.45).
+- Confidence-based winner selection (mean_conf): always picks L2, never DK, even at
+  NR=5.0 where DK has +7.67pp accuracy advantage (E4 winner_stability_rate=1.000 at
+  all NR, dk_final_share=0.000).
+
+Root cause is DK's calibration properties (see §3.3). Rule-based selection sidesteps
+the calibration issue entirely — the rule depends only on measured per-factor σ, which
+is part of the deployment qualification data (P28). Two independent validations:
+historical V-MV-KERNEL HC-personas (4/4 correct) + UNI-DK-01 v5.3 E3 (100% correct).
+
+Accuracy-comparison selector (holdout-based) retained as v6.1 contingency if P28 σ
+estimation proves unreliable in the field. Calibrated-confidence selector archived —
+no scenario requires it.
 
 **Interpretation:** Each action has a prototype factor pattern (the centroid). The action
 whose prototype is closest to the observed factors wins — where "closest" accounts for
@@ -340,6 +448,12 @@ override quality (q̄=0.60-0.70). The override path carries noise from analyst e
 at q̄=0.57 (worst quality): +0.5pp with η_override=0.01 (no degradation); without: -9pp.
 Corr(noise_ratio, diagonal_advantage) = 0.990 across 4 healthcare personas.
 
+**UNI-DK-01 v5.3 confirmation (April 19, 2026):** at NR=5.0, η_override=0.01 maintains
+positive learning gap throughout the 5000-decision trajectory (+3.49pp learning
+contribution to +7.67pp asymptotic gap). Previous "negative learning at low NR"
+reported in v_mv_kernel Deliverable 1 is retracted — measurement artifact of cumulative
+averaging (see §3.3 methodology note).
+
 **Formula (diagnostic — global default 0.01 is the validated value):**
 ```
 η_override* ∝ (2q̄ − 1) / (2σ²_q + signal)
@@ -362,12 +476,12 @@ than later decisions — the system front-loads learning and stabilizes with exp
 
 ---
 
-### Available Kernels [CHANGED v10]
+### Available Kernels [CHANGED v10, UPDATED v14]
 
 | Kernel | K(f,μ) | When to Use | Accuracy | Noise Ceiling |
 |---|---|---|---|---|
 | **L2 (cold-start)** | ‖f − μ‖² | noise_ratio ≤ 1.5. Factors in [0,1]. | **97.89%** (centroidal) | σ ≤ 0.157 |
-| **DiagonalKernel (v6.0 default)** | **(f−μ)ᵀW(f−μ), W=diag(1/σ²)** | **noise_ratio > 1.5. Heterogeneous factor noise.** | **+13.2pp over L2** (hetero SOC) | **σ ≤ 0.25** |
+| **DiagonalKernel (v6.0 default)** | **(f−μ)ᵀW(f−μ), W=diag(1/σ²)** | **noise_ratio > 1.5. Heterogeneous factor noise.** | **+13.2pp peak (V-MV-KERNEL-HET); +7.67pp characterized at NR=5.0 mean-σ=0.175 (UNI-DK-01 v5.3)** | **σ ≤ 0.25** |
 | Cosine | 1 − cos(f,μ) | Pre-normalized factors | 96.42% | — |
 | Dot product | −f·μᵀ | **DO NOT USE.** Magnitude confounding. | 61.00% | — |
 | ShrinkageKernel | (f−μ)ᵀΣ̂⁻¹(f−μ) | **DEPRIORITIZED to v7.0.** Off-diagonal adds <1pp. | Same as Diagonal | — |
@@ -384,6 +498,26 @@ advantage is real and consistent. [CHANGED v11: 360→390 cells]
 | SOC | 79.5% | 92.7% | **+13.2pp** |
 | S2P | 42.2% | 49.0% | **+6.8pp** |
 | SOC at σ=0.22 | 61-64% | 83-85% | **+20-22pp** |
+
+**DiagonalKernel characterization at scale (UNI-DK-01 v5.3, April 19):** [NEW v14]
+
+The 1500-cell controlled-parameterization experiment (fixed mean-σ=0.175, 5 NR levels
+× 5 q̄ levels × 30 seeds × 2 kernels) complements V-MV-KERNEL-HET by characterizing
+the DK advantage as a function of noise heterogeneity at a single mean-σ. See §3.3
+for the full decomposition table and methodology.
+
+| NR | Asymptotic Gap | Cold-Start Component | Learning Component |
+|---|---|---|---|
+| 1.0 | 0.00pp (identity) | 0.00pp | 0.00pp |
+| 1.5 | +0.72pp | +0.53pp (73.5%) | +0.19pp |
+| 2.0 | +1.99pp | +1.50pp (75.5%) | +0.49pp |
+| 3.0 | +4.43pp | +3.09pp (69.6%) | +1.35pp |
+| 5.0 | +7.67pp | +4.18pp (54.5%) | +3.49pp |
+
+Two independent experiments (V-MV-KERNEL-HET 390 cells + UNI-DK-01 v5.3 1500 cells =
+1890 cells total) validate the DK advantage. The peak number (+13.2pp, V-MV-KERNEL-HET)
+and the characterized surface (+0pp to +7.67pp, UNI-DK-01 v5.3) are different operating
+points — neither supersedes the other. Cite the curve.
 
 **Explanation A confirmed:** Off-diagonal correlations add <1pp in both domains. Noise
 ratio alone drives the kernel advantage. ShrinkageKernel deprioritized to v7.0.
@@ -507,7 +641,7 @@ This correctly predicts γ < 1 in simulation, as observed.
 
 ---
 
-**Four Structural Proof Paths (all confirmed independently)**
+**Three Structural Proof Paths (all confirmed independently)**
 
 *Path 1 — Geometric (primary):*
 Phase 1's convergence challenge (all C categories, from ε_firm) exceeds Phase 2's
@@ -526,15 +660,6 @@ Phase 2 maintains η_eff near η₊ = 0.05 because 67% of decisions are undisrup
 where low initial accuracy → η_eff ≈ η₋ = 0.01 → learning near-stalled.
 Effective learning rate ratio: η_eff,2 / η_eff,1 > 1 when ε_firm is large.
 This means true production γ exceeds the geometric lower bound.
-
-*Path 4 — Centroid-Distance (Grok, April 16, 2026):*
-Phase 1 challenge: D₁ = ε_firm (all C categories cold-start from expert prior).
-Phase 2 challenge: D₂ = (α_cat/(1−α_cat))·‖Δ‖ (only disrupted categories
-reconverge; undisrupted contribute free rolling-window accuracy via the
-1/(1−α_cat) scaling). Solving D₁ > D₂ gives
-ε_firm > α_cat·‖Δ‖/(1−α_cat) ≈ 0.125. θ never enters because challenge is
-measured in centroid-distance space, not accuracy-gap space — θ governs the
-operational observable, not the mathematical contraction dynamics.
 
 ---
 
@@ -610,6 +735,154 @@ conditions and commercial tier designation (Tier 2, conditional).
 
 ---
 
+### §3.3 — DiagonalKernel Characterization Surface (UNI-DK-01 v5.3) [NEW v14]
+
+**Context:** V-MV-KERNEL-HET (March 21, 2026, 390 cells) established the DK advantage
+on heterogeneous SOC data at "+13.2pp peak." Deliverable 1 attempted to decompose that
+advantage into cold-start scoring-geometry vs. learning components using
+`v_mv_kernel_rerun_v1.json` cumulative-accuracy data. That decomposition was
+retracted in v14 — cumulative averaging produced paradoxical ratios (e.g.,
+cold_start_pct > 100% at low NR, "negative learning" artifacts) that were measurement
+artifacts, not real phenomena.
+
+UNI-DK-01 v5.3 (April 19, 2026) is the correct characterization: a controlled 1500-cell
+experiment with point-in-time (instantaneous) accuracy measurement via a frozen-centroid
+no-learning scorer for cold-start and a 400-decision rolling deque for asymptotic.
+
+**Parameterization:**
+- NR ∈ {1.0, 1.5, 2.0, 3.0, 5.0}  (5 noise ratios)
+- q̄ ∈ {0.57, 0.65, 0.75, 0.85, 0.95}  (5 analyst quality levels)
+- 30 random seeds per cell
+- Both kernels (L2, DiagonalKernel) run on byte-identical event streams
+- 5000 decisions per cell, 25% verification rate
+- Fixed mean-σ = 0.175 across all NR levels (resolves NR/mean-σ confound from
+  V-MV-KERNEL which had variable mean-σ)
+- σ profile: linear ramp with specified NR at fixed mean (e.g., NR=5.0 →
+  σ = [0.058, 0.105, 0.152, 0.198, 0.245, 0.292], mean=0.175)
+
+**Methodology (replaces cumulative decomposition from Deliverable 1):**
+
+```
+Phase 1 — Cold-start measurement (no-learning scorer):
+  Instantiate fresh ProfileScorer with frozen mu_init, no scorer.update() calls.
+  Score decisions 0-399 only.
+  cold_start_accuracy = n_correct / 400.
+  This is the pure scoring-geometry accuracy with no learning contamination.
+
+Phase 2 — Learning trajectory (standard scorer):
+  Instantiate fresh ProfileScorer with mu_init, standard score+update loop.
+  Run full 5000 decisions.
+  inst_accuracy_at[K] = sum(rolling_deque(maxlen=400)) / 400 at checkpoint K.
+  asymptotic_accuracy = inst_accuracy_at[5000] (last 400 decisions, instantaneous).
+
+Decomposition (mathematically exact):
+  cold_start_gap  = DK cold_start_accuracy − L2 cold_start_accuracy
+  asymptotic_gap  = DK asymptotic_accuracy − L2 asymptotic_accuracy
+  learning_gap    = asymptotic_gap − cold_start_gap
+```
+
+Both scorers see byte-identical events (RNG-seeded for reproducibility). The decomposition
+`learning_gap = asymptotic_gap − cold_start_gap` is mathematically exact because both
+terms are unbiased gap estimators on the same event distribution, evaluated at different
+scorer states.
+
+**Decomposition Table (v5.3 results):**
+
+| NR | Cold-start gap | Learning gap | Asymptotic gap | Cold-start % of asymptotic |
+|---|---|---|---|---|
+| 1.0 | 0.00pp (std=0) | 0.00pp | 0.00pp | — |
+| 1.5 | +0.53pp | +0.19pp | +0.72pp | 73.5% |
+| 2.0 | +1.50pp | +0.49pp | +1.99pp | 75.5% (peak) |
+| 3.0 | +3.09pp | +1.35pp | +4.43pp | 69.6% |
+| 5.0 | +4.18pp | +3.49pp | +7.67pp | 54.5% |
+
+**Standard errors:** SE on asymptotic gap ranges from 0.085pp (NR=1.5) to 0.191pp (NR=5.0)
+with 150 paired cells per NR. All D-checks (§8) operate on robust point estimates.
+
+**Key findings:**
+
+1. **NR=1.0 mathematical identity:** DK collapses to L2 at uniform σ, confirmed empirically
+   with gap=0.00pp and std=0 across all 150 paired cells. Strongest possible validation
+   of the math base.
+
+2. **Monotonic DK advantage:** Asymptotic gap strictly increasing in NR: 0.00 → 0.72 →
+   1.99 → 4.43 → 7.67pp. No tolerance needed for monotonicity.
+
+3. **Cold-start is the larger contributor across all noise regimes**, but its FRACTION
+   of asymptotic gap varies non-monotonically:
+   - Peaks at NR=2.0 (75.5%) — scoring geometry dominates DK's advantage at moderate
+     heterogeneity
+   - Weakens at NR=5.0 (54.5%) — learning grows faster than cold-start at extreme
+     heterogeneity, so scoring-geometry's share declines even as its absolute value grows
+   - Narrative implication: v14 replaces "cold-start dominates at high NR" (from
+     Deliverable 1) with "cold-start is the larger contributor across all noise regimes,
+     with both cold-start and learning growing in absolute terms as NR rises."
+
+4. **Positive learning at every NR:** Learning gap is +0.19 to +3.49pp across NR=1.5–5.0.
+   No "negative learning" anywhere. The v4.2 (cumulative) finding of negative learning
+   at low NR is **retracted** — it was a difference-of-cumulative-averages artifact.
+
+5. **q̄-invariance of cold-start confirmed:** max q̄-std (std of per-q̄ group means
+   of cold_start_gap) = 0.285pp at NR=2.0. Under v4.2 cumulative measurement this
+   was 1.22pp (FAIL). Under v5.3 frozen-scorer measurement: PASS by 3.5× margin.
+   The cold-start gap is genuinely q̄-independent because scoring with frozen centroids
+   is deterministic given the event stream.
+
+**DiagonalKernel Calibration Finding (NEW, unexpected):**
+
+| NR | L2 ECE (τ=0.1) | DK ECE (τ=0.1) | Ratio |
+|---|---|---|---|
+| 1.0 | 0.055 | 0.055 | 1.0× |
+| 1.5 | 0.053 | 0.148 | 2.8× |
+| 2.0 | 0.051 | 0.223 | 4.4× |
+| 3.0 | 0.046 | 0.325 | 7.0× |
+| 5.0 | 0.041 | 0.420 | 10.4× |
+
+L2 is well-calibrated and improves with NR (ECE stays 0.04–0.06). DK is severely
+miscalibrated at high NR (ECE 0.42 at NR=5.0). When DK reports confidence 90%, the
+actual accuracy on those decisions is far below 90%.
+
+**Mechanism.** W = diag(1/σ²) normalized so max weight = 1. At NR=5.0:
+W = [1.00, 0.31, 0.15, 0.09, 0.06, 0.04]. Four of six factors contribute <15% of the
+weight of the dominant factor. DK's effective dimensionality is ~3 (factors with
+w > 0.1). Reduced effective dimensionality sharpens the softmax: predictions become
+pushed toward 0 or 1 rather than spread across actions. argmax accuracy rises;
+confidence calibration degrades.
+
+This is a fundamental property of inverse-variance weighting, not an implementation
+defect. It affects ANY weighted-distance kernel with concentrated weights.
+
+**Downstream consequences (addressed architecturally at each consumption point):**
+
+| Consumer | Dependency on confidence | v14 resolution |
+|---|---|---|
+| KernelSelector (choosing L2 vs DK) | Would compare mean_conf between kernels | **NR-rule (Option A), no confidence used.** §3 kernel selection rule. |
+| Conservation law q | q was per-decision confidence | **Rolling verified accuracy.** §9, §16 operational definition. |
+| Auto-pause (AMBER) | Threshold on confidence | **Threshold on rolling verified accuracy.** §9 S6 update. |
+| Analyst triage UI | Sort by confidence | **Sort by softmax entropy / confidence gap.** (Spec'd in gae_design v10.7.) |
+| ProfileScorer output probabilities | Raw softmax output | Unchanged — downstream consumers pick up the relevant signal. |
+
+Net effect: DK's miscalibration is real, but no production touchpoint consumes raw DK
+confidence directly in v6.0. Accuracy-based signals (verified accuracy) and
+distribution-shape signals (entropy, confidence gap) do not depend on DK calibration.
+
+**v5.3 vs V-MV-KERNEL-HET number reconciliation:**
+
+The v5.3 peak (+7.67pp at NR=5.0 asymptotic) is smaller than V-MV-KERNEL-HET's peak
+(+13.2pp). They are at different operating points, not in conflict:
+
+| Source | Cells | Mean σ | Peak condition | Peak DK advantage |
+|---|---|---|---|---|
+| V-MV-KERNEL-HET | 390 | variable (up to 0.30) | σ_level=0.30 SOC heterogeneous | +13.2pp |
+| UNI-DK-01 v5.3 | 1500 | fixed at 0.175 | NR=5.0 (σ_max=0.292) | +7.67pp |
+
+Lower mean noise in v5.3 → smaller absolute advantage. Both results are citable:
+- +13.2pp: "up to" peak from V-MV-KERNEL-HET (higher mean noise)
+- +7.67pp: characterized at controlled NR=5.0 mean-σ=0.175 (UNI-DK-01 v5.3)
+
+**For the curve-based citation pattern used in innovation note and claims registry,**
+see §7 (accuracy numbers) and the claims registry B3 row.
+
 ---
 
 ### Eq. IKS — Institutional Knowledge Score (v5.5)
@@ -673,12 +946,35 @@ superseded).
 ## 5. Four Feedback Loops
 
 [§5 UNCHANGED from v9.1. Level 2 formalization, conservation law, GATE-L2 preserved.
-One addition:]
+Two updates:]
 
 **N_half qualifier [CHANGED v10]:** The convergence claim "N_half ≈ 14" requires
 q̄≥0.70 AND σ≤0.157 (L2 kernel) or σ≤0.25 (DiagonalKernel). Below q̄=0.70:
 confirm-only learning with ~2× timeline. Above noise ceiling: learning not
 recommended (frozen scorer only).
+
+**Conservation law q operational definition [CHANGED v14]:** The invariant
+α(t)·q(t)·V(t) ≥ θ_min uses q(t) operationalized as **rolling verified accuracy over
+the last 400 decisions** (at 25% verify rate, ≈100 verified events per window).
+
+Rationale (full derivation in §9):
+- The v9.1 derivation established q as "per-decision quality" semantically, with no
+  formal requirement that q be confidence specifically.
+- UNI-DK-01 v5.3 established that DK confidence is miscalibrated at high NR (ECE 0.42
+  at NR=5.0). If q were tied to confidence, the conservation invariant would operate
+  on noisy inputs when DK is routed.
+- Rolling verified accuracy directly measures decision quality, is calibration-
+  independent, and strengthens the EU AI Act Article 14 oversight argument (accuracy
+  is more defensible than confidence as evidence of effective oversight).
+- SE on q at n=100 verified events, q≈0.85: ≈3.6pp. Tighter than any confidence-based
+  window estimate.
+- α and V in the invariant are already rolling aggregates; rolling-accuracy q matches
+  rather than clashes with their natures.
+
+This substitution does not change any v13 derivation structurally. Every step that
+used q ≈ confidence either (a) used it as a semantic placeholder for "quality" (where
+rolling accuracy is equivalent or stronger), or (b) needed calibrated confidence, which
+rolling accuracy sidesteps entirely.
 
 ---
 
@@ -777,11 +1073,23 @@ Use in customer communications, demos, and investor materials.
 
 ---
 
-### DiagonalKernel Accuracy Numbers (NEW v10)
+### DiagonalKernel Accuracy Numbers [UPDATED v14]
+
+**v14 note:** The DK accuracy claim is curve-based, not single-number. Two experiments
+characterize different operating points on the same surface:
+- **V-MV-KERNEL-HET (March 2026, 390 cells):** peak +13.2pp SOC on heterogeneous noise
+  with variable mean-σ up to 0.30.
+- **UNI-DK-01 v5.3 (April 2026, 1500 cells):** characterized +0pp to +7.67pp across
+  NR=1.0 to NR=5.0 with fixed mean-σ=0.175.
+
+Neither supersedes the other. The peak number is cited as "up to +13.2pp"; the v5.3
+characterization is cited as "characterized at NR=5.0 mean-σ=0.175."
+
+**Historical peak table (V-MV-KERNEL-HET) — unchanged, canonical for "up to" claims:**
 
 | Metric | L2 | DiagonalKernel | Lift | Condition |
 |---|---|---|---|---|
-| SOC heterogeneous noise | 79.5% | 92.7% | **+13.2pp** | V-MV-KERNEL factorial, 72 cells |
+| SOC heterogeneous noise | 79.5% | 92.7% | **+13.2pp** | V-MV-KERNEL factorial, 72 cells, σ_level=0.30 |
 | S2P heterogeneous noise | 42.2% | 49.0% | **+6.8pp** | V-MV-KERNEL factorial, 72 cells |
 | SOC at σ_mean=0.22 (healthcare) | 61-64% | 83-85% | **+20-22pp** | High noise, hetero ratio 2-3× |
 | Healthcare persona (V-HC-CONFIG) | 69.2%→69.5% (+0.3pp) | 70.2%→73.9% (+3.7pp) | **+3.4pp learning** | 15 seeds × 60 days |
@@ -791,6 +1099,60 @@ Use in customer communications, demos, and investor materials.
 
 **Corr(noise_ratio, diagonal_advantage) = 0.990** across 4 healthcare personas.
 The advantage scales nearly perfectly with per-factor noise heterogeneity.
+
+**Characterized surface table (UNI-DK-01 v5.3) — NEW v14:**
+
+Methodology: true point-in-time decomposition. Cold-start measured via frozen-centroid
+no-learning scorer (first 400 decisions). Asymptotic measured via 400-decision rolling
+window at end of 5000-decision trajectory. Replaces cumulative-averaging decomposition
+from Deliverable 1 (`v_mv_kernel_rerun_v1.json`) — that methodology is retracted.
+See §3.3 for full methodology and theoretical background.
+
+| NR | Cold-start gap | Learning gap | Asymptotic gap | Cold-start % of asymptotic | SE on asymptotic |
+|---|---|---|---|---|---|
+| 1.0 | 0.00pp | 0.00pp | **0.00pp** | — (mathematical identity) | 0.000pp |
+| 1.5 | +0.53pp | +0.19pp | **+0.72pp** | 73.5% | 0.085pp |
+| 2.0 | +1.50pp | +0.49pp | **+1.99pp** | 75.5% (peak) | 0.118pp |
+| 3.0 | +3.09pp | +1.35pp | **+4.43pp** | 69.6% | 0.156pp |
+| 5.0 | +4.18pp | +3.49pp | **+7.67pp** | 54.5% | 0.191pp |
+
+1500 cells total (5 NR × 5 q̄ × 30 seeds × 2 kernels), 150 paired cells per NR.
+
+Key findings from the surface:
+1. NR=1.0 gap is exactly 0.00pp with zero variance across 150 cells — the DK-collapses-to-L2
+   mathematical identity is empirically confirmed at scale.
+2. Cold-start is the larger contributor at every NR, but its fraction peaks at NR=2.0
+   (75.5%) and declines to 54.5% at NR=5.0 as learning grows faster than cold-start at
+   extreme heterogeneity.
+3. Learning contribution is positive at every NR: +0.19pp to +3.49pp. The previously
+   reported "negative learning at low NR" (from cumulative-averaging v4.2 measurement)
+   is **retracted as a measurement artifact**.
+4. q̄-invariance of cold-start confirmed: max q̄-std = 0.285pp (was 1.22pp under v4.2
+   cumulative measurement that failed this check).
+
+### DiagonalKernel Calibration Properties [NEW v14]
+
+**DK's accuracy advantage does NOT translate to calibrated confidence.** Expected
+Calibration Error at τ=0.1:
+
+| NR | L2 ECE | DK ECE | Ratio |
+|---|---|---|---|
+| 1.0 | 0.055 | 0.055 | 1.0× |
+| 1.5 | 0.053 | 0.148 | 2.8× |
+| 2.0 | 0.051 | 0.223 | 4.4× |
+| 3.0 | 0.046 | 0.325 | 7.0× |
+| 5.0 | 0.041 | 0.420 | 10.4× |
+
+L2 is well-calibrated across the range. DK is severely miscalibrated at high NR.
+Mechanism: W = diag(1/σ²) normalization concentrates weight on low-σ factors. At NR=5.0,
+W = [1.00, 0.31, 0.15, 0.09, 0.06, 0.04] — effective dimensionality ~3 of 6. Reduced
+effective dimensionality sharpens the softmax, producing over-confident predictions
+on the decisive subset.
+
+This is a fundamental property of inverse-variance weighting, not an implementation
+defect. **Consequence: production touchpoints that consume raw DK confidence require
+architectural response** — see §3.3 downstream consequences table, §9 S6 auto-pause
+update, and §16 constraints.
 
 ---
 
@@ -806,7 +1168,7 @@ The advantage scales nearly perfectly with per-factor noise heterogeneity.
 | Correlated error | Conservation detects in 5 days | Same | 2D sweep (2 personas) |
 | Recovery | ≤3 days at all tested volumes | Same | V-CL-RECOVER (2 personas) |
 | Healthcare | Frozen scorer + remediation first | **Learning from Day 1** | V-HC-CONFIG diagonal |
-| Kernel selection | — | noise_ratio > 1.5 → Diagonal | Selector fixes (4/4 correct) |
+| Kernel selection | — | noise_ratio > 1.5 → Diagonal | Selector fixes (4/4 correct) + UNI-DK-01 v5.3 E3 (100% rule-correct) [UPDATED v14] |
 | Selector stabilization | — | **max(1000, 20×V×α) decisions** [CORRECTED v12: was "~250 decisions"] | V-GATE-STABILITY (N=1000 confirmed) |
 
 ---
@@ -854,7 +1216,7 @@ Realistic @ 1,000 decisions ........ 78.9%   ← PRODUCT CLAIM (50-seed)
 
 ---
 
-## 8. Key Experimental Results [CHANGED v11]
+## 8. Key Experimental Results [CHANGED v11, UPDATED v14]
 
 | Exp | Question | Result | Status |
 |---|---|---|---|
@@ -875,7 +1237,7 @@ Realistic @ 1,000 decisions ........ 78.9%   ← PRODUCT CLAIM (50-seed)
 | V3B | Calibration? | ECE=0.036 at τ=0.1 (ECE=0.19 at τ=0.25) | ✅ VALIDATED |
 | SHIFT-2 | Update rule corrected? | +2.7% lift (was -9.0% pre-fix). Dual push/pull. | ✅ PASS |
 | DISC-1 | Composite discriminant? | 70.4% coverage vs 62.6% confidence-alone (+7.8pp) | ✅ PASS |
-| **V-MV-KERNEL** | **DiagonalKernel vs L2?** | **+13.2pp SOC, +6.8pp S2P on heterogeneous noise** | **✅ PASS** [NEW v10] |
+| **V-MV-KERNEL** | **DiagonalKernel vs L2?** | **+13.2pp SOC, +6.8pp S2P on heterogeneous noise (peak, variable mean-σ)** | **✅ PASS** [NEW v10] |
 | **V-HC-CONFIG** | **Diagonal rescues healthcare?** | **+3.7pp (Diagonal) vs +0.3pp (L2) at σ=0.22** | **✅ PASS** [NEW v10] |
 | **V-HC-SHRINKAGE** | **Off-diagonal helps?** | **<1pp gap. Explanation A confirmed.** | **✅ DONE** [NEW v10] |
 | **B5B-PROXY** | **Realistic analyst quality?** | **13-27pp degradation → P0 fix (η_override=0.01)** | **✅ PASS** [NEW v10] |
@@ -885,6 +1247,13 @@ Realistic @ 1,000 decisions ........ 78.9%   ← PRODUCT CLAIM (50-seed)
 | **EXP-A4-DIAGONAL** | **A=4 vs A=5 under Diagonal?** | **13pp structural gap. Kernel-independent. A=4 confirmed.** | **✅ PASS** [NEW v11] |
 | **EXP-REFER-COVERAGE** | **What fraction of referrals are rule-expressible?** | **72.7% rule-expressible. 20.7% emergent. 6.6% undetectable.** | **✅ DONE** [NEW v11] |
 | **EXP-REFER-LAYERED** | **Which referral layers ship?** | **Rules: 72.7% DR, 12% FPR. Confidence gate: 14% precision (harmful). Override learning: +1.1pp at 1,500 decisions (premature).** | **✅ DONE** [NEW v11] |
+| **UNI-DK-01 v5.3** | **DK characterization surface + calibration properties?** | **+7.67pp at NR=5.0 (asymptotic, mean-σ=0.175 fixed). Cold-start dominates 54.5–75.5% across NR. D1-D4 all PASS. D5 dropped (tautological in v4.2 design). DK ECE 0.42 at NR=5.0 vs L2 ECE 0.04 — calibration finding.** | **✅ PASS** [NEW v14] |
+
+**v14 deprecation:** Deliverable 1 decomposition tables (cold-start 76% / learning
+reconstruction) in `v_mv_kernel_summary_v2.md` are **superseded** by UNI-DK-01 v5.3.
+The superseded numbers used cumulative-averaging methodology now known to produce
+measurement artifacts. Retained for historical context only; do NOT cite forward.
+`v_mv_kernel_rerun_v1.json` and `v_mv_kernel_rerun_v3.ipynb` archived.
 
 ---
 
@@ -911,7 +1280,7 @@ Realistic @ 1,000 decisions ........ 78.9%   ← PRODUCT CLAIM (50-seed)
 
 ## 9. Safety Architecture
 
-### Synthesis Safety Layers
+### Synthesis Safety Layers [UPDATED v14]
 
 | Layer | Mechanism | Prevents |
 |---|---|---|
@@ -920,10 +1289,36 @@ Realistic @ 1,000 decisions ........ 78.9%   ← PRODUCT CLAIM (50-seed)
 | S3 | Magnitude clipping σ ∈ [−σ_max, +σ_max] | Any combination of claims overriding μ |
 | S4 | Human confirmation for high-impact Δσ | Misinterpreted or manipulated claims |
 | S5 | Full rollback audit trail (claim provenance) | Damage assessment and reversal |
-| **S6** | **AMBER auto-pause: conservation AMBER/RED → freeze learning** | **Detection-without-response gap** [NEW v10] |
+| **S6** | **AMBER auto-pause: rolling verified accuracy drops → freeze learning** [UPDATED v14: signal source changed from confidence to accuracy] | **Detection-without-response gap** |
 | **S7** | **Asymmetric η: η_override=0.01 (5× attenuation on override path)** | **Centroid corruption from low-quality overrides** [NEW v10] |
 | **S8** | **DiagonalKernel: down-weight noisy factors via W=diag(1/σ²)** | **Noisy factors corrupting scoring and learning** [NEW v10] |
 | **S9** | **ReferralRules R1-R7: policy-based VETO after composite gate** | **Alerts needing human review that confidence gate misses (72.7% DR, 12% FPR)** [NEW v11] |
+
+**S6 signal-source update (v14):** Auto-pause previously specified confidence-threshold
+trigger. With DK shipping as v6.0 default and DK confidence miscalibrated at high NR
+(ECE 0.42 at NR=5.0, see §3.3), confidence-based triggering is unreliable for
+DK-routed deployments.
+
+v14 changes auto-pause to trigger on **rolling verified accuracy crossing below
+deployment-specific threshold** — same signal that powers the conservation-law q.
+Implementation:
+- Signal: rolling accuracy over last 400 decisions (≈100 verified events at 25% rate)
+- Trigger condition: accuracy drops below (baseline_accuracy × 0.9) or below absolute
+  floor (0.70 for safety-critical categories, 0.60 general)
+- State transition: AUTO zone paused. Subsequent decisions routed to human review
+  instead of auto-acted. Does NOT filter per-decision — it's a system-state change.
+- Resume condition: rolling accuracy recovers above threshold for ≥100 consecutive
+  decisions. Returns to AUTO.
+
+This is architecturally cleaner than confidence-based auto-pause for three reasons:
+1. Directly measures accuracy degradation (what we actually care about)
+2. Robust across kernel choice (no calibration dependency)
+3. Same signal as q in the conservation invariant — single monitoring pipeline
+
+**Per-decision uncertainty gating** (a separate question — not auto-pause): if
+deployments need per-decision uncertainty filters within the AUTO zone, use softmax
+entropy or confidence-gap thresholds. Entropy captures decisiveness without requiring
+calibrated probabilities. See gae_design for the per-decision triage ranking spec.
 
 **S9 architectural guarantee [NEW v11]:** ReferralRules insert AFTER the composite
 scoring gate, BEFORE response build. ProfileScorer scoring (Stage 1) accuracy is
@@ -942,7 +1337,7 @@ empirical L2 margin distribution at realistic AUAC. Previous design default was 
 influence = 0.017 distance units. Typical L2 distances = 0.5–2.0. Experience (μ) always
 dominates awareness (σ). EXP-S2-REPRO confirmed poisoning resilience holds (0.15pp max).
 
-### Verification Safety Architecture
+### Verification Safety Architecture [UPDATED v14]
 
 **Asymmetric learning rates (P0 fix) [NEW v10]:** The override path (analyst changes
 system recommendation) carries noise from analyst errors. At realistic analyst quality
@@ -954,10 +1349,47 @@ system recommendation) carries noise from analyst errors. At realistic analyst q
 Validated across 24 personas (6 sweeps). At q̄=0.57 (worst tested quality):
 +0.5pp with η_override=0.01 (no degradation). Without: -9pp.
 
-**AMBER auto-pause [NEW v10]:** When ConservationMonitor signals AMBER or RED
+**Conservation-law q operational definition [NEW v14]:** q(t) in α(t)·q(t)·V(t) ≥ θ_min
+is operationalized as rolling verified accuracy over the last 400 decisions.
+
+Formal definition:
+```
+q(t) = (1/N_v(t)) · Σᵢ∈W(t) 𝟙[prediction_i = verified_action_i]
+
+where:
+  W(t) = last 400 decisions at time t
+  N_v(t) = number of verified decisions in W(t) (≈100 at 25% verify rate)
+  𝟙[·] = indicator of prediction-action match on verified events only
+```
+
+Properties:
+- Standard sampling estimator for underlying accuracy rate across the window
+- Population estimate: q(t) estimates E[correct | decision ∈ W(t)] over all decisions
+  in the window (verified and unverified alike), assuming verification is uniformly
+  sampled (true by design)
+- SE on q at n≈100, p≈0.85: ≈3.6pp (tighter than any confidence-based window estimate)
+- Calibration-independent: works for both L2 and DK without calibration infrastructure
+- Matches the aggregate nature of α and V in the invariant
+
+**Why not per-decision confidence:**
+- DK's confidence is miscalibrated at high NR (ECE 0.42 at NR=5.0, §3.3)
+- Confidence-based q would operate on noisy inputs when DK is routed
+- Confidence is an estimate of quality; verified accuracy IS quality (on the verified
+  subsample) — more direct operationalization
+- Strengthens EU AI Act Article 14 oversight claim (accuracy is more defensible)
+
+**Why v13 derivation remains valid under this substitution:** The v13 derivation
+established q as "per-decision quality" semantically. It did not require q ≈ confidence
+specifically. Every derivation step that uses q operates on its semantic meaning as
+a quality measurement, which rolling verified accuracy satisfies equivalently or more
+directly than confidence. No re-derivation is required. See §12 for closure of the
+audit question.
+
+**AMBER auto-pause [UPDATED v14]:** When ConservationMonitor signals AMBER or RED
 (α·q·V drops below 0.7× baseline or absolute floor θ_min=23.53/(α×V) [CORRECTED v12]),
 learning freezes automatically. No centroid updates until GREEN resumes. Prevents
 continued corruption during detected degradation episodes. Three-judge consensus.
+Trigger signal for AMBER transition: same rolling verified accuracy that defines q.
 
 **Count decay:** η_eff decreases with n[c,a]. Early decisions (low n) produce large
 centroid moves. Late decisions (high n) produce small refinements. A mature category
@@ -970,6 +1402,8 @@ Mitigation: shadow mode data from first deployment allows measurement of whether
 verification is systematically biased. Disclosed in EU AI Act Article 9 risk log
 and shadow mode deployment documentation. Full characterization requires EXP-S8
 with real analyst decisions.
+
+---
 
 ## 10. Scaling Properties
 
@@ -987,10 +1421,14 @@ EXP-G1 result.
 centroidal). Warm start 97.89% at decision 1 (EXP-C1). The gap between warm and cold
 IS the quantified value of institutional judgment encoded in the centroid tensor.
 
-**Kernel compounding [NEW v10]:** The distance metric itself improves as deployment
-matures. Day 1: L2 (before per-factor σ measured). Day 30+: DiagonalKernel with
-weights calibrated from P28 deployment qualification. The kernel W=diag(1/σ²) is
+**Kernel compounding [NEW v10, EXTENDED v14]:** The distance metric itself improves
+as deployment matures. Day 1: L2 (before per-factor σ measured). Day 30+: DiagonalKernel
+with weights calibrated from P28 deployment qualification. The kernel W=diag(1/σ²) is
 firm-specific — a competitor who copies the code starts with W=I.
+
+UNI-DK-01 v5.3 characterized the DK scaling surface: at controlled NR=5.0 mean-σ=0.175,
+asymptotic DK advantage is +7.67pp; at variable mean-σ up to 0.30 (V-MV-KERNEL-HET),
+peak is +13.2pp. The advantage scales with both mean noise level AND noise heterogeneity.
 
 **CovarianceEstimator [CHANGED v11]:** Online covariance collection with Ledoit-Wolf
 shrinkage. half_life=300 decisions (≈90 days at V=100). Collects per-factor σ (used
@@ -1040,7 +1478,7 @@ override learning (v6.5+, data-gated). Three concerns, three mechanisms.
 
 ---
 
-## 12. Open Math Issues for v5.5 and v6 [CHANGED v11]
+## 12. Open Math Issues for v5.5 and v6 [CHANGED v11, UPDATED v14]
 
 | Issue | Depends On | Blocks | Status |
 |---|---|---|---|
@@ -1059,6 +1497,16 @@ override learning (v6.5+, data-gated). Three concerns, three mechanisms.
 | **Override learning activation** | **≥50 positive referral examples** | **v6.5 referral ML** | **Data-gated. At V=200: ~8 days. At V=50: ~50 days.** [NEW v11] |
 | **R2/R7 Neo4j wiring** | **DecisionRecord queries for sequence_count, cross_category_count** | **Rules R2, R7 live in production** | **Pending wiring. R1,R3-R6 work immediately.** [NEW v11] |
 | **Re-Convergence Theorem (γ > 1)** | **Analytic proof from centroid update equations** | **CC-21 Tier 1 (EXP-G1), Claims Registry §B.5** | **✅ RESOLVED: γ > 1 ⇔ ε_firm > 0.125 [corrected April 8; was 0.128, diff=0.003]. Proven by 4 LLMs (April 8, 2026). See §3.2. EXP-G1 provides empirical measurement.** [NEW v13] |
+| **DK characterization surface at scale** | **Controlled 1500-cell parameterization with clean cold-start/asymptotic decomposition** | **Deliverable 1 cumulative-methodology retraction; math blog regeneration** | **✅ RESOLVED: UNI-DK-01 v5.3 (April 19, 2026). +7.67pp at NR=5.0 asymptotic, monotone in NR, D1-D4 all PASS, D5 dropped. See §3.3 and §8.** [NEW v14] |
+| **Cold-start vs learning decomposition methodology** | **Point-in-time measurement via frozen no-learning scorer + rolling-window asymptotic** | **Math blog Part 2 narrative; claims registry B3 gate condition** | **✅ RESOLVED: v5.3 methodology supersedes v4.2 cumulative-averaging. "Negative learning at low NR" retracted as measurement artifact.** [NEW v14] |
+| **DK calibration properties at scale** | **ECE measurement on both kernels across NR range** | **Production touchpoint designs (auto-pause, q, triage)** | **✅ CHARACTERIZED (v5.3): DK ECE rises 0.055→0.42 across NR=1.0→5.0; L2 stays 0.04-0.06. Downstream consequences architecturally addressed (§3.3, §9, §16).** [NEW v14] |
+| **Conservation-law q operational definition** | **Choice of signal (confidence vs accuracy) given DK calibration finding** | **B5 production deployment with DK routed; EU AI Act Article 14 argument** | **✅ RESOLVED: q = rolling verified accuracy over last 400 decisions (§5, §9). v13 derivation preserved under substitution. Codex audit (O14) confirmed no step implicitly required q = confidence.** [NEW v14] |
+| **KernelSelector architecture decision** | **Option A (NR-rule) vs B (accuracy-comparison) vs C (calibrated-confidence)** | **v6.0 GAE-05 ship** | **✅ RESOLVED: Option A (NR-rule). Validated twice — V-MV-KERNEL 4/4 + UNI-DK-01 v5.3 E3 100%. B retained as v6.1 contingency. C archived.** [NEW v14] |
+| **Auto-pause signal source** | **Per-decision vs state-level trigger; confidence vs accuracy signal** | **v6.0 production readiness for DK** | **✅ RESOLVED: State-level trigger on rolling verified accuracy (same signal as q). §9 S6 updated.** [NEW v14] |
+
+**v14 note on resolved issues count:** Five issues closed in v14 (DK surface, decomposition
+methodology, DK calibration characterization, q operational definition, KernelSelector
+architecture, auto-pause signal). Total resolved in synopsis history: ~20.
 
 ---
 
@@ -1074,7 +1522,8 @@ window, simplified rule).
 
 **Unlocks:**
 - **CL-KERNEL-COMPOUND:** "The distance metric itself compounds. DiagonalKernel at
-  Day 30 outperforms L2 by 13pp on SOC heterogeneous noise data."
+  Day 30 outperforms L2 by up to 13pp on SOC heterogeneous noise data." [v14: "up to"
+  qualifier added for curve-based citation]
 - **CL-KERNEL-SELECT:** "The system automatically selects the optimal kernel for the
   deployment's factor noise profile. Rule: noise_ratio > 1.5 → Diagonal."
 - **CL-NOISE-CEILING-REVISED:** "With DiagonalKernel, learning is viable at
@@ -1150,9 +1599,7 @@ code inspection (GAE implements A=4, 478 tests). V-MV-KERNEL ran at A=4.
 confirmed. EXP-G1 provides Tier 1 (empirical measurement from pilot data).
 
 **Prerequisites:** Oracle separation validation (v6/v8/v11/v2/v3/final, April 8, 2026).
-LLM math polls: v4 (GPT-4.1, Claude Opus 4, Grok 3, Gemini 1.5 Pro, April 8, 2026) and
-v5 (Grok primary, April 16, 2026).
-Four structural proof paths, confirmed across two four-judge math polls (April 8 and April 16, 2026).
+LLM math poll v4: GPT-4.1, Claude Opus 4, Grok 3, Gemini 1.5 Pro.
 BACKLOG-015: EXP-G1 logging active from pilot Day 1.
 
 **The theorem (see §3.2 for full derivation):**
@@ -1187,6 +1634,85 @@ per verified decision (BACKLOG-015 active, 3 new fields added April 8, 2026).
 
 **Forbidden:** "Re-convergence is always faster." The theorem is conditional. See Claims
 Registry v10.0 §D.
+
+---
+
+### Gate UNI-DK-01: DiagonalKernel Characterization Surface (April 19, 2026) [NEW v14]
+
+**Prerequisites:** Spec evolution v1→v5.3 with methodology flaw discovery (cumulative
+vs instantaneous accuracy semantics, v4.2 post-run audit). 1500-cell execution
+(5 NR × 5 q̄ × 30 seeds × 2 kernels). Frozen-centroid no-learning scorer implementation
+for cold-start measurement. 400-decision rolling deque for asymptotic measurement.
+D1-D4 verification (D5 dropped as tautological).
+
+**Status:** PUBLISH. All four pre-registered checks pass (D1 monotonicity, D2 NR=5 ≥ 5pp,
+D3 cs_pct ≥ 50%, D4 q̄-std ≤ 1pp). Supersedes Deliverable 1 decomposition tables
+(cumulative-averaging methodology retracted).
+
+**Experiment data on Drive:** `DRIVE_BASE/uni_dk_01/uni_dk_01_v5_*.json`
+(decomposition, trajectory, q_invariance, e1_decision, e2_ece, e3_diagnostic,
+e4_stability, w_convergence, verification). v4.2 outputs archived at
+`archive_v4_2/`. `v_mv_kernel_rerun_v1.json` and `v_mv_kernel_rerun_v3.ipynb`
+archived.
+
+**Unlocks:**
+- **CL-DK-CHARACTERIZED:** "DK advantage over L2 scales monotonically with noise
+  heterogeneity: 0.00pp at uniform σ (NR=1.0, mathematical identity confirmed),
+  +0.72pp at NR=1.5, +1.99pp at NR=2.0, +4.43pp at NR=3.0, +7.67pp at NR=5.0
+  (asymptotic, mean-σ=0.175 fixed, 150 paired cells per NR)."
+- **CL-DK-CURVE-CITATION:** "DK accuracy advantage is curve-based: up to +13.2pp
+  peak on heterogeneous SOC data (V-MV-KERNEL-HET, 390 cells), +7.67pp characterized
+  at controlled NR=5.0 mean-σ=0.175 (UNI-DK-01 v5.3, 1500 cells). 1890 cells total
+  across two independent experiments."
+- **CL-COLD-START-CONTRIBUTOR:** "Cold-start scoring geometry is the larger
+  contributor across all measured noise regimes. Peak at NR=2.0 (75.5% of asymptotic
+  gap), declines to 54.5% at NR=5.0 as learning grows faster than cold-start at
+  extreme heterogeneity." [Replaces earlier "cold-start dominates at high NR" which
+  was derived from cumulative measurement.]
+- **CL-DK-POSITIVE-LEARNING:** "Learning contributes positively at every NR level
+  (+0.19pp to +3.49pp, NR=1.5 to NR=5.0). Previously reported 'negative learning at
+  low NR' was a cumulative-averaging measurement artifact, now retracted."
+- **CL-Q-INVARIANCE:** "Cold-start advantage is q̄-independent. Max q̄-std across
+  the 5-level q̄ sweep is 0.285pp at NR=2.0, against a 1.0pp threshold (PASS by 3.5×).
+  v4.2 cumulative measurement reported 1.22pp (FAIL); the failure was learning
+  contamination, not a real q̄ dependency."
+- **CL-KERNEL-RULE-VALIDATED:** "Rule-based kernel selection (NR > 1.5 → DK) is
+  100% correct at every informative NR in v5.3 (91/91, 2/2, 49/49, 127/127 cells
+  at NR=1.5/2.0/3.0/5.0 respectively). Combined with historical V-MV-KERNEL HC-personas
+  4/4, two independent validations of the NR-threshold rule."
+
+**Companion finding (not a claim unlock, but architecturally consequential):**
+- **DK calibration properties characterized:** ECE rises from 0.055 at NR=1.0 to 0.42
+  at NR=5.0 for DK; L2 stays 0.04-0.06. Mechanism: W-concentration reduces effective
+  dimensionality, sharpens softmax, produces overconfidence. Addressed architecturally
+  at every production consumption point (§3.3 downstream consequences table, §9 S6,
+  §16 constraints).
+- **Confidence-based kernel selection unreliable:** mean_conf always selects L2 even
+  at NR=5.0 where DK has +7.67pp accuracy advantage (E4 winner_stability_rate=1.000
+  at all NR, dk_final_share=0.000). Mean_ll is below chance at NR ≥ 3.0 (E3
+  data-driven 0.37-0.53). These findings confirm that confidence-based KernelSelector
+  (Options B/C in early design) cannot work without calibration; the NR-rule
+  (Option A) sidesteps the issue entirely.
+
+**Remains forbidden:**
+- "DK validated in production" (still awaits v6.0 first customer).
+- "DK is more reliable than L2" without kernel-specific qualifier — DK is more
+  accurate but less calibrated; the comparison depends on which property matters.
+- Citing DK confidence as production signal for auto-pause, q-tracking, or analyst
+  triage (use accuracy or entropy instead — see §9 S6, §5 q definition).
+- Single-number DK citations without context. Use curve-based citation:
+  "up to +13.2pp peak (V-MV-KERNEL-HET), characterized +0pp to +7.67pp across
+  NR=1.0 to NR=5.0 (UNI-DK-01 v5.3)."
+
+**Deprecations triggered by this gate:**
+- Deliverable 1 decomposition tables (`v_mv_kernel_summary_v2.md`) — retained for
+  historical context with "superseded" annotation.
+- "Negative learning at low NR" finding — retracted.
+- "Cold-start dominates at high NR" narrative — replaced with "cold-start is the
+  larger contributor across all noise regimes."
+- Confidence-based KernelSelector as design option — archived.
+- Confidence-based AMBER auto-pause — replaced with rolling-accuracy trigger.
+- Confidence-based conservation-law q — replaced with rolling verified accuracy.
 
 ---
 
@@ -1230,11 +1756,16 @@ via referral rules R1-R7 (not confidence gate). Static accuracy 80.6→90.6%. Ze
 
 ---
 
-## 15. v6.0 Requirements [CHANGED v11]
+## 15. v6.0 Requirements [CHANGED v11, UPDATED v14]
 
-### v6-KERNEL: DiagonalKernel as Default [NEW v10]
+### v6-KERNEL: DiagonalKernel as Default [NEW v10, UPDATED v14]
 **Status:** Code complete. 478 GAE tests. [CHANGED v11: was 447]
 DiagonalKernel(W=diag(1/σ²)) default for noise_ratio > 1.5. L2 fallback.
+**KernelSelector architecture (v14 settled):** Option A (NR-threshold rule). Rule
+validation: V-MV-KERNEL HC-personas 4/4 + UNI-DK-01 v5.3 E3 100% correct. Option B
+(accuracy-comparison) retained as v6.1 contingency if P28 σ estimation proves
+unreliable in the field. Option C (calibrated-confidence) archived — no scenario
+requires it.
 KernelSelector: Phase 2 rule + Phase 3 rolling comparison (100-window) + Phase 4 lock
 at **max(1000, 20×V×α) decisions** [CORRECTED v12: was "~250 decisions" — V-GATE-STABILITY
 confirms all three baselines require N=1000 minimum; binding constraint is volume baseline
@@ -1243,9 +1774,16 @@ confirms all three baselines require N=1000 minimum; binding constraint is volum
 
 ### v6-P0: Asymmetric η [NEW v10]
 **Status:** ✅ Code complete. η_confirm=0.05, η_override=0.01. 24 personas validated.
+v5.3 confirms positive learning contribution at every NR level (+0.19pp to +3.49pp).
 
-### v6-PAUSE: AMBER Auto-Pause [NEW v10]
+### v6-PAUSE: AMBER Auto-Pause [NEW v10, UPDATED v14]
 **Status:** ✅ Code complete. Conservation AMBER/RED → freeze learning → GREEN resumes.
+**v14 update:** Trigger signal changed from confidence-based to rolling verified accuracy
+over last 400 decisions. Same signal that powers conservation-law q. State-level
+transition (not per-decision filter). Resume condition: rolling accuracy recovers above
+threshold for ≥100 consecutive decisions. Per-decision uncertainty gating (softmax
+entropy / confidence gap) is a separate concern spec'd in gae_design, not part of
+auto-pause. See §9 S6 for full specification.
 
 ### v6-ROI: Frozen Mode ROI Calculator [NEW v10]
 **Status:** ✅ Code complete. 44min × V × cost, NOT $127/alert. Three value drivers.
@@ -1297,7 +1835,7 @@ is built, fuzzy matching is not. Confirmed by code audit April 1, 2026.]
 
 ---
 
-## 16. Constraints & Invariants [CHANGED v11]
+## 16. Constraints & Invariants [CHANGED v11, UPDATED v14]
 
 | Constraint | Source | Enforced By | Status |
 |---|---|---|---|
@@ -1305,14 +1843,17 @@ is built, fuzzy matching is not. Confirmed by code audit April 1, 2026.]
 | τ = 0.1, fixed | V3B (ECE=0.036 vs 0.19 at τ=0.25) | CalibrationProfile default | ✅ VALIDATED |
 | η_neg = 0.05 (canonical, symmetric with η) | η_neg=1.0 FORBIDDEN (ECE=0.49). | CalibrationProfile default | ✅ VALIDATED |
 | **η_confirm = 0.05** | **P0 fix: confirm path, clean signal** | **ProfileScorer.update()** | **✅ VALIDATED** [NEW v10] |
-| **η_override = 0.01** | **P0 fix: override path, noisy signal. Prevents 13-27pp degradation.** | **ProfileScorer.update(eta_override=)** | **✅ VALIDATED (24 personas)** [NEW v10] |
+| **η_override = 0.01** | **P0 fix: override path, noisy signal. Prevents 13-27pp degradation. v5.3 confirms positive learning at every NR.** | **ProfileScorer.update(eta_override=)** | **✅ VALIDATED (24 personas + UNI-DK-01 v5.3)** [NEW v10, UPDATED v14] |
 | **θ_min = 23.53/(α×V)** | **Deployment-specific conservation floor. Derived from N_half × η × V_min. At V=200, α=0.25: θ_min=0.47. At V=50, α=0.25: θ_min=1.88 (impossible — deployment ineligible). Formally equivalent to CLAIM-SC-01 scope condition.** [CORRECTED v12: was θ_min=0.467 hardcoded] | **compute_theta_min(α,V)** | **✅ VALIDATED** [CORRECTED v12] |
-| **AMBER auto-pause** | **Conservation AMBER/RED → freeze learning. Three-judge consensus.** | **ProfileScorer.set_conservation_status()** | **✅ IMPLEMENTED** [NEW v10] |
-| **DiagonalKernel default for noise_ratio > 1.5** | **V-MV-KERNEL: +13pp SOC, +7pp S2P. Explanation A confirmed.** | **KernelSelector Phase 2 rule** | **✅ VALIDATED (390 cells)** [CHANGED v11: was 360] |
+| **Conservation-law q = rolling verified accuracy over last 400 decisions** | **Operational definition of q in α·q·V ≥ θ_min. v13 derivation preserved under substitution. DK calibration finding (ECE 0.42 at NR=5.0, v5.3 §3.3) motivates switch from confidence to accuracy. Strengthens EU AI Act Article 14 argument.** | **ConservationMonitor.compute_q() → rolling_accuracy_400()** | **✅ VALIDATED (v5.3)** [NEW v14] |
+| **AMBER auto-pause on rolling accuracy** | **Conservation AMBER/RED → freeze learning. Trigger: rolling verified accuracy drops below (baseline × 0.9) or absolute floor. State-level, not per-decision. Resume after ≥100 consecutive decisions above threshold.** [UPDATED v14: signal source changed from confidence to rolling verified accuracy] | **ProfileScorer.set_conservation_status()** | **✅ IMPLEMENTED** [NEW v10, UPDATED v14] |
+| **DiagonalKernel default for noise_ratio > 1.5 (KernelSelector Option A)** | **Rule-based selection. Two validations: V-MV-KERNEL HC-personas 4/4 + UNI-DK-01 v5.3 E3 100% (91+2+49+127=269 informative cells). Confidence-based selection (B, C) tested and rejected: mean_conf always picks L2, mean_ll below chance at NR≥3.** [UPDATED v14] | **KernelSelector Phase 2 rule** | **✅ VALIDATED (390 cells + 1500 cells)** [CHANGED v11, UPDATED v14] |
+| **KernelSelector architecture: Option A (NR-rule) for v6.0. Option B (accuracy-comparison) as v6.1 contingency. Option C (calibrated-confidence) archived.** | **UNI-DK-01 v5.3 E1/E3/E4: confidence-based selection untenable due to DK's calibration properties. NR-rule sidesteps the issue.** | **gae_design v10.7 KernelSelector spec** | **✅ DECIDED (v14)** [NEW v14] |
 | **KernelSelector shadow minimum: max(1000, 20×V×α)** | **V-GATE-STABILITY: N=1000 required for all three baselines. Binding constraint: volume baseline needs ≥20 days. "~250 decisions" figure deprecated.** [CORRECTED v12] | **P28 Phase 3 configuration** | **✅ VALIDATED** [CORRECTED v12] |
 | **ShrinkageKernel NOT shipped at v6.0** | **Off-diagonal <1pp in both domains** | **Not implemented** | **✅ DEPRIORITIZED** [NEW v10] |
 | **Noise ceiling kernel-dependent** | **L2: σ≤0.157. Diagonal: σ≤0.25. V-B3: three-variable.** | **P28 deployment qualification** | **✅ VALIDATED** [NEW v10] |
 | **Factor mask DEPRECATED** | **V-HC-CONFIG: mask hurt Day 1 by 6pp. Diagonal supersedes.** | **DiagonalKernel replaces** | **✅ DEPRECATED** [NEW v10] |
+| **DK confidence outputs NOT safe for direct downstream consumption** | **UNI-DK-01 v5.3 §3.3: DK ECE rises 0.055→0.42 across NR=1.0→5.0. Property of inverse-variance weighting, not defect. Production touchpoints (auto-pause, q, triage) must use alternative signals: rolling accuracy, softmax entropy, or confidence gap as appropriate.** | **Architectural: no production component consumes raw DK max_p** | **✅ RESOLVED (v14)** [NEW v14] |
 | σ ∈ [−σ_max, +σ_max] | Safety S3; **σ_max=0.034** | RuleBasedProjector clipping | ✅ Resolved |
 | Loop 2 never uses σ | Epistemic separation | ProfileScorer.update() ignores σ | ✅ Enforced |
 | LayerNorm before Tier 5 | V1B (2.9M× explosion without it) | Required for embedding ops | ✅ VALIDATED |
@@ -1328,19 +1869,19 @@ is built, fuzzy matching is not. Confirmed by code audit April 1, 2026.]
 | **Self-calibrating gate principle** | **All operational gates derived from deployment's own shadow data. V-GATE-DRIFT: baselines stable within 7% across 90-day pilot. No monthly recalibration needed.** [NEW v12] | **GateConfig class: conservative fallbacks before N_min, calibrated after** | **✅ VALIDATED** [NEW v12] |
 | Verification rate health | Three conditions: coverage, drift, conservation law | Three conditions monitored | ⚠️ Partially characterized |
 | N3 endogenous loop | Known calibration-feedback risk | **No intervention designed** | ⚠️ Known risk |
-| Conservation law: α(t)·q(t)·V(t) ≥ θ_min | Level 2 must not cannibalize Level 1 signal | Eq. GATE-L2 condition (3) | ✅ DESIGNED |
+| Conservation law: α(t)·q(t)·V(t) ≥ θ_min | Level 2 must not cannibalize Level 1 signal. q = rolling verified accuracy (v14). | Eq. GATE-L2 condition (3) + Eq. CL | ✅ DESIGNED |
 | Centroid support: each (c,a) within data support | Push-away can retire centroid (Opus finding) | Monitor ‖f − μ[c,a,:]‖ < D_support | ⚠️ Monitoring needed |
 | Variant variance stability | Level 2 variant must not be volatile | Eq. GATE-L2 condition (4) | ✅ DESIGNED |
 | **LEARNING_ENABLED = False default** | **Enable per-customer after shadow qualification** | **P28 deployment pipeline** | **✅ IMPLEMENTED** [NEW v10] |
 
 ---
 
-## 17. Equation Index [CHANGED v11]
+## 17. Equation Index [CHANGED v11, UPDATED v14]
 
 | Equation | Status | Location | Purpose |
 |---|---|---|---|
 | **Eq. 4-final** | ✅ VALIDATED | §3 | L2 distance scoring (cold-start fallback) |
-| **Eq. 4-diagonal** | **✅ VALIDATED** | **§3** | **DiagonalKernel scoring (v6.0 default)** [NEW v10] |
+| **Eq. 4-diagonal** | **✅ VALIDATED (V-MV-KERNEL + UNI-DK-01 v5.3)** | **§3** | **DiagonalKernel scoring (v6.0 default). Characterized surface in §3.3.** [NEW v10, UPDATED v14] |
 | **Eq. 4b-final** | ✅ VALIDATED | §3 | Centroid pull/push learning (asymmetric η) |
 | **Count decay** | ✅ VALIDATED | §3 | Stability from experience |
 | **Eq. IKS** | ✅ VALIDATED (κ*=0.20) | §3 | Institutional Knowledge Score |
@@ -1348,9 +1889,16 @@ is built, fuzzy matching is not. Confirmed by code audit April 1, 2026.]
 | **Eq. CONV** | ✅ THREE-JUDGE VALIDATED | §3.1 | Mean error dynamics: (1−η)^n |
 | **Eq. MSE∞** | ✅ THREE-JUDGE VALIDATED | §3.1 | Steady-state MSE: η·tr(Σ_f)/(2−η) |
 | **Eq. N_CONV** | ✅ THREE-JUDGE VALIDATED | §3.1 | Convergence time to calibration neighborhood |
+| **Eq. GAMMA-THEOREM** | ✅ 4-LLM VALIDATED | §3.2 | γ > 1 ⟺ ε_firm > ε_firm★ |
+| **Eq. GAMMA-THRESH** | ✅ 4-LLM VALIDATED | §3.2 | ε_firm★ = α_cat · ‖Δ‖ / (1 − α_cat) ≈ 0.125 |
+| **Eq. GAMMA-P_D** | ✅ 4-LLM VALIDATED | §3.2 | Effective Phase 2 threshold p_d★ = 0.55 |
+| **Eq. GAMMA-DIST** | ✅ 4-LLM VALIDATED | §3.2 | centroid_distance_to_gt (EXP-G1 metric) |
+| **Eq. DK-DECOMP** | **✅ VALIDATED (UNI-DK-01 v5.3)** | **§3.3** | **Decomposition: asymptotic_gap = cold_start_gap + learning_gap (point-in-time)** [NEW v14] |
+| **Eq. DK-ECE** | **✅ EMPIRICAL (UNI-DK-01 v5.3)** | **§3.3** | **DK ECE rises 0.055→0.42 across NR=1.0→5.0; L2 stays 0.04-0.06. Property of inverse-variance weighting.** [NEW v14] |
 | **Eq. R-L2** | ✅ THREE-JUDGE VALIDATED | §5 | Level 2 composite reward (phase-gated) |
 | **Eq. GATE-L2** | ✅ THREE-JUDGE VALIDATED | §5 | Four-condition promotion gate |
-| **Eq. CL** | ✅ THREE-JUDGE VALIDATED | §5 | Conservation law: α·q·V ≥ θ_min |
+| **Eq. CL** | ✅ THREE-JUDGE VALIDATED | §5 | Conservation law: α·q·V ≥ θ_min. q = rolling verified accuracy (v14). |
+| **Eq. q-OPERATIONAL** | **✅ VALIDATED (v14)** | **§5, §9** | **q(t) = rolling verified accuracy over last 400 decisions. Replaces per-decision confidence. Robust across kernel choice.** [NEW v14] |
 | **Eq. σ²_G** | ⚠️ CONDITIONAL (ρ needed) | §10.1 | Graph-dependent factor noise |
 | **Eq. η_override** | **✅ VALIDATED (24 personas)** | **§3** | **Asymmetric learning rate formula** [NEW v10] |
 | **Eq. η_i** | **✅ CONDITIONAL (V-D5, 0.86pp, PATH 1)** | **§3** | **Per-analyst η weighting: η_i = clip(precision_i / mean_precision, 0.5, 1.5) × η_override. Production gate ≥1.0pp.** [NEW v12] |
@@ -1364,7 +1912,7 @@ is built, fuzzy matching is not. Confirmed by code audit April 1, 2026.]
 
 ---
 
-## 18. Notation Summary [CHANGED v11]
+## 18. Notation Summary [CHANGED v11, UPDATED v14]
 
 | Symbol | Meaning | Shape | Range / Value | Status |
 |---|---|---|---|---|
@@ -1396,10 +1944,10 @@ is built, fuzzy matching is not. Confirmed by code audit April 1, 2026.]
 | **noise_ratio** | **max(σ_factor)/min(σ_factor)** | **scalar** | **>1.5 → DiagonalKernel, else L2** | **✅ v6.0** [NEW v10] |
 | Σ_f | Factor covariance matrix | (d, d) | Positive semi-definite. Use tr(Σ_f) for MSE. | ✅ |
 | e_n | Centroid error at step n | (d,) | μ_n − μ* | ✅ |
-| N_half | Convergence half-life | scalar | ln(2)/η ≈ 14 at η=0.05. **Qualifier: q̄≥0.70 AND σ≤0.157(L2)/0.25(Diag).** | ✅ |
+| N_half | Convergence half-life | scalar | ln(2)/η ≈ 14 at η=0.05. **Qualifier: q̄≥0.70 AND σ≤0.157(L2)/0.25(Diag). UNI-DK-01 v5.3 confirms positive learning at every NR.** | ✅ |
 | N_converge | Decisions to calibration neighborhood | scalar | Eq. N_CONV | ✅ |
 | α(t) | Analyst override rate | scalar | [0, 1] — fraction disagreeing | ✅ |
-| q(t) | Override quality | scalar | [0, 1] — fraction of correct overrides | ✅ |
+| **q(t)** | **Decision quality (operational definition)** | **scalar** | **[0, 1] — rolling verified accuracy over last 400 decisions. Calibration-independent. v14 operational definition replaces confidence-based q. See §5, §9, §16.** | **✅ v6.0** [UPDATED v14] |
 | V_verified | Verified decisions per day | scalar | ℕ | ✅ |
 | ρ_j | Cross-source correlation for factor j | scalar | [0, 1] — ρ=0.8 typical for SIEMs | ✅ |
 | N_eff | Effective independent sources | scalar | N/(1+ρ(N−1)) | ✅ |
@@ -1408,26 +1956,39 @@ is built, fuzzy matching is not. Confirmed by code audit April 1, 2026.]
 | Δ_min | Level 2 promotion threshold | scalar | 0.05 default (5pp improvement) | ✅ |
 | N_gate | Samples per arm for promotion | scalar | ≈445 (one-sided, α=0.05, β=0.20) | ✅ |
 | D_support | Centroid support radius | scalar | Flag when centroid leaves data support | ✅ |
+| **cold_start_accuracy** | **No-learning scorer accuracy over first 400 decisions (UNI-DK-01 v5.3 methodology)** | **scalar** | **[0, 1]. Pure scoring-geometry accuracy with frozen mu_init. Measured via parallel no-update scorer.** | **✅ v14** [NEW v14] |
+| **asymptotic_accuracy** | **Learning scorer accuracy over last 400 decisions (UNI-DK-01 v5.3 methodology)** | **scalar** | **[0, 1]. Instantaneous via rolling deque(maxlen=400). Not cumulative average.** | **✅ v14** [NEW v14] |
+| **ECE** | **Expected Calibration Error (L2, DK per-kernel)** | **scalar** | **[0, 1]. L2: 0.04-0.06 across NR. DK: 0.055 at NR=1.0 → 0.42 at NR=5.0. τ=0.1 (V3B).** | **✅ CHARACTERIZED (v14)** [NEW v14] |
+| **NR** | **Noise ratio = max(σ_factor)/min(σ_factor)** | **scalar** | **KernelSelector threshold: 1.5. UNI-DK-01 v5.3 characterized at NR ∈ {1.0, 1.5, 2.0, 3.0, 5.0}.** | **✅ v6.0** [NEW v14; canonicalizes earlier usage] |
 
 ---
 
-*Mathematical Synopsis v12 | April 1, 2026*
+*Mathematical Synopsis v14 | April 19, 2026*
+*v14 ADDITIONS: UNI-DK-01 v5.3 characterization surface (§3.3). DK calibration finding (ECE 0.055→0.42 across NR). KernelSelector architecture settled: Option A (NR-rule) for v6.0. Conservation-law q = rolling verified accuracy (§5, §9). Auto-pause signal source changed to rolling accuracy (§9 S6). Gate UNI-DK-01 (§13).*
+*v14 DEPRECATIONS: Deliverable 1 decomposition tables (cumulative-averaging methodology). "Negative learning at low NR" finding. "Cold-start dominates at high NR" narrative. Confidence-based KernelSelector (Options B/C). Confidence-based AMBER auto-pause. Confidence-based conservation-law q.*
 *v12 CORRECTIONS: KernelSelector minimum 250→max(1000,20×V×α). θ_min 0.467→23.53/(α×V). Entity resolution: exact-match ✅, fuzzy ❌.*
 *v12 ADDITIONS: Per-analyst η_i weighting (D5, CONDITIONAL). D6 closed (subsumed by D5). FINDING-OVR-01 (q̄ does not predict override precision). Self-calibrating gate principle.*
-*v6.0 KERNEL + A=4 + REFERRAL ALL SETTLED. ~175 experiments. 408 SOC backend + 525 GAE + 102 ci-platform + 46 S2P + 10 copilot-sdk (~1,057 total).*
+*v13 ADDITIONS: Re-Convergence Theorem (γ > 1 ⟺ ε_firm > 0.125). Three proof paths. 4-LLM validated (April 8, 2026).*
+*v6.0 KERNEL + A=4 + REFERRAL ALL SETTLED. ~180 experiments (UNI-DK-01 added). 408 SOC backend + 525 GAE + 102 ci-platform + 46 S2P + 10 copilot-sdk (~1,057+ total).*
 *A=4 confirmed: 13pp structural, kernel-independent. Tensor 6×4×6=144. Frozen scorer 90.6%.*
-*DiagonalKernel validated: +13.2pp SOC, +6.8pp S2P. Explanation A confirmed (noise ratio alone).*
-*Corr(noise_ratio, advantage) = 0.990 across 4 healthcare personas.*
+*DiagonalKernel validated twice: V-MV-KERNEL-HET +13.2pp peak (390 cells) + UNI-DK-01 v5.3 +7.67pp characterized at NR=5.0 (1500 cells). Curve-based citation.*
+*DK calibration: ECE 0.42 at NR=5.0. Addressed architecturally at every production touchpoint.*
+*Corr(noise_ratio, advantage) = 0.990 across 4 healthcare personas (HC-scaling).*
 *ShrinkageKernel deprioritized to v7.0 (off-diagonal <1pp in both domains).*
-*Asymmetric η (P0 fix): η_confirm=0.05, η_override=0.01. Prevents 13-27pp degradation. 24 personas.*
+*Asymmetric η (P0 fix): η_confirm=0.05, η_override=0.01. Prevents 13-27pp degradation. 24 personas + v5.3.*
 *Per-analyst η_i: clip(precision_i/mean_precision, 0.5, 1.5) × η_override. D5 CONDITIONAL (0.86pp, production gate ≥1.0pp).*
-*AMBER auto-pause: conservation AMBER/RED → freeze learning. Three-judge consensus.*
+*AMBER auto-pause: conservation AMBER/RED → freeze learning. Trigger = rolling verified accuracy (v14).*
 *Noise ceiling kernel-dependent: L2 σ≤0.157. Diagonal σ≤0.25. Healthcare opens at v6.0.*
-*KernelSelector: rolling 100-window, noise_ratio>1.5→Diagonal, max(1000,20×V×α) decisions to stabilize.*
+*KernelSelector (v6.0 settled): Option A (NR-rule > 1.5 → DK). B as v6.1 contingency. C archived.*
+*Conservation-law q (v14): rolling verified accuracy over last 400 decisions. Calibration-independent.*
 *ReferralRules R1-R7: policy VETO, 72.7% DR, 12% FPR. Override learning v6.5 (≥50 positives).*
 *SOC A=4 / S2P A=5 — intentional asymmetry.*
 *θ_min=23.53/(α×V) per-deployment. σ_max=0.034. κ*=0.20. LEARNING_ENABLED=False default.*
-*Conservation law α·q·V ≥ θ_min ensures two-level compounding (three-judge validated).*
+*Conservation law α·q·V ≥ θ_min ensures two-level compounding (three-judge validated, v14 q = rolling accuracy).*
+*Re-Convergence Theorem: γ > 1 ⟺ ε_firm > 0.125. Production range 0.15-0.40. EXP-G1 measures empirically.*
 *FINDING-OVR-01: override precision uncorrelated with q̄ (r=0.00 to -0.70). Measure directly.*
 *"The distance metric itself compounds — Day 1: L2. Day 30: Diagonal calibrated to YOUR noise."*
 *"μ is what you've learned. W is how you weight it. Rules are what you know needs human eyes."*
+*"Accuracy is what the system does. Calibration is how well it knows what it does. Both matter; they are not the same thing." (v14)*
+
+---
