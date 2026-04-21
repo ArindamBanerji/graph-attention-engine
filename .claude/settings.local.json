@@ -10,7 +10,8 @@
       "Bash(do python:*)",
       "Bash(done)",
       "Bash(do echo:*)",
-      "Bash(echo \"exit:$?\")"
+      "Bash(echo \"exit:$?\")",
+      "Bash(rtk python *)"
     ]
   },
   "enabledMcpjsonServers": [

@@ -8,7 +8,7 @@
 4. **Check downstream consumers before changing interfaces.** This repo is
    consumed by gen-ai-roi-demo-v4-v50 and s2p-copilot.
 5. **Verify after every change:** `python -m pytest tests/ -v` (856 tests)
-6. **Authoritative design doc:** `docs/gae_design_v8_3.md` (not v5.md — deprecated).
+6. **Authoritative design doc:** `docs/gae_design_v10_7.md` (not v5.md — deprecated).
 
 ---
 
@@ -85,7 +85,7 @@ Downstream users may depend on them. Document removal in a versioned plan.
 
 ---
 
-## Architectural Invariants (from math_synopsis_v13)
+## Architectural Invariants (from math_synopsis_v14)
 
 These are mathematical constraints. Changing them changes the scoring math.
 
@@ -118,7 +118,7 @@ refer_to_analyst is NOT a scorable action (SOC has A=4, not A=5).
 - Do NOT change Tier 1 function signatures without grepping consumers.
 - Every gae/ function needs a blog-equation docstring.
 - Every matrix op needs shape assertions.
-- If you change scoring math: verify against math_synopsis_v13.
+- If you change scoring math: verify against math_synopsis_v14.
 
 ## Forbidden Changes (from API_CONTRACT.md)
 
@@ -134,4 +134,4 @@ refer_to_analyst is NOT a scorable action (SOC has A=4, not A=5).
 1. `python -m pytest tests/ -v` (856 tests must pass)
 2. If you changed a Tier 1 function signature: grep for it in
    gen-ai-roi-demo-v4-v50 AND s2p-copilot
-3. If you changed scoring math: verify against math_synopsis_v13
+3. If you changed scoring math: verify against math_synopsis_v14
