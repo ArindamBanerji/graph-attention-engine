@@ -166,12 +166,12 @@ class TestShapeErrors:
 
     def test_update_category_out_of_range_raises(self):
         scorer = make_scorer(n_cat=2)
-        with pytest.raises((IndexError, AssertionError)):
+        with pytest.raises((IndexError, AssertionError, ValueError)):
             scorer.update(np.zeros(6), 99, 0, correct=True)
 
     def test_update_action_out_of_range_raises(self):
         scorer = make_scorer(n_act=3)
-        with pytest.raises((IndexError, AssertionError)):
+        with pytest.raises((IndexError, AssertionError, ValueError)):
             scorer.update(np.zeros(6), 0, 99, correct=True)
 
     def test_constructor_wrong_mu_ndim_raises(self):

@@ -233,6 +233,16 @@ class ProfileScorer:
                 f"eta_neg >= 1.0 destroys calibration (ECE=0.49). "
                 f"Canonical value is 0.05."
             )
+        if self.eta < 0:
+            raise ValueError(
+                f"eta must be non-negative, got {self.eta}")
+        if self.eta_neg < 0:
+            raise ValueError(
+                f"eta_neg must be non-negative, got {self.eta_neg}")
+        if eta_override is not None and eta_override < 0:
+            raise ValueError(
+                f"eta_override must be non-negative, "
+                f"got {eta_override}")
 
         self.min_confidence: float = min_confidence
         self.eta_override: Optional[float] = eta_override  # None = use eta/eta_neg
@@ -347,6 +357,10 @@ class ProfileScorer:
         assert mu_c.shape == (self.n_actions, self.n_factors), (
             f"mu_c.shape={mu_c.shape} != ({self.n_actions}, {self.n_factors})"
         )
+        if not np.all(np.isfinite(mu_c)):
+            raise ValueError(
+                f"Centroids for category {category_index} "
+                f"contain NaN or Inf values")
 
         # Factor quarantine mask: zero out excluded dimensions in both f and mu_c
         # so masked dimensions contribute 0 to distance regardless of their values.
@@ -551,7 +565,9 @@ class ProfileScorer:
         uses self.mu directly. Consumer code should use
         scorer.centroids = new_value.
         """
-        value = np.asarray(value, dtype=np.float64)
+        value = np.array(value, dtype=np.float64, copy=True)
+        if not np.all(np.isfinite(value)):
+            raise ValueError("centroids contain NaN or Inf values")
         if value.shape != self.mu.shape:
             raise ValueError(
                 f"centroids shape {value.shape} != expected {self.mu.shape}"
@@ -732,6 +748,20 @@ class ProfileScorer:
                 decision_count=self.decision_count,
                 gt_delta_norm=0.0,
             )
+
+        if not (0 <= category_index < self.n_categories):
+            raise ValueError(
+                f"category_index {category_index} out of range "
+                f"[0, {self.n_categories})")
+        if not (0 <= action_index < self.n_actions):
+            raise ValueError(
+                f"action_index {action_index} out of range "
+                f"[0, {self.n_actions})")
+        if gt_action_index is not None:
+            if not (0 <= gt_action_index < self.n_actions):
+                raise ValueError(
+                    f"gt_action_index {gt_action_index} out of "
+                    f"range [0, {self.n_actions})")
 
         count = self.counts[c, a]
         eta_eff     = self.eta     / (1.0 + self.decay * count)

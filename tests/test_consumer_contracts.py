@@ -207,7 +207,7 @@ class TestEntropyAndConfidenceGap:
         from gae.primitives import compute_entropy
         p = np.array([1.0, 0.0, 0.0, 0.0])
         e = compute_entropy(p)
-        assert e >= 0.0
+        assert e > -1e-8   # corrected formula: p*log(p+eps) yields ~-eps for p=1
         assert e < 0.01
 
     def test_scoring_result_has_entropy_and_gap(self):
@@ -230,7 +230,7 @@ class TestEntropyAndConfidenceGap:
         )
         result = scorer.score(np.random.rand(4), 0)
         assert result.confidence_gap == 0.0
-        assert result.entropy >= 0.0
+        assert result.entropy > -1e-8   # corrected formula: tiny negative possible for p=1
 
     def test_entropy_decreases_with_confidence(self):
         """Higher confidence → lower entropy (more decisive)."""
@@ -246,3 +246,80 @@ class TestEntropyAndConfidenceGap:
         f_mid = np.array([0.7, 0.7, 0.7, 0.7, 0.7, 0.7])
         r_mid = scorer.score(f_mid, 0)
         assert r_near.entropy < r_mid.entropy
+
+
+# ── GAE-05b: compute_ece public API ──────────────────────────────────────────
+
+class TestComputeEceContract:
+    """GAE-05b: compute_ece must be importable and return a non-negative float."""
+
+    def test_compute_ece_importable(self):
+        from gae import compute_ece
+        assert callable(compute_ece)
+
+    def test_compute_ece_returns_float(self):
+        """ECE of random predictions is a non-negative float."""
+        from gae.evaluation import compute_ece
+        predictions = np.random.rand(100).tolist()
+        actuals = (np.random.rand(100) > 0.5).tolist()
+        result = compute_ece(predictions, actuals)
+        assert isinstance(result, float)
+        assert result >= 0.0
+
+
+# ── GAE-07: Deeper consumer sequence tests ───────────────────────────────────
+
+class TestConsumerSequences:
+    """GAE-07: Multi-step score→update sequences."""
+
+    def test_consumer_sequence_score_update_score_changes(self):
+        """After update, scoring the same input gives different probabilities."""
+        from gae.profile_scorer import ProfileScorer
+        scorer = ProfileScorer.for_soc(mu=np.full((6, 4, 6), 0.5))
+        f = np.random.rand(6)
+        r1 = scorer.score(f, category_index=0)
+        scorer.update(f, category_index=0, action_index=0, correct=True)
+        r2 = scorer.score(f, category_index=0)
+        assert not np.allclose(r1.probabilities, r2.probabilities)
+
+    def test_consumer_sequence_freeze_update_no_change(self):
+        """Frozen scorer ignores update calls."""
+        from gae.profile_scorer import ProfileScorer
+        scorer = ProfileScorer.for_soc(mu=np.full((6, 4, 6), 0.5))
+        f = np.random.rand(6)
+        r1 = scorer.score(f, category_index=0)
+        scorer.freeze()
+        scorer.update(f, category_index=0, action_index=0, correct=True)
+        r2 = scorer.score(f, category_index=0)
+        assert np.allclose(r1.probabilities, r2.probabilities)
+
+    def test_consumer_sequence_multi_category_independence(self):
+        """Updates to category 0 don't affect category 1."""
+        from gae.profile_scorer import ProfileScorer
+        scorer = ProfileScorer.for_soc(mu=np.full((6, 4, 6), 0.5))
+        f = np.random.rand(6)
+        r_cat1_before = scorer.score(f, category_index=1)
+        scorer.update(f, category_index=0, action_index=0, correct=True)
+        r_cat1_after = scorer.score(f, category_index=1)
+        assert np.allclose(
+            r_cat1_before.probabilities,
+            r_cat1_after.probabilities)
+
+    def test_consumer_sequence_centroids_reflect_updates(self):
+        """After update, centroids tensor has changed."""
+        from gae.profile_scorer import ProfileScorer
+        scorer = ProfileScorer.for_soc(mu=np.full((6, 4, 6), 0.5))
+        before = scorer.centroids.copy()
+        f = np.random.rand(6)
+        scorer.update(f, category_index=0, action_index=0, correct=True)
+        assert not np.allclose(scorer.centroids, before)
+
+
+# ── GAE-09: calibration.py standalone importable ─────────────────────────────
+
+class TestCalibrationImportable:
+    """GAE-09: CalibrationProfile must be importable from gae."""
+
+    def test_calibration_importable(self):
+        from gae import CalibrationProfile
+        assert callable(CalibrationProfile)

@@ -39,8 +39,7 @@ def compute_entropy(p: np.ndarray, eps: float = 1e-10) -> float:
     Returns:
         float, entropy in nats (natural log)
     """
-    p_safe = np.maximum(p, eps)
-    return float(-np.sum(p_safe * np.log(p_safe)))
+    return float(-np.sum(p * np.log(p + eps)))
 
 
 def softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:

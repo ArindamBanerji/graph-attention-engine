@@ -161,7 +161,7 @@ class GTAlignedOracle:
         with the scorer's decision boundaries.
 
         Args:
-          scorer: A ProfileScorer instance (duck-typed; reads .mu, .actions).
+          scorer: A ProfileScorer instance (duck-typed; reads .centroids, .actions).
 
         Reference: docs/gae_design_v10_6.md §10.3.
         """
