@@ -20,7 +20,7 @@ class CalibrationProfile:
     """Domain-configurable learning hyperparameters.
 
     Replaces hardcoded constants (ALPHA, LAMBDA_NEG, EPSILON_DEFAULT).
-    Each domain provides its own profile via DomainConfig.
+    Each domain provides its own CalibrationProfile instance.
 
     Reference: docs/gae_design_v10_6.md §8; blog Eq. 4b, 4c.
 

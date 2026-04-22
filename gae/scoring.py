@@ -7,7 +7,7 @@ Implements Eq. 4 from the math blog:
 
 Shape annotation (from math blog §3):
     f      : (1, n_f)      factor vector (Tier 1 output)
-    W      : (n_a, n_f)    weight matrix (Tier 3 state)
+    W      : (n_a, n_f)    weight matrix (LearningState)
     Wᵀ     : (n_f, n_a)
     f · Wᵀ : (1, n_a)      raw scores
     probs  : (1, n_a)      softmax probabilities over actions

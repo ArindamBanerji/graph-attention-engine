@@ -9,7 +9,7 @@ experiments. Key validated numbers:
   - Global Mahalanobis: harmful on multi-category data (FX-1-CORRECTED)
   - DOT product: 61% on [0,1] factors (EXP-C1)
 
-Reference: docs/gae_design_v10_6.md §9; blog Eq. 4-final, 4b-final.
+Reference: docs/gae_design_v10_7.md §9; blog Eq. 4-final, 4b-final.
 """
 
 from __future__ import annotations

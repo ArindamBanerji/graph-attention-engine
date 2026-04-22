@@ -23,7 +23,7 @@ Calibration:
 Primitives (Tier 1):
   scaled_dot_product_attention, softmax
 
-Learning (Tier 3):
+Learning:
   LearningState, DimensionMetadata, PendingValidation, WeightUpdate,
   ALPHA, EPSILON, LAMBDA_NEG, W_CLAMP
 
@@ -118,7 +118,7 @@ from gae.calibration import (
 # ── Primitives (Tier 1, Eq. 1) ───────────────────────────────────────
 from gae.primitives import scaled_dot_product_attention, softmax
 
-# ── Learning (Tier 3, Eq. 4b / 4c) ──────────────────────────────────
+# ── Learning (Eq. 4b / 4c) ───────────────────────────────────────────
 from gae.learning import (
     ALPHA,
     EPSILON,

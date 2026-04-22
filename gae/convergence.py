@@ -488,7 +488,7 @@ def get_convergence_metrics(state: "LearningState") -> dict:
     Parameters
     ----------
     state : LearningState
-        The active Tier 3 learning state.
+        The active learning state.
 
     Returns
     -------

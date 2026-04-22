@@ -1,5 +1,5 @@
 """
-GAE Learning — Tier 3: Hebbian weight learning.
+GAE Learning — Hebbian weight learning.
 
 Implements Eq. 4b and Eq. 4c from the math blog:
 
@@ -209,7 +209,7 @@ class WeightUpdate:
 @dataclass
 class LearningState:
     """
-    Persistent state for the Tier 3 weight matrix and its learning history.
+    Persistent state for the weight matrix and its learning history.
 
     Reference: docs/gae_design_v10_6.md §8.2; blog Eq. 4b, 4c.
 

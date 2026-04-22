@@ -11,7 +11,8 @@
       "Bash(done)",
       "Bash(do echo:*)",
       "Bash(echo \"exit:$?\")",
-      "Bash(rtk python *)"
+      "Bash(rtk python *)",
+      "Bash(rtk git *)"
     ]
   },
   "enabledMcpjsonServers": [
