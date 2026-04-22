@@ -1,7 +1,7 @@
 """
 KernelSelector — empirical kernel selection during shadow mode.
 
-During shadow mode (P28 Phase 3), scores every alert with all available
+During shadow mode (P28 Phase 3), scores every entity with all available
 kernels simultaneously. Tracks per-kernel analyst agreement rate.
 At Phase 4 (QUALIFY), recommends the kernel with highest agreement.
 
@@ -87,7 +87,7 @@ class KernelSelector:
         Blog Eq. 9.1 kernel selection heuristic.
 
     Phase 3 (SHADOW):
-        record_comparison() scores every alert with ALL kernels simultaneously
+        record_comparison() scores every entity with ALL kernels simultaneously
         and accumulates analyst-agreement statistics without affecting live scoring.
 
     Phase 4 (QUALIFY):
@@ -235,7 +235,7 @@ class KernelSelector:
         actions: list,
     ) -> Dict[str, int]:
         """
-        Score one alert with ALL kernels and record analyst agreement.
+        Score one entity with ALL kernels and record analyst agreement.
 
         Called during shadow mode (Phase 3) for every verified decision.
         Does not affect live scoring — tracking only.
@@ -243,7 +243,7 @@ class KernelSelector:
         Parameters
         ----------
         factors : np.ndarray, shape (d,)
-            Factor vector for this alert.
+            Factor vector for this entity.
         category_index : int
             Category index c ∈ [0, n_categories).
         mu : np.ndarray, shape (n_categories, n_actions, d)
@@ -256,7 +256,7 @@ class KernelSelector:
         Returns
         -------
         Dict[str, int]
-            Mapping kernel_name → predicted action index for this alert.
+            Mapping kernel_name → predicted action index for this entity.
         """
         factors = np.asarray(factors, dtype=np.float64)
         assert factors.shape == (self.d,), (

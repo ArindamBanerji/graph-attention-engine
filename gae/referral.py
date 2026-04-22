@@ -127,7 +127,7 @@ class ReferralRule(Protocol):
     """
     Protocol for domain-agnostic referral rules.
 
-    Each rule is a pure function: alert_context → (fires, detail).
+    Each rule is a pure function: entity_context → (fires, detail).
     No state. No ML. No side effects. Fully auditable.
 
     SOC implements R1-R7 in the SOC repo; S2P implements its own set.
@@ -142,8 +142,8 @@ class ReferralRule(Protocol):
 
     Method
     ------
-    evaluate(alert_context: dict) → tuple[bool, dict]
-        alert_context is a plain dict with domain-specific keys.
+    evaluate(entity_context: dict) → tuple[bool, dict]
+        entity_context is a plain dict with domain-specific keys.
         Returns (fires: bool, detail: dict) where detail is included
         in the audit trail when fires=True.
 
@@ -160,13 +160,13 @@ class ReferralRule(Protocol):
         """Enum reason this rule maps to."""
         ...
 
-    def evaluate(self, alert_context: dict) -> Tuple[bool, dict]:
+    def evaluate(self, entity_context: dict) -> Tuple[bool, dict]:
         """
         Evaluate this rule against the alert context.
 
         Parameters
         ----------
-        alert_context : dict
+        entity_context : dict
             Domain-specific keys such as identity_tier, sequence_count,
             category, compliance_mode, asset_criticality, stage1_action.
 
@@ -193,7 +193,7 @@ class ReferralEngine:
     Usage
     -----
     engine = ReferralEngine(rules=[R1Rule(), R2Rule(), ...])
-    decision = engine.evaluate(alert_context)
+    decision = engine.evaluate(entity_context)
     if decision.should_refer:
         route_to_analyst(alert, decision.audit_summary)
 
@@ -202,16 +202,16 @@ class ReferralEngine:
 
     rules: List  # list of objects implementing ReferralRule protocol
 
-    def evaluate(self, alert_context: dict) -> ReferralDecision:
+    def evaluate(self, entity_context: dict) -> ReferralDecision:
         """
-        Evaluate all rules against alert_context.
+        Evaluate all rules against entity_context.
 
         Evaluates every rule (no short-circuit) so the audit trail captures
         all firing rules even when the first would have been sufficient.
 
         Parameters
         ----------
-        alert_context : dict
+        entity_context : dict
             Domain-specific context for rule evaluation.
 
         Returns
@@ -223,7 +223,7 @@ class ReferralEngine:
         fired_details: Dict[str, dict] = {}
 
         for rule in self.rules:
-            fires, detail = rule.evaluate(alert_context)
+            fires, detail = rule.evaluate(entity_context)
             if fires:
                 fired_reasons.append(rule.reason)
                 fired_details[rule.rule_id] = detail
@@ -297,7 +297,7 @@ class OverrideDetector:
             and self._positive_count >= self.config.min_positives
         )
 
-    def record_override(self, alert_context: dict, analyst_referred: bool) -> None:
+    def record_override(self, entity_context: dict, analyst_referred: bool) -> None:
         """
         Record one labelled decision from the analyst.
 
@@ -307,7 +307,7 @@ class OverrideDetector:
 
         Parameters
         ----------
-        alert_context : dict
+        entity_context : dict
             Feature context for the alert (stored for future training).
         analyst_referred : bool
             True if analyst chose to refer; False if auto-approve was accepted.
@@ -315,7 +315,7 @@ class OverrideDetector:
         if analyst_referred:
             self._positive_count += 1
 
-    def predict(self, alert_context: dict) -> Tuple[bool, float]:
+    def predict(self, entity_context: dict) -> Tuple[bool, float]:
         """
         Predict whether this alert matches an override pattern.
 
@@ -324,7 +324,7 @@ class OverrideDetector:
 
         Parameters
         ----------
-        alert_context : dict
+        entity_context : dict
             Feature context for prediction.
 
         Returns

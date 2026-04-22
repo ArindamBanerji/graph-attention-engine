@@ -300,8 +300,11 @@ class ProfileScorer:
 
     @classmethod
     def for_soc(cls, mu, actions=None, **kwargs):
-        """
-        Factory: ProfileScorer with SOC-validated defaults.
+        """[DEPRECATED] Factory: ProfileScorer with SOC defaults.
+
+        This method will move to consumer code in a future release.
+        New domains should use the constructor directly or
+        build_profile_scorer().
 
         Sets eta_override=0.01 (P0 fix), auto_pause_on_amber=True,
         and SOC canonical actions if not provided.
@@ -309,6 +312,13 @@ class ProfileScorer:
         Usage:
             scorer = ProfileScorer.for_soc(mu=centroids)
         """
+        import warnings
+        warnings.warn(
+            "ProfileScorer.for_soc() is deprecated and will move to consumer "
+            "code in a future release. Use the constructor directly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if actions is None:
             actions = ["escalate", "investigate", "suppress", "monitor"]
         return cls(

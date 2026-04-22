@@ -14,7 +14,7 @@ Reference: docs/gae_design_v10_6.md §5; blog Eq. 2 (factor vector assembly).
 Note on async
 -------------
 FactorComputer.compute() is declared async so that *implementors* (external
-code, e.g. a SOC adapter) can fetch properties from async data sources.
+code, e.g. a domain adapter) can fetch properties from async data sources.
 The library itself never calls asyncio.  assemble_factor_vector() is fully
 synchronous and takes already-resolved raw dicts.
 """
@@ -37,7 +37,7 @@ class FactorComputer(Protocol):
     """
     Protocol for objects that compute raw property dicts for a node.
 
-    Implementors live outside this library (e.g. SOC adapters).
+    Implementors live outside this library (e.g. domain adapters).
     They may use async I/O — hence the async signature — but the library
     never drives the event loop itself.
 
@@ -56,7 +56,7 @@ class FactorComputer(Protocol):
         entity_id : str
             Opaque identifier for the graph entity being scored.
         context : Any, default None
-            Optional caller-provided context (e.g. alert metadata).
+            Optional caller-provided context (e.g. entity metadata).
             Implementations may ignore this argument.
 
         Returns

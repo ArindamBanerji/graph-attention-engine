@@ -56,7 +56,7 @@ class OracleProvider(Protocol):
     Implementations provide GT labels for evaluation and simulation.
     The oracle does not score — it only labels.
 
-    Used by: GAE-EVAL-1, GAE-ABL-1, SOC simulation mode.
+    Used by: GAE-EVAL-1, GAE-ABL-1, simulation mode.
 
     Reference: docs/gae_design_v10_6.md §10.2.
     """
@@ -72,7 +72,7 @@ class OracleProvider(Protocol):
 
         Args:
           f:                  Factor vector, shape (n_factors,).
-          category_index:     Category of the alert/entity.
+          category_index:     Category of the entity.
           taken_action_index: The action that was taken.
 
         Returns:
