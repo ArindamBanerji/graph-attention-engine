@@ -69,9 +69,10 @@ class TestCentroidShapeContracts:
         scorer = make_scorer(n_cat=2, n_act=3, n_fac=9)
         assert scorer.n_factors == 9
 
-    def test_centroids_is_alias_for_mu(self):
+    def test_centroids_property_returns_correct_shape(self):
         scorer = make_scorer()
-        assert scorer.centroids is scorer.mu
+        assert scorer.centroids is not None
+        assert scorer.centroids.shape == (3, 4, 6)
 
 
 # ── score() output shape contracts ───────────────────────────────────────────

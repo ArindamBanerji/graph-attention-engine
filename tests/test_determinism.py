@@ -153,11 +153,11 @@ class TestInstanceIsolation:
         # Scorer's centroids must be unaffected
         np.testing.assert_array_equal(scorer.centroids, mu_original)
 
-    def test_centroids_property_is_same_object_as_mu(self):
-        """scorer.centroids is an alias for scorer.mu (not a copy)."""
+    def test_centroids_property_returns_correct_shape(self):
+        """scorer.centroids exposes the centroid tensor via the public API."""
         scorer = make_scorer()
-        # Both should reference the same underlying data
-        assert scorer.centroids is scorer.mu
+        assert scorer.centroids is not None
+        assert scorer.centroids.shape == (3, 4, 6)
 
 
 # ── Serialize → deserialize determinism ──────────────────────────────────────

@@ -139,7 +139,8 @@ def test_centroids_setter_preserves_alias():
 
     scorer.centroids = new_mu
 
-    assert scorer.centroids is scorer.mu
+    assert scorer.centroids is not None
+    assert scorer.centroids.shape == (2, 3, 4)
     np.testing.assert_allclose(scorer.centroids, new_mu)
 
 

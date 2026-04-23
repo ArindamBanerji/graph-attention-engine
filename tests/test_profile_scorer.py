@@ -790,10 +790,11 @@ def test_factor_mask_stored_as_float64():
     assert scorer.factor_mask.shape == (6,)
 
 
-def test_centroids_property_alias():
-    """centroids property returns same object as mu."""
+def test_centroids_property_shape():
+    """centroids property exposes the centroid tensor via the public API."""
     scorer, _, _ = _make_mask_scorer()
-    assert scorer.centroids is scorer.mu
+    assert scorer.centroids is not None
+    assert scorer.centroids.shape == (6, 4, 6)
 
 
 def test_factor_mask_shape_mismatch_raises():

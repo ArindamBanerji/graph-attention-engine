@@ -411,7 +411,8 @@ def compute_eta_override(
     Three-judge consensus April 16, 2026.
     """
     if worst_case_quality is not None:
-        return float(eta_confirm * max(0.0, 2.0 * worst_case_quality - 1.0))
+        _q = max(0.0, min(1.0, worst_case_quality))
+        return float(eta_confirm * max(0.0, 2.0 * _q - 1.0))
     signal = 2.0 * mean_quality - 1.0
     noise = 2.0 * quality_variance
     if signal <= 0:
