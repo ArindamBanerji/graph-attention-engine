@@ -72,7 +72,8 @@ class TestCentroidShapeContracts:
     def test_centroids_property_returns_correct_shape(self):
         scorer = make_scorer()
         assert scorer.centroids is not None
-        assert scorer.centroids.shape == (3, 4, 6)
+        expected_shape = (scorer.n_categories, scorer.n_actions, scorer.n_factors)
+        assert scorer.centroids.shape == expected_shape
 
 
 # ── score() output shape contracts ───────────────────────────────────────────

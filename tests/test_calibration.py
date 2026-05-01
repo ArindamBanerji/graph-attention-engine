@@ -341,8 +341,9 @@ class TestTransferPrior:
             'cat3': np.random.rand(4, 6),
         }
         mean, std = compute_transfer_prior(centroids)
-        assert mean.shape == (4, 6)
-        assert std.shape == (4, 6)
+        expected_shape = next(iter(centroids.values())).shape
+        assert mean.shape == expected_shape
+        assert std.shape == expected_shape
 
     def test_empty_returns_defaults(self):
         """Empty centroids returns scalar defaults."""
@@ -431,14 +432,15 @@ class TestComputeFactorMask:
 
 class TestMaskToArray:
     def test_shape_and_values(self):
-        """Array shape (6,) with correct 1.0/0.0 for SOC default order."""
+        """Array shape (d,) with correct 1.0/0.0 for SOC default order."""
         mask = {
             'travel_match': True, 'asset_criticality': True,
             'threat_intel_enrichment': True, 'time_anomaly': False,
             'pattern_history': True, 'device_trust': False,
         }
         arr = mask_to_array(mask)
-        assert arr.shape == (6,)
+        expected_d = len(mask)
+        assert arr.shape == (expected_d,)
         assert arr[0] == 1.0   # travel_match
         assert arr[3] == 0.0   # time_anomaly
         assert arr[5] == 0.0   # device_trust

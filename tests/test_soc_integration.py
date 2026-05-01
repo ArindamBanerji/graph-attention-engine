@@ -5,7 +5,7 @@ Verifies the EXACT usage patterns from the SOC backend
 (gen-ai-roi-demo-v4-v50). These tests catch regressions that would
 break the SOC backend's 290+ call sites.
 
-SOC tensor: (6 categories, 4 actions, 6 factors)
+SOC tensor: (6 categories, 4 actions, d factors)
 Categories : credential_access, lateral_movement, data_exfiltration,
              malware_execution, insider_threat, cloud_infrastructure
 Actions    : escalate, investigate, suppress, monitor
@@ -50,7 +50,7 @@ N_CAT, N_ACT, N_FAC = 6, 4, 6
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 def make_soc_scorer(seed: int = 42) -> ProfileScorer:
-    """ProfileScorer with SOC (6,4,6) tensor and default hyperparameters."""
+    """ProfileScorer with SOC fixture tensor and default hyperparameters."""
     rng = np.random.default_rng(seed)
     mu = rng.uniform(0.1, 0.9, (N_CAT, N_ACT, N_FAC))
     return ProfileScorer(mu=mu, actions=SOC_ACTIONS, categories=SOC_CATEGORIES)
@@ -67,7 +67,7 @@ class TestSOCTensorConfiguration:
         assert scorer.n_factors == N_FAC
 
     def test_soc_centroids_shape_is_6_4_6(self):
-        """Centroid tensor is exactly (6,4,6) as required by SOC domain."""
+        """Centroid tensor matches the SOC fixture dimensions."""
         scorer = make_soc_scorer()
         assert scorer.centroids.shape == (N_CAT, N_ACT, N_FAC)
         assert scorer.centroids.shape == (N_CAT, N_ACT, N_FAC)
@@ -317,7 +317,7 @@ class TestSOCCentroidManagement:
 
 class TestSOCKernelSelection:
     def test_kernel_selector_soc_6_factors_starts_l2(self):
-        """KernelSelector with SOC d=6 uniform sigma recommends L2 initially."""
+        """KernelSelector with SOC fixture d and uniform sigma recommends L2 initially."""
         sigma = np.full(N_FAC, 0.3)  # uniform noise → noise_ratio=1.0 < 1.5
         ks = KernelSelector(d=N_FAC, sigma_per_factor=sigma, correlation_max=0.0)
         rec = ks.preliminary_recommendation()

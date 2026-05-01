@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, NamedTuple
 
+import warnings
+
 import numpy as np
 
 
@@ -178,8 +180,46 @@ def derive_theta_min(
     α·q·V = 10.6 >> 0.467. The "V=50 impossible" language in
     earlier documentation was incorrect.
     """
+    warnings.warn(
+        "derive_theta_min() is deprecated. Use compute_theta_min(alpha, V) = 23.53 / (alpha * V) "
+        "for a deployment-aware conservation threshold. derive_theta_min() returns a fixed "
+        "convergence-budget constant and is deployment-independent.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     assert t_max_days > 0, f"t_max_days must be positive, got {t_max_days}"
     return float(eta * n_half ** 2 / t_max_days)
+
+
+def compute_theta_min(alpha: float, V: float) -> float:
+    """
+    Deployment-aware conservation threshold: θ_min = 23.53 / (α × V).
+
+    Use this in place of derive_theta_min() when alpha and V are known.
+    Returns the minimum α·q·V signal required for healthy learning.
+
+    Parameters
+    ----------
+    alpha : float
+        Override rate — must be > 0.
+    V : float
+        Verified decisions per day — must be > 0.
+
+    Returns
+    -------
+    float
+        Conservation floor θ_min.
+
+    Raises
+    ------
+    ValueError
+        When alpha <= 0 or V <= 0.
+    """
+    if alpha <= 0 or V <= 0:
+        raise ValueError(
+            f"alpha and V must be positive, got alpha={alpha}, V={V}"
+        )
+    return 23.53 / (alpha * V)
 
 
 def check_conservation(

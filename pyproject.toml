@@ -26,3 +26,6 @@ include = ["gae*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "slow: tests that take more than 2 seconds",
+]

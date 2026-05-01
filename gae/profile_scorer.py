@@ -24,7 +24,16 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from gae.calibration import CalibrationProfile
 
+from gae.dk_estimator import CoordinateDescentEstimator, DKEstimator
 from gae.primitives import compute_entropy
+from gae.shrinkage import FixedAlpha, ShrinkageSchedule, compute_effective_weights
+from gae.two_phase import (
+    CategoryState,
+    DecisionCountPolicy,
+    MEAN_CONVERGENCE,
+    PhasePolicy,
+    VARIANCE_LEARNING,
+)
 
 # V-STABILITY F=8.14 — η change-rate cap (UNCONDITIONAL).
 # No single η × gradient step may move any centroid coordinate by more than
@@ -51,6 +60,15 @@ class CentroidUpdate:
     decision_count: int          # total decisions in this ProfileScorer instance
     gt_delta_norm: float = 0.0   # ‖η*(f - μ[c,gt,:])‖₂ for gt pull (0.0 if correct=True or no gt)
     outcome: str = 'applied'     # 'applied', 'gated_low_confidence', or 'frozen'
+
+
+@dataclass
+class LearningStrategy:
+    """Configuration for two-phase learning."""
+
+    phase_policy: PhasePolicy
+    dk_estimator: DKEstimator
+    shrinkage_schedule: ShrinkageSchedule
 
 
 class KernelType(Enum):
@@ -146,6 +164,8 @@ class ProfileScorer:
         factor_mask: Optional[np.ndarray] = None,
         scoring_kernel=None,
         auto_pause_on_amber: bool = False,
+        *,
+        learning_strategy: Optional[LearningStrategy] = None,
     ) -> None:
         """
         Args:
@@ -198,6 +218,11 @@ class ProfileScorer:
 
         Reference: docs/gae_design_v10_6.md §9.3; V3B (τ), V2 (clipping).
         """
+        if isinstance(kernel, LearningStrategy):
+            raise TypeError(
+                "learning_strategy must be passed by keyword after "
+                "auto_pause_on_amber"
+            )
         assert mu.ndim == 3, (
             f"mu must be shape (n_cat, n_act, n_fac), got {mu.shape}"
         )
@@ -264,6 +289,17 @@ class ProfileScorer:
         self._conservation_status: str = 'GREEN'
         self._paused_by_conservation: bool = False
 
+        self._learning_strategy = learning_strategy
+        if learning_strategy is not None:
+            C = self.centroids.shape[0]
+            self._category_states = [CategoryState() for _ in range(C)]
+            self._dk_weights = None
+            self._decision_buffer = []
+        else:
+            self._category_states = None
+            self._dk_weights = None
+            self._decision_buffer = None
+
         # Gate statistics (Block 5B Proxy — min_confidence gate)
         self._gated_count: int = 0
         self._applied_count: int = 0
@@ -329,6 +365,37 @@ class ProfileScorer:
             **kwargs,
         )
 
+    @classmethod
+    def for_soc_twophase(
+        cls,
+        mu,
+        actions=None,
+        phase_policy: Optional[PhasePolicy] = None,
+        dk_estimator: Optional[DKEstimator] = None,
+        shrinkage_schedule: Optional[ShrinkageSchedule] = None,
+        **kwargs,
+    ):
+        """Factory: ProfileScorer with two-phase learning defaults."""
+        if actions is None:
+            actions = ["escalate", "investigate", "suppress", "monitor"]
+        strategy = LearningStrategy(
+            phase_policy=phase_policy if phase_policy is not None else DecisionCountPolicy(n=200),
+            dk_estimator=dk_estimator if dk_estimator is not None else CoordinateDescentEstimator(),
+            shrinkage_schedule=(
+                shrinkage_schedule
+                if shrinkage_schedule is not None
+                else FixedAlpha(0.5)
+            ),
+        )
+        return cls(
+            mu=mu,
+            actions=actions,
+            eta_override=kwargs.pop('eta_override', 0.01),
+            auto_pause_on_amber=kwargs.pop('auto_pause_on_amber', True),
+            learning_strategy=strategy,
+            **kwargs,
+        )
+
     # ------------------------------------------------------------------ #
     # Scoring                                                             #
     # ------------------------------------------------------------------ #
@@ -374,16 +441,40 @@ class ProfileScorer:
 
         # Factor quarantine mask: zero out excluded dimensions in both f and mu_c
         # so masked dimensions contribute 0 to distance regardless of their values.
+        f_work = f
+        mu_c_work = mu_c
         if self.factor_mask is not None:
-            f = f * self.factor_mask                   # (n_factors,)
-            mu_c = mu_c * self.factor_mask             # (n_actions, n_factors) broadcast
+            f_work = f_work * self.factor_mask             # (n_factors,)
+            mu_c_work = mu_c_work * self.factor_mask       # (n_actions, n_factors) broadcast
 
         # v6.0 kernel dispatch: scoring_kernel active on L2 and DIAGONAL paths.
         # COSINE/DOT/MAHALANOBIS still go through _compute_distances.
-        if self.kernel in (KernelType.L2, KernelType.DIAGONAL):
-            distances = self.scoring_kernel.compute_distance(f, mu_c)
-        else:
-            distances = self._compute_distances(f, mu_c, category_index)
+        phase2_override = False
+        if (self._learning_strategy is not None
+                and self._category_states is not None
+                and self._category_states[category_index].phase == VARIANCE_LEARNING
+                and self._dk_weights is not None):
+            alpha = self._learning_strategy.shrinkage_schedule.compute_alpha(
+                self._category_states[category_index]
+            )
+            w_tilde = compute_effective_weights(
+                self._dk_weights[category_index], alpha
+            )
+            from gae.kernels import DiagonalKernel
+            _phase2_kernel = DiagonalKernel(weights=w_tilde)
+            phase2_mu = self.centroids[category_index]
+            if self.factor_mask is not None:
+                phase2_mu = phase2_mu * self.factor_mask
+            distances = _phase2_kernel.compute_distance(
+                f_work, phase2_mu
+            )
+            phase2_override = True
+
+        if not phase2_override:
+            if self.kernel in (KernelType.L2, KernelType.DIAGONAL):
+                distances = self.scoring_kernel.compute_distance(f_work, mu_c_work)
+            else:
+                distances = self._compute_distances(f_work, mu_c_work, category_index)
         assert distances.shape == (self.n_actions,), (
             f"distances.shape={distances.shape} != ({self.n_actions},)"
         )
@@ -773,6 +864,26 @@ class ProfileScorer:
                     f"gt_action_index {gt_action_index} out of "
                     f"range [0, {self.n_actions})")
 
+        if (self._learning_strategy is not None
+                and self._category_states is not None
+                and self._category_states[category_index].phase == VARIANCE_LEARNING):
+            self._category_states[category_index].record_decision()
+            if self._decision_buffer is not None:
+                self._decision_buffer.append(
+                    (f.copy(), category_index, action_index, correct)
+                )
+            self.decision_count += 1
+            return CentroidUpdate(
+                centroid_delta_norm=0.0,
+                category_index=c,
+                action_index=a,
+                category_name=self._category_name(c),
+                action_name=self._action_name(a),
+                decision_count=self.decision_count,
+                gt_delta_norm=0.0,
+                outcome='phase2_buffered',
+            )
+
         count = self.counts[c, a]
         eta_eff     = self.eta     / (1.0 + self.decay * count)
         eta_neg_eff = self.eta_neg / (1.0 + self.decay * count)
@@ -851,6 +962,14 @@ class ProfileScorer:
         # V2 requirement: clip ALL centroids after update to prevent escape
         self.mu[c, :, :] = np.clip(self.mu[c, :, :], 0.0, 1.0)
 
+        if (self._learning_strategy is not None
+                and self._category_states is not None):
+            self._category_states[category_index].record_decision()
+            if self._learning_strategy.phase_policy.should_freeze(
+                    self._category_states[category_index]
+            ):
+                self._category_states[category_index].freeze()
+
         # Increment observation count for this (category, action) pair
         self.counts[c, a] += 1
         self.decision_count += 1
@@ -864,6 +983,43 @@ class ProfileScorer:
             action_name=self._action_name(a),
             decision_count=self.decision_count,
             gt_delta_norm=gt_delta_norm,
+        )
+
+    def get_phase(self, category_index: int) -> str:
+        """Return the current two-phase state for a category."""
+        if self._category_states is None:
+            return MEAN_CONVERGENCE
+        return self._category_states[category_index].phase
+
+    def get_alpha(self, category_index: int) -> float:
+        """Return the current shrinkage alpha for a category."""
+        if self._learning_strategy is None or self._category_states is None:
+            return 0.0
+        return self._learning_strategy.shrinkage_schedule.compute_alpha(
+            self._category_states[category_index]
+        )
+
+    def get_dk_weights(self, category_index: int) -> Optional[np.ndarray]:
+        """Return a copy of learned DK weights for one category, if available."""
+        if self._dk_weights is None:
+            return None
+        return self._dk_weights[category_index].copy()
+
+    def reestimate_dk(self) -> None:
+        """Re-estimate per-category DK weights from buffered correct decisions."""
+        if self._learning_strategy is None or not self._decision_buffer:
+            return
+        decisions = [
+            (factor_vector, category_index, action_index)
+            for factor_vector, category_index, action_index, correct in self._decision_buffer
+            if correct
+        ]
+        if len(decisions) < 2:
+            return
+        C = self.centroids.shape[0]
+        D = self.centroids.shape[2] if self.centroids.ndim == 3 else self.centroids.shape[1]
+        self._dk_weights = self._learning_strategy.dk_estimator.estimate(
+            decisions, self.centroids, C, D
         )
 
     # ------------------------------------------------------------------ #
@@ -938,6 +1094,76 @@ class ProfileScorer:
             f"cov_inv.shape={cov_inv.shape} must be {expected}"
         )
         self._cov_inv = cov_inv.astype(np.float64)
+
+    def __getstate__(self):
+        """Return full pickle state for Eq. 4 profile scoring objects."""
+        return self.__dict__.copy()
+
+    def get_checkpoint_state(self) -> Dict:
+        """
+        Return compact checkpoint state for Eq. 4 profile scoring.
+
+        The phase-two decision buffer is reported by size only. It is transient
+        and intentionally excluded from restore checkpoints.
+        """
+        if self._category_states is None:
+            category_phases = None
+            freeze_points = None
+            decision_counts = None
+        else:
+            category_phases = [state.phase for state in self._category_states]
+            freeze_points = [state.freeze_point for state in self._category_states]
+            decision_counts = [state.n_decisions for state in self._category_states]
+
+        return {
+            "centroids": self.centroids.copy(),
+            "category_phases": category_phases,
+            "dk_weights": None if self._dk_weights is None else self._dk_weights.copy(),
+            "decision_buffer_size": (
+                0 if self._decision_buffer is None else len(self._decision_buffer)
+            ),
+            "freeze_points": freeze_points,
+            "decision_counts": decision_counts,
+        }
+
+    def restore_checkpoint_state(self, state: Dict) -> None:
+        """
+        Restore compact checkpoint state for Eq. 4 profile scoring.
+
+        Extra keys are ignored and missing keys preserve current values. The
+        phase-two decision buffer is transient and is not restored.
+        """
+        if "centroids" in state:
+            self.centroids = np.array(state["centroids"], dtype=np.float64, copy=True)
+
+        if "dk_weights" in state:
+            dk_weights = state["dk_weights"]
+            self._dk_weights = (
+                None
+                if dk_weights is None
+                else np.array(dk_weights, dtype=np.float64, copy=True)
+            )
+
+        if self._category_states is None:
+            return
+
+        category_phases = state.get("category_phases")
+        freeze_points = state.get("freeze_points")
+        decision_counts = state.get("decision_counts")
+
+        for index, category_state in enumerate(self._category_states):
+            if category_phases is not None and index < len(category_phases):
+                category_state.phase = category_phases[index]
+            if freeze_points is not None and index < len(freeze_points):
+                category_state.freeze_point = freeze_points[index]
+            if decision_counts is not None and index < len(decision_counts):
+                category_state.n_decisions = int(decision_counts[index])
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        for attr in ('_learning_strategy', '_category_states', '_dk_weights', '_decision_buffer'):
+            if attr not in state:
+                setattr(self, attr, None)
 
     # ------------------------------------------------------------------ #
     # Factory                                                             #

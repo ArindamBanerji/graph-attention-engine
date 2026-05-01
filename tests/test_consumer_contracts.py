@@ -154,7 +154,7 @@ class TestConsumerSequences:
         from gae.kernel_selector import KernelSelector
 
         sigma = np.array([0.10, 0.18, 0.26, 0.34, 0.42, 0.50])
-        selector = KernelSelector(d=6, sigma_per_factor=sigma)
+        selector = KernelSelector(d=sigma.shape[0], sigma_per_factor=sigma)
 
         # Phase 2: rule-based
         rec = selector.preliminary_recommendation()
@@ -323,3 +323,35 @@ class TestCalibrationImportable:
     def test_calibration_importable(self):
         from gae import CalibrationProfile
         assert callable(CalibrationProfile)
+
+
+# ── Entropy and confidence_gap edge cases (3 new tests) ──────────────────────
+
+class TestEntropyEdgeCases:
+    def test_entropy_zero_probs_match_formula(self):
+        """Probabilities with zeros: 0*log(0+eps)=0 convention gives finite result ≈ log(2)."""
+        from gae.primitives import compute_entropy
+        p = np.array([0.5, 0.5, 0.0, 0.0])
+        result = compute_entropy(p)
+        assert not np.isnan(result)
+        assert result >= 0.0
+        assert abs(result - np.log(2)) < 0.01
+
+    def test_entropy_all_zero_distribution(self):
+        """All-zero probability vector: entropy is 0.0 (not NaN, not crash)."""
+        from gae.primitives import compute_entropy
+        p = np.array([0.0, 0.0, 0.0, 0.0])
+        result = compute_entropy(p)
+        assert not np.isnan(result)
+        assert result == pytest.approx(0.0, abs=1e-6)
+
+    def test_confidence_gap_equal_top_two_zero(self):
+        """Two equidistant centroids → equal top probabilities → confidence_gap == 0."""
+        from gae.profile_scorer import ProfileScorer
+        mu = np.zeros((1, 2, 2))
+        mu[0, 0, :] = [0.9, 0.1]
+        mu[0, 1, :] = [0.1, 0.9]
+        f = np.array([0.5, 0.5])
+        scorer = ProfileScorer(mu=mu, actions=["a", "b"])
+        result = scorer.score(f, category_index=0)
+        assert result.confidence_gap == pytest.approx(0.0, abs=1e-6)

@@ -370,3 +370,109 @@ def test_eta_neg_ge_10_is_rejected():
     )
     with pytest.raises(ValueError, match="eta_neg"):
         ProfileScorer(mu=mu, actions=["a", "b"], profile=profile_bad)
+
+
+# ── Centroids setter validation (4 new tests) ─────────────────────────────────
+
+def test_centroids_setter_rejects_nan():
+    scorer = make_scorer(n_cat=2, n_act=3, n_fac=4)
+    bad = np.full(scorer.centroids.shape, 0.5)
+    bad[0, 0, 0] = np.nan
+    with pytest.raises(ValueError):
+        scorer.centroids = bad
+
+
+def test_centroids_setter_rejects_inf():
+    scorer = make_scorer(n_cat=2, n_act=3, n_fac=4)
+    bad = np.full(scorer.centroids.shape, 0.5)
+    bad[0, 0, 0] = np.inf
+    with pytest.raises(ValueError):
+        scorer.centroids = bad
+
+
+def test_centroids_setter_accepts_python_list():
+    scorer = make_scorer(n_cat=2, n_act=3, n_fac=4)
+    shape = scorer.centroids.shape
+    nested = [[[0.5] * 4 for _ in range(3)] for _ in range(2)]
+    scorer.centroids = nested
+    assert isinstance(scorer.centroids, np.ndarray)
+    assert scorer.centroids.shape == shape
+
+
+def test_centroids_setter_rejects_empty_array():
+    scorer = make_scorer(n_cat=2, n_act=3, n_fac=4)
+    with pytest.raises(ValueError):
+        scorer.centroids = np.array([])
+
+
+# ── Public API: freeze/unfreeze, set_kernel, kernel_weight_refresh,
+#    set_covariance, build_profile_scorer (5 new tests) ──────────────────────────
+
+def test_unfreeze_restores_update_behavior():
+    scorer = make_scorer()
+    scorer.freeze()
+    scorer.unfreeze()
+    f = np.full(6, 0.8)
+    mu_before = scorer.centroids.copy()
+    scorer.update(f, category_index=0, action_index=0, correct=True)
+    assert not np.allclose(scorer.centroids, mu_before)
+
+
+def test_set_kernel_changes_scoring():
+    mu = np.zeros((1, 2, 6))
+    mu[0, 0, :] = [0.9, 0.5, 0.5, 0.5, 0.5, 0.5]
+    mu[0, 1, :] = [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]
+    actions = ["a", "b"]
+    f = np.array([0.85, 0.5, 0.5, 0.5, 0.5, 0.5])
+    scorer = ProfileScorer(mu=mu, actions=actions)
+    r_l2 = scorer.score(f, category_index=0)
+    scorer.set_kernel(DiagonalKernel(np.array([100.0, 0.01, 0.01, 0.01, 0.01, 0.01])))
+    r_diag = scorer.score(f, category_index=0)
+    assert not np.allclose(r_l2.probabilities, r_diag.probabilities)
+
+
+def test_kernel_weight_refresh_returns_bool():
+    scorer = make_scorer()   # L2Kernel by default
+    mock_est = SimpleNamespace(get_per_factor_sigma=lambda: None)
+    result = scorer.kernel_weight_refresh(mock_est)
+    assert isinstance(result, bool)
+
+
+def test_set_covariance_changes_distances():
+    import warnings as _warnings
+    n_cat, n_act, n_fac = 2, 3, 4
+    rng = np.random.default_rng(7)
+    mu = rng.uniform(0.0, 1.0, (n_cat, n_act, n_fac))
+    actions = [f"action_{i}" for i in range(n_act)]
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        scorer = ProfileScorer(mu=mu, actions=actions, kernel=KernelType.MAHALANOBIS)
+    cov_inv = np.tile(np.eye(n_fac), (n_cat, n_act, 1, 1))
+    scorer.set_covariance(cov_inv)
+    f = rng.uniform(0.0, 1.0, n_fac)
+    r = scorer.score(f, category_index=0)
+    assert r.distances.shape == (n_act,)
+    assert np.all(np.isfinite(r.distances))
+    assert isinstance(r, ScoringResult)
+
+
+def test_build_profile_scorer_returns_scorer():
+    from gae.profile_scorer import build_profile_scorer
+    categories = ["cat_a", "cat_b"]
+    actions = ["escalate", "investigate"]
+    centroids = {
+        "cat_a": {
+            "escalate":    [0.8, 0.2, 0.7, 0.1],
+            "investigate": [0.2, 0.8, 0.3, 0.9],
+        },
+        "cat_b": {
+            "escalate":    [0.9, 0.1, 0.8, 0.2],
+            "investigate": [0.1, 0.9, 0.2, 0.8],
+        },
+    }
+    scorer = build_profile_scorer(
+        categories=categories, actions=actions,
+        centroids=centroids, n_factors=4,
+    )
+    assert isinstance(scorer, ProfileScorer)
+    assert scorer.centroids.shape == (len(categories), len(actions), 4)

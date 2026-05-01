@@ -35,11 +35,17 @@ W_INIT = np.array([
 ], dtype=np.float64)
 NAMES = ["travel", "asset", "threat", "time", "device", "pattern"]
 F = np.array([[0.9, 0.3, 0.1, 0.2, 0.8, 0.7]])
+EXPECTED_D = W_INIT.shape[1]
 
 
 def make_state(**kw) -> LearningState:
-    d = dict(W=W_INIT.copy(), n_actions=4, n_factors=6, factor_names=NAMES[:],
-             profile=CalibrationProfile())
+    d = dict(
+        W=W_INIT.copy(),
+        n_actions=4,
+        n_factors=W_INIT.shape[1],
+        factor_names=NAMES[:],
+        profile=CalibrationProfile(),
+    )
     d.update(kw)
     return LearningState(**d)
 
@@ -166,8 +172,13 @@ class TestConvergenceTaskVerification:
         ])
         f = np.array([[0.9, 0.3, 0.1, 0.2, 0.8, 0.7]])
         names = ["travel", "asset", "threat", "time", "device", "pattern"]
-        state = LearningState(W=W.copy(), n_actions=4, n_factors=6, factor_names=names,
-                              profile=CalibrationProfile())
+        state = LearningState(
+            W=W.copy(),
+            n_actions=4,
+            n_factors=W.shape[1],
+            factor_names=names,
+            profile=CalibrationProfile(),
+        )
         state.update(0, "fp_close", +1, f)
         state.update(0, "fp_close", -1, f)
         state.expand_weight_matrix("new_dim")
@@ -204,17 +215,17 @@ class TestSteadyStateMse:
 class TestPredictConvergenceDecisions:
     def test_convergence_below_steady_state_returns_minus_one(self):
         """Cannot converge below e_∞. Returns -1."""
-        n = predict_convergence_decisions(0.15, 0.01)
+        n = predict_convergence_decisions(0.15, 0.01, d=EXPECTED_D)
         assert n == -1
 
     def test_already_converged_returns_zero(self):
         """e_0 < ε returns 0."""
-        n = predict_convergence_decisions(0.03, 0.05)
+        n = predict_convergence_decisions(0.03, 0.05, d=EXPECTED_D)
         assert n == 0
 
     def test_convergence_positive(self):
         """Normal case returns positive integer."""
-        n = predict_convergence_decisions(0.15, 0.05)
+        n = predict_convergence_decisions(0.15, 0.05, d=EXPECTED_D)
         assert n > 0
         assert isinstance(n, int)
 
@@ -222,26 +233,26 @@ class TestPredictConvergenceDecisions:
 class TestPredictConvergenceDecisionsV2:
     def test_already_converged_returns_zero(self):
         """e_0 ≤ ε returns 0."""
-        n = predict_convergence_decisions_v2(0.05, epsilon=0.10)
+        n = predict_convergence_decisions_v2(0.05, epsilon=0.10, d=EXPECTED_D)
         assert n == 0
 
     def test_positive_result_with_safety_factor(self):
         """Normal case returns positive int; safety_factor=2.0 doubles raw N."""
-        n = predict_convergence_decisions_v2(0.15, epsilon=0.10, safety_factor=2.0)
+        n = predict_convergence_decisions_v2(0.15, epsilon=0.10, safety_factor=2.0, d=EXPECTED_D)
         assert n > 0 and isinstance(n, int)
-        n_raw = predict_convergence_decisions_v2(0.15, epsilon=0.10, safety_factor=1.0)
+        n_raw = predict_convergence_decisions_v2(0.15, epsilon=0.10, safety_factor=1.0, d=EXPECTED_D)
         # With safety_factor=2.0 result should be ≥ raw (ceiling may round up)
         assert n >= n_raw
 
     def test_auto_adjust_when_epsilon_too_close_to_floor(self):
         """ε ≤ e_∞ × 1.5 is auto-adjusted; should not raise and returns positive."""
         # e_inf ≈ 0.038; epsilon=0.05 < 0.038*1.5=0.057 — triggers auto-adjust
-        n = predict_convergence_decisions_v2(0.15, epsilon=0.05)
+        n = predict_convergence_decisions_v2(0.15, epsilon=0.05, d=EXPECTED_D)
         assert n > 0 and isinstance(n, int)
 
     def test_never_returns_minus_one(self):
         """v2 never returns -1; always auto-adjusts epsilon."""
-        n = predict_convergence_decisions_v2(0.15, epsilon=0.01)
+        n = predict_convergence_decisions_v2(0.15, epsilon=0.01, d=EXPECTED_D)
         assert n != -1
         assert n > 0
 
@@ -251,8 +262,8 @@ class TestPredictConvergenceDecisionsV2:
 
     def test_higher_safety_factor_gives_more_decisions(self):
         """Larger safety_factor → more decisions (never less)."""
-        n1 = predict_convergence_decisions_v2(0.15, epsilon=0.10, safety_factor=1.0)
-        n2 = predict_convergence_decisions_v2(0.15, epsilon=0.10, safety_factor=2.0)
+        n1 = predict_convergence_decisions_v2(0.15, epsilon=0.10, safety_factor=1.0, d=EXPECTED_D)
+        n2 = predict_convergence_decisions_v2(0.15, epsilon=0.10, safety_factor=2.0, d=EXPECTED_D)
         assert n2 >= n1
 
 
@@ -294,14 +305,15 @@ class TestPredictCategoryConvergenceWeeks:
             category='credential_access',
             alerts_per_day=60,
             verification_rate=0.30,
+            d=EXPECTED_D,
         )
         assert result['status'] == 'will_converge'
         assert result['weeks'] > 0
 
     def test_category_convergence_enrichment_faster(self):
         """G4 converges faster than G1 (low volume avoids rounding collapse)."""
-        g1 = predict_category_convergence_weeks('test', alerts_per_day=20, graph_level='G1')
-        g4 = predict_category_convergence_weeks('test', alerts_per_day=20, graph_level='G4')
+        g1 = predict_category_convergence_weeks('test', alerts_per_day=20, graph_level='G1', d=EXPECTED_D)
+        g4 = predict_category_convergence_weeks('test', alerts_per_day=20, graph_level='G4', d=EXPECTED_D)
         assert g4['weeks'] < g1['weeks']
 
 
@@ -316,7 +328,7 @@ class TestGenerateOnboardingCalendar:
 
     def test_calendar_output_structure(self):
         """Calendar returns predictions for all categories."""
-        cal = generate_onboarding_calendar(self._CATS, self._WEIGHTS)
+        cal = generate_onboarding_calendar(self._CATS, self._WEIGHTS, d=EXPECTED_D)
         assert 'predictions' in cal
         assert len(cal['predictions']) == 6
         assert cal['total_weeks'] > 0
@@ -327,8 +339,8 @@ class TestGenerateOnboardingCalendar:
         """Higher alert volume → faster convergence."""
         cats = ['test_cat']
         weights = {'test_cat': 1.0}
-        cal_low = generate_onboarding_calendar(cats, weights, alerts_per_day=50)
-        cal_high = generate_onboarding_calendar(cats, weights, alerts_per_day=500)
+        cal_low = generate_onboarding_calendar(cats, weights, alerts_per_day=50, d=EXPECTED_D)
+        cal_high = generate_onboarding_calendar(cats, weights, alerts_per_day=500, d=EXPECTED_D)
         assert cal_high['total_weeks'] < cal_low['total_weeks']
 
 

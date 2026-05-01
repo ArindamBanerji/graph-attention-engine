@@ -794,7 +794,8 @@ def test_centroids_property_shape():
     """centroids property exposes the centroid tensor via the public API."""
     scorer, _, _ = _make_mask_scorer()
     assert scorer.centroids is not None
-    assert scorer.centroids.shape == (6, 4, 6)
+    expected_shape = (scorer.n_categories, scorer.n_actions, scorer.n_factors)
+    assert scorer.centroids.shape == expected_shape
 
 
 def test_factor_mask_shape_mismatch_raises():
@@ -1063,3 +1064,113 @@ def test_for_soc_factory_override():
     )
     assert scorer.eta_override == 0.02
     assert scorer.auto_pause_on_amber is False
+
+
+# ---------------------------------------------------------------------------
+# score() edge cases (6 new tests)
+# ---------------------------------------------------------------------------
+
+def test_score_entropy_field_value():
+    """score() returns entropy that is a finite float >= 0."""
+    scorer = make_simple_scorer()
+    f = np.random.default_rng(42).uniform(0.0, 1.0, 6)
+    result = scorer.score(f, category_index=0)
+    assert np.isfinite(result.entropy)
+    assert result.entropy >= 0.0
+
+
+def test_score_confidence_gap_from_top_two():
+    """confidence_gap == sorted_probs[0] - sorted_probs[1] > 0 when one action clearly wins."""
+    mu = np.zeros((1, 3, 4))
+    mu[0, 0, :] = [0.9, 0.9, 0.9, 0.9]
+    mu[0, 1, :] = [0.1, 0.1, 0.1, 0.1]
+    mu[0, 2, :] = [0.1, 0.1, 0.1, 0.1]
+    f = np.array([0.95, 0.95, 0.95, 0.95])
+    scorer = ProfileScorer(mu=mu, actions=["a", "b", "c"])
+    result = scorer.score(f, category_index=0)
+    sorted_p = np.sort(result.probabilities)[::-1]
+    assert result.confidence_gap == pytest.approx(sorted_p[0] - sorted_p[1], abs=1e-9)
+    assert result.confidence_gap > 0.0
+
+
+def test_score_wrong_factor_length_raises():
+    """Factor vector of length d+1 raises AssertionError (shape mismatch)."""
+    scorer = make_simple_scorer()  # n_fac=6
+    f_wrong = np.full(7, 0.5)     # d+1
+    with pytest.raises(AssertionError):
+        scorer.score(f_wrong, category_index=0)
+
+
+def test_score_category_oob_raises():
+    """category_index = n_categories + 1 raises AssertionError (out of bounds)."""
+    scorer = make_simple_scorer()  # n_cat=3
+    f = np.full(6, 0.5)
+    with pytest.raises(AssertionError):
+        scorer.score(f, category_index=4)  # valid range: [0, 2]
+
+
+def test_score_frozen_same_as_unfrozen():
+    """freeze() does not affect score() — only update() is blocked."""
+    scorer = make_simple_scorer()
+    f = np.full(6, 0.5)
+    result_unfrozen = scorer.score(f, category_index=0)
+    scorer.freeze()
+    result_frozen = scorer.score(f, category_index=0)
+    np.testing.assert_array_equal(
+        result_unfrozen.probabilities, result_frozen.probabilities
+    )
+
+
+def test_score_nan_centroids_raises():
+    """Centroids containing NaN raise ValueError during score()."""
+    scorer = make_simple_scorer()
+    scorer.mu[0, 0, 0] = np.nan  # inject NaN bypassing the setter
+    f = np.full(6, 0.5)
+    with pytest.raises(ValueError):
+        scorer.score(f, category_index=0)
+
+
+# ---------------------------------------------------------------------------
+# update() edge cases (4 new tests)
+# ---------------------------------------------------------------------------
+
+def test_update_non_boolean_correct_behavior():
+    """update(correct=1) treats int 1 as truthy — confirmation path runs."""
+    scorer = make_simple_scorer()
+    f = np.full(6, 0.8)
+    mu_before = scorer.centroids.copy()
+    result = scorer.update(f, category_index=0, action_index=0, correct=1)
+    assert isinstance(result, CentroidUpdate)
+    assert result.centroid_delta_norm > 0.0
+    assert not np.allclose(scorer.centroids[0, 0], mu_before[0, 0])
+
+
+def test_update_wrong_factor_shape_raises():
+    """Factor vector of wrong length raises AssertionError in update()."""
+    scorer = make_simple_scorer()  # n_fac=6
+    f_wrong = np.full(5, 0.5)     # wrong length
+    with pytest.raises(AssertionError):
+        scorer.update(f_wrong, category_index=0, action_index=0, correct=True)
+
+
+def test_update_alias_preserved_after_mutation():
+    """centroids setter copies the array — mutating the source does not affect the scorer."""
+    scorer = make_simple_scorer()
+    new_centroids = np.full(scorer.centroids.shape, 0.7)
+    scorer.centroids = new_centroids   # setter makes a copy
+    new_centroids[0, 0, 0] = 99.0     # mutate original
+    assert scorer.centroids[0, 0, 0] == pytest.approx(0.7)
+
+
+def test_update_eta_zero_no_delta():
+    """eta_override=0.0 on incorrect path produces zero centroid movement."""
+    np.random.seed(42)
+    mu = np.random.uniform(0.2, 0.8, (2, 3, 6))
+    scorer = ProfileScorer(mu=mu.copy(), actions=["a", "b", "c"], eta_override=0.0)
+    f = np.full(6, 0.5)
+    mu_before = scorer.centroids.copy()
+    result = scorer.update(
+        f, category_index=0, action_index=0, correct=False, gt_action_index=1
+    )
+    assert result.centroid_delta_norm == 0.0
+    np.testing.assert_array_equal(scorer.centroids[0], mu_before[0])

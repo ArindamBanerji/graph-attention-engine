@@ -51,14 +51,15 @@ def make_state(**kwargs) -> LearningState:
 class TestLearningStateConstruction:
     def test_basic_construction(self):
         s = make_state()
+        expected_shape = W_INIT.shape
         assert s.n_actions == 4
-        assert s.n_factors == 6
-        assert s.W.shape == (4, 6)
+        assert s.n_factors == expected_shape[1]
+        assert s.W.shape == expected_shape
 
     def test_epsilon_vector_initialised(self):
         s = make_state()
         assert s.epsilon_vector is not None
-        assert s.epsilon_vector.shape == (6,)
+        assert s.epsilon_vector.shape == (s.n_factors,)
         np.testing.assert_allclose(s.epsilon_vector, EPSILON)
 
     def test_no_op_defaults(self):
@@ -124,7 +125,7 @@ class TestUpdate:
     def test_w_shape_preserved_after_update(self):
         s = make_state()
         s.update(0, "fp_close", +1, F)
-        assert s.W.shape == (4, 6)
+        assert s.W.shape == W_INIT.shape
 
     def test_eq4b_correct_outcome_delta_vector(self):
         """delta_applied for +1 outcome should be α · f."""
@@ -174,8 +175,8 @@ class TestUpdate:
     def test_w_before_and_w_after_in_record(self):
         s = make_state()
         u = s.update(0, "fp_close", +1, F)
-        assert u.W_before.shape == (4, 6)
-        assert u.W_after.shape == (4, 6)
+        assert u.W_before.shape == W_INIT.shape
+        assert u.W_after.shape == W_INIT.shape
         assert not np.allclose(u.W_before, u.W_after)
 
     def test_factor_vector_preserved_in_record_r4(self):

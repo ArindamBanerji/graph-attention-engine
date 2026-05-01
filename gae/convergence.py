@@ -37,7 +37,6 @@ ETA_NEG_DEFAULT: float = 0.05  # Canonical negative learning rate (P1 confirmed)
 TR_SIGMA_F: float = 0.34       # tr(Σ_f) measured FX-1-PROXY-REAL (P1); design=0.24 (+44%)
 SIGMA_MAX: float = 0.034       # 10th-percentile L2 margin (P6)
 N_HALF_DEFAULT: float = 13.51  # ln(2)/ln(1/(1−0.05)) decisions (math_synopsis_v9 §5)
-D: int = 6                     # Factor dimensionality
 
 # ε=0.10 gives 2.6× headroom over e_∞≈0.038; ε=0.05 gives only 1.3× (too tight).
 # PROD-5: all 6 categories failed the ε=0.05 test despite healthy accuracy gains.
@@ -130,14 +129,14 @@ def compute_steady_state_mse(
 def compute_e_inf_per_component(
     eta: float = ETA_DEFAULT,
     tr_sigma_f: float = TR_SIGMA_F,
-    d: int = D,
+    d: int | None = None,
 ) -> float:
     """
     Per-component steady-state error.
 
     e_∞ = sqrt(MSE_∞ / d)
 
-    At defaults (η=0.05, tr(Σ_f)=0.34, d=6): e_∞ ≈ 0.038 per factor component.
+    At defaults (η=0.05, tr(Σ_f)=0.34, d factors), e_∞ scales as sqrt(MSE_∞ / d).
     Source: math_synopsis_v9 §5; P1 for tr(Σ_f).
 
     Parameters
@@ -146,14 +145,15 @@ def compute_e_inf_per_component(
         Learning rate.
     tr_sigma_f : float
         Trace of factor covariance matrix.
-    d : int
-        Factor dimensionality.
+    d : int | None
+        Factor dimensionality. Must be passed explicitly.
 
     Returns
     -------
     float
         Per-component steady-state error.
     """
+    assert d is not None, "d must be provided explicitly"
     assert d > 0, f"d must be positive, got {d}"
     mse = compute_steady_state_mse(eta, tr_sigma_f)
     return float(np.sqrt(mse / d))
@@ -164,6 +164,7 @@ def predict_convergence_decisions(
     epsilon: float = 0.10,
     eta: float = ETA_DEFAULT,
     tr_sigma_f: float = TR_SIGMA_F,
+    d: int | None = None,
 ) -> int:
     """
     Predicted decisions to converge from initial error e_0 to threshold ε.
@@ -191,7 +192,7 @@ def predict_convergence_decisions(
     int
         Decisions required, or -1 if convergence is impossible.
     """
-    e_inf = compute_e_inf_per_component(eta, tr_sigma_f)
+    e_inf = compute_e_inf_per_component(eta, tr_sigma_f, d=d)
     if epsilon <= e_inf:
         return -1
     if e_0 <= epsilon:
@@ -206,6 +207,7 @@ def predict_convergence_decisions_v2(
     eta: float = ETA_DEFAULT,
     tr_sigma_f: float = TR_SIGMA_F,
     safety_factor: float = 2.0,
+    d: int | None = None,
 ) -> int:
     """
     Noise-aware convergence prediction.
@@ -244,7 +246,7 @@ def predict_convergence_decisions_v2(
         Decisions required (0 if already converged). Never returns -1;
         epsilon is auto-adjusted if too close to noise floor.
     """
-    e_inf = compute_e_inf_per_component(eta, tr_sigma_f)
+    e_inf = compute_e_inf_per_component(eta, tr_sigma_f, d=d)
     if epsilon <= e_inf * 1.5:
         # Too close to noise floor — auto-adjust to safe threshold
         epsilon = e_inf * 2.5
@@ -321,6 +323,7 @@ def predict_category_convergence_weeks(
     graph_level: str = 'G1',
     eta: float = ETA_DEFAULT,
     tr_sigma_f: float = TR_SIGMA_F,
+    d: int | None = None,
 ) -> Dict:
     """
     Predict weeks to convergence for a specific category.
@@ -356,7 +359,13 @@ def predict_category_convergence_weeks(
     verified_per_day = alerts_per_day * verification_rate
     verified_per_action_per_day = verified_per_day / max(n_actions, 1)
 
-    n_decisions = predict_convergence_decisions_v2(e_0, EPSILON_DEFAULT, eta, tr_sigma_f)
+    n_decisions = predict_convergence_decisions_v2(
+        e_0,
+        EPSILON_DEFAULT,
+        eta,
+        tr_sigma_f,
+        d=d,
+    )
     if n_decisions == 0:
         return {
             'category': category,
@@ -391,6 +400,7 @@ def generate_onboarding_calendar(
     graph_level: str = 'G1',
     eta: float = ETA_DEFAULT,
     tr_sigma_f: float = TR_SIGMA_F,
+    d: int | None = None,
 ) -> Dict:
     """
     Generate full onboarding calendar for all categories.
@@ -436,6 +446,7 @@ def generate_onboarding_calendar(
             graph_level=graph_level,
             eta=eta,
             tr_sigma_f=tr_sigma_f,
+            d=d,
         )
         predictions.append(pred)
 

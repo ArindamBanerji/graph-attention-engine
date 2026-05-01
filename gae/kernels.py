@@ -129,7 +129,12 @@ class DiagonalKernel:
     gradient form. When W = I (uniform σ): reduces to L2.
     """
 
-    def __init__(self, sigma: np.ndarray) -> None:
+    def __init__(
+        self,
+        sigma: np.ndarray | None = None,
+        *,
+        weights: np.ndarray | None = None,
+    ) -> None:
         """
         Parameters
         ----------
@@ -137,6 +142,9 @@ class DiagonalKernel:
             Per-factor noise standard deviation. All values must be > 0.
             Weights are computed as W = 1/σ² then normalised by W.max():
             self.weights = W / W.max() ∈ [0, 1].
+        weights : np.ndarray, shape (d,)
+            Optional direct weight vector. All values must be finite and > 0.
+            Used when the caller already has effective diagonal weights.
 
         Attributes set at construction
         --------------------------------
@@ -145,6 +153,25 @@ class DiagonalKernel:
             scale — higher value = richer signal. Use to compare kernels
             built from different σ measurements (enrichment validation).
         """
+        if sigma is not None and weights is not None:
+            raise ValueError("Provide either sigma or weights, not both")
+        if sigma is None and weights is None:
+            raise ValueError("Either sigma or weights must be provided")
+
+        if weights is not None:
+            weight_array = np.asarray(weights, dtype=np.float64)
+            assert weight_array.ndim == 1, (
+                f"weights must be 1-D, got shape {weight_array.shape}"
+            )
+            if not np.all(np.isfinite(weight_array)) or np.any(weight_array <= 0):
+                raise ValueError(
+                    f"DiagonalKernel: all weights must be finite and > 0. Got {weight_array}"
+                )
+            self._W_baseline_max = float(weight_array.max())
+            self.weights = weight_array.copy()
+            self.sigma = np.sqrt(1.0 / weight_array)
+            return
+
         sigma = np.asarray(sigma, dtype=np.float64)
         assert sigma.ndim == 1, (
             f"sigma must be 1-D, got shape {sigma.shape}"
@@ -154,9 +181,9 @@ class DiagonalKernel:
                 f"DiagonalKernel: all sigma values must be > 0. Got {sigma}"
             )
         W = 1.0 / sigma ** 2
-        self._W_baseline_max: float = float(W.max())
-        self.weights: np.ndarray = W / self._W_baseline_max
-        self.sigma: np.ndarray = sigma.copy()
+        self._W_baseline_max = float(W.max())
+        self.weights = W / self._W_baseline_max
+        self.sigma = sigma.copy()
 
     def compute_distance(self, f: np.ndarray, mu: np.ndarray) -> np.ndarray:
         """

@@ -548,3 +548,65 @@ def test_comparison_summary_includes_analyst_prob():
     for kernel_name, stats in summary.items():
         assert "mean_analyst_action_prob" in stats
         assert isinstance(stats["mean_analyst_action_prob"], float)
+
+
+# ------------------------------------------------------------------ #
+# recommend: edge cases (5 new tests)                                 #
+# ------------------------------------------------------------------ #
+
+def test_recommend_empty_scores_fallback_shape():
+    """scores={} forces fallback to preliminary_recommendation()."""
+    sigma = np.full(4, 0.1)
+    sel = KernelSelector(d=4, sigma_per_factor=sigma)
+    sel.scores = {}
+    rec = sel.recommend()
+    assert isinstance(rec, KernelRecommendation)
+    assert rec.method == 'rule'
+
+
+def test_recommend_all_equal_scores_deterministic():
+    """With no shadow data all buffers empty → recommend() is deterministic."""
+    sigma = np.full(4, 0.1)
+    sel = KernelSelector(d=4, sigma_per_factor=sigma)
+    rec1 = sel.recommend()
+    rec2 = sel.recommend()
+    assert rec1.recommended_kernel == rec2.recommended_kernel
+    assert rec1.method == rec2.method
+
+
+def test_recommend_nan_scores_handled():
+    """NaN in a rolling buffer does not crash recommend()."""
+    sigma = np.full(4, 0.1)
+    sel = KernelSelector(d=4, sigma_per_factor=sigma)
+    sel.scores["l2"].total_decisions = 100
+    sel.scores["diagonal"].total_decisions = 100
+    sel.scores["shrinkage"].total_decisions = 100
+    sel._buffers["l2"] = [np.nan, True, False]
+    sel._buffers["diagonal"] = [True] * 100
+    sel._buffers["shrinkage"] = [False] * 100
+    rec = sel.recommend()
+    assert isinstance(rec, KernelRecommendation)
+    assert rec.recommended_kernel in {"l2", "diagonal", "shrinkage"}
+
+
+def test_recommend_return_shape_matches_preliminary():
+    """With insufficient data, recommend() returns same structure as preliminary_recommendation()."""
+    sigma = np.full(4, 0.1)
+    sel = KernelSelector(d=4, sigma_per_factor=sigma)
+    rec = sel.recommend()
+    prelim = sel.preliminary_recommendation()
+    assert isinstance(rec, KernelRecommendation)
+    assert isinstance(prelim, KernelRecommendation)
+    assert rec.recommended_kernel == prelim.recommended_kernel
+    assert rec.method == prelim.method
+    assert rec.sufficient_data is False
+
+
+def test_recommend_method_rule_when_empty():
+    """method field is populated ('rule') even with no shadow data."""
+    sigma = np.full(4, 0.1)
+    sel = KernelSelector(d=4, sigma_per_factor=sigma)
+    sel.scores = {}
+    rec = sel.recommend()
+    assert rec.method == 'rule'
+    assert len(rec.recommended_kernel) > 0

@@ -51,9 +51,27 @@ from __future__ import annotations
 __version__ = "0.7.23"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
+from gae.dk_estimator import DKEstimator, CoordinateDescentEstimator
+from gae.shrinkage import (
+    ShrinkageSchedule,
+    FixedAlpha,
+    LinearRampAlpha,
+    compute_effective_weights,
+)
 from gae.kernels import L2Kernel, DiagonalKernel
 from gae.covariance import CovarianceEstimator
 from gae.kernel_selector import KernelSelector, KernelRecommendation
+from gae.novelty import NoveltyTracker, NearestNeighborNovelty
+from gae.batch_pipeline import (
+    BatchCompositionPolicy,
+    NoveltyThresholdPolicy,
+    FixedIntervalPolicy,
+    PromotionGate,
+    DefaultPromotionGate,
+    GateVerdict,
+    BatchRecord,
+    BatchHistory,
+)
 from gae.referral import (
     ReferralEngine,
     ReferralRule,
@@ -63,6 +81,7 @@ from gae.referral import (
 )
 from gae.profile_scorer import (
     CentroidUpdate,
+    LearningStrategy,
     ProfileScorer,
     ScoringResult,
     KernelType,
@@ -180,11 +199,18 @@ __all__ = [
     "__version__",
     # Core scoring
     "CentroidUpdate",
+    "LearningStrategy",
     "ProfileScorer",
     "ScoringResult",
     "KernelType",
     "build_profile_scorer",
     "ProfileScoringResult",       # backward-compat alias
+    "DKEstimator",
+    "CoordinateDescentEstimator",
+    "ShrinkageSchedule",
+    "FixedAlpha",
+    "LinearRampAlpha",
+    "compute_effective_weights",
     # Oracle
     "OracleProvider",
     "OracleResult",
@@ -261,6 +287,16 @@ __all__ = [
     "CovarianceEstimator",
     "KernelSelector",
     "KernelRecommendation",
+    "NoveltyTracker",
+    "NearestNeighborNovelty",
+    "BatchCompositionPolicy",
+    "NoveltyThresholdPolicy",
+    "FixedIntervalPolicy",
+    "PromotionGate",
+    "DefaultPromotionGate",
+    "GateVerdict",
+    "BatchRecord",
+    "BatchHistory",
     # Referral
     "ReferralEngine",
     "ReferralRule",
