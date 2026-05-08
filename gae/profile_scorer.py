@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from gae.calibration import CalibrationProfile
 
 from gae.dk_estimator import CoordinateDescentEstimator, DKEstimator
+from gae.convergence import ConservationStateMachine
 from gae.primitives import compute_entropy
 from gae.shrinkage import FixedAlpha, ShrinkageSchedule, compute_effective_weights
 from gae.two_phase import (
@@ -288,6 +289,10 @@ class ProfileScorer:
         self.auto_pause_on_amber: bool = auto_pause_on_amber
         self._conservation_status: str = 'GREEN'
         self._paused_by_conservation: bool = False
+        self._conservation_sm = ConservationStateMachine(initial_state="CALIBRATING")
+        self._conservation_sm.register_handler("*", "AMBER", self._on_conservation_pause)
+        self._conservation_sm.register_handler("*", "RED", self._on_conservation_pause)
+        self._conservation_sm.register_handler("*", "GREEN", self._on_conservation_resume)
 
         self._learning_strategy = learning_strategy
         if learning_strategy is not None:
@@ -461,7 +466,7 @@ class ProfileScorer:
                 self._dk_weights[category_index], alpha
             )
             from gae.kernels import DiagonalKernel
-            _phase2_kernel = DiagonalKernel(weights=w_tilde)
+            _phase2_kernel = DiagonalKernel.from_effective(w_tilde)
             phase2_mu = self.centroids[category_index]
             if self.factor_mask is not None:
                 phase2_mu = phase2_mu * self.factor_mask
@@ -695,6 +700,15 @@ class ProfileScorer:
             'gate_rate': self._gated_count / max(total, 1),
         }
 
+    def _on_conservation_pause(self, old_state: str, new_state: str) -> None:
+        """Pause centroid learning after AMBER/RED conservation transitions."""
+        if self.auto_pause_on_amber:
+            self._paused_by_conservation = True
+
+    def _on_conservation_resume(self, old_state: str, new_state: str) -> None:
+        """Resume centroid learning after GREEN conservation recovery."""
+        self._paused_by_conservation = False
+
     def set_conservation_status(self, status: str) -> None:
         """
         Update conservation monitor status and adjust learning pause state.
@@ -710,11 +724,14 @@ class ProfileScorer:
 
         Reference: G6a three-judge consensus; docs/gae_design_v10_6.md §9.6.
         """
+        transitioned = self._conservation_sm.transition(status)
+        if not transitioned:
+            return
         self._conservation_status = status
-        if self.auto_pause_on_amber and status in ('AMBER', 'RED'):
-            self._paused_by_conservation = True
+        if status in ('AMBER', 'RED'):
+            self._on_conservation_pause(self._conservation_sm.state, status)
         elif status == 'GREEN':
-            self._paused_by_conservation = False
+            self._on_conservation_resume(self._conservation_sm.state, status)
 
     @property
     def conservation_status(self) -> str:
@@ -725,6 +742,16 @@ class ProfileScorer:
     def is_paused(self) -> bool:
         """True when learning is paused due to conservation AMBER/RED signal."""
         return self._paused_by_conservation
+
+    @property
+    def conservation_state_machine(self) -> ConservationStateMachine:
+        """Access conservation state machine for handler registration."""
+        return self._conservation_sm
+
+    def register_ols_monitor(self, ols_monitor) -> None:
+        """Register OLSMonitor for alarm reset on GREEN recovery."""
+        self._conservation_sm.register_handler("AMBER", "GREEN", ols_monitor.reset_alarm)
+        self._conservation_sm.register_handler("RED", "GREEN", ols_monitor.reset_alarm)
 
     # ------------------------------------------------------------------ #
     # Learning                                                            #
@@ -848,6 +875,7 @@ class ProfileScorer:
                 action_name=self._action_name(a),
                 decision_count=self.decision_count,
                 gt_delta_norm=0.0,
+                outcome='frozen',
             )
 
         if not (0 <= category_index < self.n_categories):
@@ -1004,6 +1032,20 @@ class ProfileScorer:
         if self._dk_weights is None:
             return None
         return self._dk_weights[category_index].copy()
+
+    def get_dk_weights_normalized(self, category_index: int) -> Optional[np.ndarray]:
+        """Max-normalized [0,1] learned DK weights for display.
+
+        Use for Tab 3/4 visualization, UI charts, and logging.
+        For scoring, use get_dk_weights() (raw).
+        """
+        weights = self.get_dk_weights(category_index)
+        if weights is None:
+            return None
+        w_max = float(weights.max()) if weights.size else 0.0
+        if w_max > 0:
+            return weights / w_max
+        return weights.copy()
 
     def reestimate_dk(self) -> None:
         """Re-estimate per-category DK weights from buffered correct decisions."""
@@ -1164,6 +1206,16 @@ class ProfileScorer:
         for attr in ('_learning_strategy', '_category_states', '_dk_weights', '_decision_buffer'):
             if attr not in state:
                 setattr(self, attr, None)
+        if '_conservation_sm' not in state:
+            self._conservation_sm = ConservationStateMachine(
+                initial_state=getattr(self, '_conservation_status', 'CALIBRATING')
+                if getattr(self, '_conservation_status', 'CALIBRATING')
+                in ConservationStateMachine.VALID_STATES
+                else 'CALIBRATING'
+            )
+            self._conservation_sm.register_handler("*", "AMBER", self._on_conservation_pause)
+            self._conservation_sm.register_handler("*", "RED", self._on_conservation_pause)
+            self._conservation_sm.register_handler("*", "GREEN", self._on_conservation_resume)
 
     # ------------------------------------------------------------------ #
     # Factory                                                             #
@@ -1175,6 +1227,7 @@ class ProfileScorer:
         config_dict: Dict,
         actions: List[str],
         profile: Optional["CalibrationProfile"] = None,
+        learning_strategy: Optional[LearningStrategy] = None,
     ) -> "ProfileScorer":
         """
         Build ProfileScorer from a nested config dictionary.
@@ -1246,7 +1299,13 @@ class ProfileScorer:
         kernel_str = config_dict.get("kernel", "l2").lower()
         kernel = KernelType(kernel_str)
 
-        return cls(mu=mu, actions=actions, kernel=kernel, profile=profile)
+        return cls(
+            mu=mu,
+            actions=actions,
+            kernel=kernel,
+            profile=profile,
+            learning_strategy=learning_strategy,
+        )
 
 
 def build_profile_scorer(
@@ -1256,6 +1315,7 @@ def build_profile_scorer(
     n_factors: int,
     kernel: KernelType = KernelType.L2,
     profile: Optional["CalibrationProfile"] = None,
+    learning_strategy: Optional[LearningStrategy] = None,
 ) -> ProfileScorer:
     """
     Convenience factory for building a ProfileScorer from explicit arguments.
@@ -1277,4 +1337,9 @@ def build_profile_scorer(
         "centroids": centroids,
         "kernel": kernel.value,
     }
-    return ProfileScorer.init_from_config(config_dict, actions, profile)
+    return ProfileScorer.init_from_config(
+        config_dict,
+        actions,
+        profile,
+        learning_strategy=learning_strategy,
+    )

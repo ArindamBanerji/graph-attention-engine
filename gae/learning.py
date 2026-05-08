@@ -458,17 +458,19 @@ class LearningState:
         )
 
         # A4: Update reinforcement counts for provisional dimensions
+        reinforced_cols: set[int] = set()
         for dm in self.dimension_metadata:
             if dm.state == "provisional":
                 col = dm.col_index
                 if col < len(update_vector) and abs(update_vector[col]) > 1e-6:
                     dm.reinforcement_count += 1
+                    reinforced_cols.add(col)
                     if dm.reinforcement_count >= dm.establishment_threshold:
                         dm.state = "established"
                         self.epsilon_vector[col] = dm.decay_rate
 
         # A4: Prune provisional dimensions that have decayed to near-zero
-        self._prune_provisional_dimensions()
+        self._prune_provisional_dimensions(protected_cols=reinforced_cols)
 
         self.decision_count += 1
 
@@ -589,11 +591,17 @@ class LearningState:
     # _prune_provisional_dimensions  — A4 internal
     # ------------------------------------------------------------------
 
-    def _prune_provisional_dimensions(self, theta_prune: float = 0.01) -> None:
+    def _prune_provisional_dimensions(
+        self,
+        theta_prune: float = 0.01,
+        protected_cols: set[int] | None = None,
+    ) -> None:
         """
         Remove provisional dimensions whose W column has decayed to near-zero.
 
         A4 hardening: false discoveries self-correct by decaying away.
+        Columns reinforced during the current update are protected for that
+        pruning pass only; they remain provisional until established.
         Uses DimensionMetadata.col_index (not enumerate index) to correctly
         identify the target W column regardless of how many original dimensions
         were present at construction time.
@@ -604,12 +612,16 @@ class LearningState:
         ----------
         theta_prune : float, default 0.01
             Maximum |W[:, col]| below which a provisional dimension is pruned.
+        protected_cols : set[int] or None
+            Column indices to skip for this pruning pass, typically because
+            they received reinforcement earlier in the same update.
         """
+        protected_cols = protected_cols or set()
         to_remove_cols: list[int] = []
         for dm in self.dimension_metadata:
             if dm.state == "provisional":
                 col = dm.col_index
-                if np.max(np.abs(self.W[:, col])) < theta_prune:
+                if col not in protected_cols and np.max(np.abs(self.W[:, col])) < theta_prune:
                     to_remove_cols.append(col)
 
         if not to_remove_cols:

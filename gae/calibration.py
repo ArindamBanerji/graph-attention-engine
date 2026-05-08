@@ -461,6 +461,34 @@ def compute_eta_override(
     return round(eta_confirm * ratio * safety_margin, 4)
 
 
+def conservation_status(
+    verified_count: int,
+    correct_count: int,
+    total_decisions: int,
+    penalty_ratio: float,
+    window: int = 400,
+) -> ConservationCheck:
+    """Convenience: compute conservation from raw decision counts.
+
+    Derives α = verified/total, q = correct/verified, V = verified,
+    then delegates to check_conservation(). Used by copilot-sdk
+    conservation router to avoid callers computing α/q/V manually.
+    """
+    if total_decisions == 0 or verified_count == 0:
+        return ConservationCheck(
+            signal=0.0,
+            theta_min=float('inf'),
+            headroom=0.0,
+            status='RED',
+            passed=False,
+        )
+    alpha = verified_count / total_decisions
+    q = correct_count / verified_count
+    V = float(verified_count)
+    theta_min = compute_theta_min(alpha, V)
+    return check_conservation(alpha, q, V, theta_min)
+
+
 def check_meta_conservation(
     new_prior: np.ndarray,
     calibrated_centroids: Dict[str, np.ndarray],

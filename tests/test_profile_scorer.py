@@ -343,11 +343,19 @@ def test_update_returns_centroid_update():
 # ---------------------------------------------------------------------------
 
 def test_update_delta_norm_zero_on_frozen():
-    scorer = _make_scorer(n_categories=5, n_actions=5, n_factors=6)
+    mu = np.linspace(0.1, 0.9, 5 * 5 * 6, dtype=np.float64).reshape(5, 5, 6)
+    scorer = ProfileScorer(
+        mu=mu,
+        actions=[f"action_{i}" for i in range(5)],
+        categories=[f"cat_{i}" for i in range(5)],
+    )
     scorer.freeze()
-    f = np.random.rand(6)
+    before = scorer.centroids.copy()
+    f = np.linspace(0.2, 0.7, 6, dtype=np.float64)
     result = scorer.update(f, category_index=0, action_index=1, correct=True)
     assert result.centroid_delta_norm == 0.0
+    assert result.outcome == "frozen"
+    np.testing.assert_array_equal(scorer.centroids, before)
 
 
 # ---------------------------------------------------------------------------

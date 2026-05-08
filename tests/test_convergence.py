@@ -12,6 +12,7 @@ from gae.convergence import (
     compute_n_half,
     compute_normalized_var_q,
     compute_per_factor_n_half,
+    compute_reconvergence_ratio,
     compute_steady_state_mse,
     ConservationMonitor,
     OLSMonitor,
@@ -778,3 +779,38 @@ class TestPerFactorNHalf:
         result = compute_per_factor_n_half(dk.weights, eta=0.05)
         # Max-weighted factor (smallest sigma) gets the canonical half-life
         assert 13 < result.min() < 15
+
+
+# ---------------------------------------------------------------------------
+# compute_reconvergence_ratio() — γ = N_half_initial / N_half_recovery
+# ---------------------------------------------------------------------------
+
+class TestComputeReconvergenceRatio:
+    """compute_reconvergence_ratio(pre, post) -> γ."""
+
+    def test_faster_recovery_gamma_greater_than_one(self):
+        # Initial calibration took 1404 decisions; recovery took 546 — γ > 1
+        gamma = compute_reconvergence_ratio(1404, 546)
+        assert gamma > 1.0
+        assert abs(gamma - 1404 / 546) < 1e-10
+
+    def test_same_speed_gamma_equals_one(self):
+        gamma = compute_reconvergence_ratio(100, 100)
+        assert gamma == pytest.approx(1.0)
+
+    def test_slower_recovery_gamma_less_than_one(self):
+        gamma = compute_reconvergence_ratio(50, 200)
+        assert gamma == pytest.approx(0.25)
+
+    def test_zero_post_returns_inf(self):
+        gamma = compute_reconvergence_ratio(100, 0)
+        assert gamma == float('inf')
+
+    def test_zero_pre_returns_zero(self):
+        gamma = compute_reconvergence_ratio(0, 100)
+        assert gamma == pytest.approx(0.0)
+
+    def test_bridge_b_phase_c_typical_values(self):
+        # Phase C v3: initial ~1404, episode 1 recovery ~546 -> γ ≈ 2.57
+        gamma = compute_reconvergence_ratio(1404, 546)
+        assert 2.5 < gamma < 2.7

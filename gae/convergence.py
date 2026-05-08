@@ -21,12 +21,15 @@ Reference: docs/gae_design_v10_6.md §8.3; blog convergence criterion.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Tuple, Optional
+import logging
+from typing import TYPE_CHECKING, Callable, Dict, Tuple, Optional
 
 import numpy as np
 
 if TYPE_CHECKING:
     from gae.learning import LearningState
+
+log = logging.getLogger(__name__)
 
 
 # ── Empirical constants ──────────────────────────────────────────────────────
@@ -157,6 +160,21 @@ def compute_e_inf_per_component(
     assert d > 0, f"d must be positive, got {d}"
     mse = compute_steady_state_mse(eta, tr_sigma_f)
     return float(np.sqrt(mse / d))
+
+
+def compute_reconvergence_ratio(
+    pre_disruption_n_half: int,
+    post_disruption_n_half: int,
+) -> float:
+    """γ = N_half_initial / N_half_recovery.
+
+    γ > 1 means post-disruption recovery is faster than initial calibration
+    (graph enrichment shortens re-convergence). γ < 1 means slower recovery
+    (unexpected degradation). Used by copilot-sdk trajectory annotation.
+    """
+    if post_disruption_n_half == 0:
+        return float('inf')
+    return pre_disruption_n_half / post_disruption_n_half
 
 
 def predict_convergence_decisions(
@@ -633,6 +651,107 @@ CUSUM_K_OFFSET: float = 0.05
 CUSUM_H: float = 5.0
 
 
+class ConservationStateMachine:
+    """Owns conservation status transitions and registered transition handlers."""
+
+    VALID_STATES = {"CALIBRATING", "GREEN", "AMBER", "RED"}
+
+    def __init__(self, initial_state: str = "CALIBRATING") -> None:
+        if initial_state not in self.VALID_STATES:
+            raise ValueError(
+                f"invalid conservation state {initial_state!r}; "
+                f"expected one of {sorted(self.VALID_STATES)}"
+            )
+        self._state = initial_state
+        self._handlers: Dict[Tuple[str, str], list[Callable[[str, str], None]]] = {}
+        self._guards: Dict[Tuple[str, str], list[Callable[[], bool]]] = {}
+
+    @property
+    def state(self) -> str:
+        """Current conservation state."""
+        return self._state
+
+    def _validate_from_state(self, from_state: str) -> None:
+        if from_state != "*" and from_state not in self.VALID_STATES:
+            raise ValueError(
+                f"invalid conservation from_state {from_state!r}; "
+                f"expected '*' or one of {sorted(self.VALID_STATES)}"
+            )
+
+    def _validate_to_state(self, to_state: str) -> None:
+        if to_state not in self.VALID_STATES:
+            raise ValueError(
+                f"invalid conservation to_state {to_state!r}; "
+                f"expected one of {sorted(self.VALID_STATES)}"
+            )
+
+    def register_handler(
+        self,
+        from_state: str,
+        to_state: str,
+        handler: Callable[[str, str], None],
+    ) -> None:
+        """Register a transition handler with signature handler(old, new)."""
+        self._validate_from_state(from_state)
+        self._validate_to_state(to_state)
+        self._handlers.setdefault((from_state, to_state), []).append(handler)
+
+    def register_guard(
+        self,
+        from_state: str,
+        to_state: str,
+        guard: Callable[[], bool],
+    ) -> None:
+        """Register a transition guard with signature guard() -> bool."""
+        self._validate_from_state(from_state)
+        self._validate_to_state(to_state)
+        self._guards.setdefault((from_state, to_state), []).append(guard)
+
+    def transition(self, new_state: str) -> bool:
+        """Move to a new conservation state and fire registered handlers."""
+        if new_state not in self.VALID_STATES:
+            log.warning("invalid conservation transition target: %r", new_state)
+            return False
+
+        old_state = self._state
+        if new_state == old_state:
+            return True
+
+        for key in ((old_state, new_state), ("*", new_state)):
+            for guard in self._guards.get(key, []):
+                try:
+                    allowed = guard()
+                except Exception:
+                    log.exception(
+                        "conservation transition guard failed: %s -> %s",
+                        old_state,
+                        new_state,
+                    )
+                    return False
+                if not allowed:
+                    log.info(
+                        "conservation transition blocked by guard: %s -> %s",
+                        old_state,
+                        new_state,
+                    )
+                    return False
+
+        self._state = new_state
+
+        for key in ((old_state, new_state), ("*", new_state)):
+            for handler in self._handlers.get(key, []):
+                try:
+                    handler(old_state, new_state)
+                except Exception:
+                    log.exception(
+                        "conservation transition handler failed: %s -> %s",
+                        old_state,
+                        new_state,
+                    )
+
+        return True
+
+
 class ConservationMonitor:
     """
     Two-layer quality conservation monitor.
@@ -958,6 +1077,22 @@ class OLSMonitor:
             self.cusum = 0.0  # reset after alarm
             return True
         return False
+
+    def reset_alarm(
+        self,
+        old_state: str | None = None,
+        new_state: str | None = None,
+    ) -> None:
+        """
+        Reset transient CUSUM alarm state on conservation recovery.
+
+        Called as a conservation state-machine handler when transitioning
+        from AMBER/RED to GREEN. Preserves baseline_ols, baseline_frozen,
+        ols_history, and calibrated thresholds.
+        """
+        self.cusum = 0.0
+        self.yellow_warning = False
+        self.yellow_reason = ""
 
 
 # ---------------------------------------------------------------------------

@@ -479,6 +479,40 @@ class TestEdgeCases:
         assert u.W_before.shape == (2, 4)
         assert u.W_after.shape == (2, 4)
 
+    def test_reinforced_provisional_dimension_can_prune_later(self):
+        """A reinforced-but-unestablished dimension is protected only for its update."""
+        state = LearningState(
+            W=np.zeros((2, 3), dtype=np.float64),
+            n_actions=2,
+            n_factors=3,
+            factor_names=["base_0", "base_1", "base_2"],
+            profile=CalibrationProfile(),
+        )
+        state.expand_weight_matrix("new_factor", init_scale=0.02)
+
+        dm = state.dimension_metadata[0]
+        assert dm.state == "provisional"
+        assert dm.reinforcement_count == 0
+        assert dm.establishment_threshold > 1
+
+        state.W[:, dm.col_index] = 0.0
+        f = np.array([[0.0, 0.0, 0.0, 0.5]], dtype=np.float64)
+        u = state.update(0, "action_0", +1, f)
+
+        assert state.W.shape == (2, 4)
+        assert u.W_after.shape == (2, 4)
+        assert state.dimension_metadata[0].reinforcement_count == 1
+        assert state.dimension_metadata[0].state == "provisional"
+
+        state.W[:, state.dimension_metadata[0].col_index] = 0.0
+        state._prune_provisional_dimensions()
+
+        assert state.W.shape == (2, 3)
+        assert state.n_factors == 3
+        assert state.factor_names == ["base_0", "base_1", "base_2"]
+        assert state.epsilon_vector.shape == (3,)
+        assert state.dimension_metadata == []
+
 
 # ===========================================================================
 # GROUP 5 — Persistence Round-Trip

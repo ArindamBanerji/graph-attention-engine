@@ -42,6 +42,9 @@ class FactorComputer(Protocol):
     never drives the event loop itself.
 
     Reference: docs/gae_design_v10_6.md §5.1.
+
+    Polarity convention: 0.0 = benign/low-risk, 1.0 = suspicious/high-risk.
+    Exception: threat_intel_enrichment uses 0.0 = max threat (D-01 noted).
     """
 
     async def compute(self, entity_id: str, context: Any = None) -> float:

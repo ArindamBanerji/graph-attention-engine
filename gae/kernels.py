@@ -17,7 +17,24 @@ Reference: docs/gae_design_v10_6.md §9; v6.0 kernel roadmap.
 from __future__ import annotations
 
 import numpy as np
+from enum import Enum
 from typing import Protocol, runtime_checkable
+
+
+class WeightProvenance(str, Enum):
+    """Declares the semantic type of DK weights.
+
+    Consumers use this to determine correct interpretation:
+    - SIGMA_DERIVED: max-normalized [0,1], for Phase 1 scoring
+    - INVERSE_VARIANCE: true 1/sigma^2, for eta_eff and enrichment ROI
+    - DISCRIMINATIVE: from DK estimator, can exceed 1.0, for Phase 2
+    - EFFECTIVE: after shrinkage blend alpha*w_dk+(1-alpha), for Phase 2 scoring
+    """
+
+    SIGMA_DERIVED = "sigma_derived"
+    INVERSE_VARIANCE = "inverse_variance"
+    DISCRIMINATIVE = "discriminative"
+    EFFECTIVE = "effective"
 
 
 @runtime_checkable
@@ -166,10 +183,12 @@ class DiagonalKernel:
             if not np.all(np.isfinite(weight_array)) or np.any(weight_array <= 0):
                 raise ValueError(
                     f"DiagonalKernel: all weights must be finite and > 0. Got {weight_array}"
-                )
+            )
             self._W_baseline_max = float(weight_array.max())
             self.weights = weight_array.copy()
             self.sigma = np.sqrt(1.0 / weight_array)
+            self._provenance = WeightProvenance.DISCRIMINATIVE
+            self._raw_weights = weight_array.copy()
             return
 
         sigma = np.asarray(sigma, dtype=np.float64)
@@ -184,6 +203,35 @@ class DiagonalKernel:
         self._W_baseline_max = float(W.max())
         self.weights = W / self._W_baseline_max
         self.sigma = sigma.copy()
+        self._provenance = WeightProvenance.SIGMA_DERIVED
+        self._raw_weights = W.copy()
+
+    @classmethod
+    def from_sigma(cls, sigma: np.ndarray) -> "DiagonalKernel":
+        """Build a sigma-derived DK with max-normalized scoring weights."""
+        kernel = cls(sigma=sigma)
+        sigma_array = np.asarray(sigma, dtype=np.float64)
+        kernel._provenance = WeightProvenance.SIGMA_DERIVED
+        kernel._raw_weights = (1.0 / sigma_array ** 2).copy()
+        return kernel
+
+    @classmethod
+    def from_learned(cls, w_dk: np.ndarray) -> "DiagonalKernel":
+        """Build a discriminative DK from learned weights without normalization."""
+        weight_array = np.asarray(w_dk, dtype=np.float64)
+        kernel = cls(weights=weight_array)
+        kernel._provenance = WeightProvenance.DISCRIMINATIVE
+        kernel._raw_weights = weight_array.copy()
+        return kernel
+
+    @classmethod
+    def from_effective(cls, w_tilde: np.ndarray) -> "DiagonalKernel":
+        """Build an effective DK from shrinkage-blended weights."""
+        weight_array = np.asarray(w_tilde, dtype=np.float64)
+        kernel = cls(weights=weight_array)
+        kernel._provenance = WeightProvenance.EFFECTIVE
+        kernel._raw_weights = weight_array.copy()
+        return kernel
 
     def compute_distance(self, f: np.ndarray, mu: np.ndarray) -> np.ndarray:
         """
@@ -229,10 +277,9 @@ class DiagonalKernel:
     @property
     def noise_ratio(self) -> float:
         """
-        max(σ)/min(σ) derived from weights = 1/σ².
+        max(σ)/min(σ) derived from weights ∝ 1/σ².
 
-        noise_ratio = σ_max/σ_min = sqrt(W_max/W_min) = sqrt(1/weights_min)
-        (since weights are proportional to W = 1/σ², W_max = _W_baseline_max × 1).
+        noise_ratio = σ_max/σ_min = sqrt(W_max/W_min) = sqrt(_W_baseline_max / weights_min).
 
         KernelSelector trigger criterion: recommend DiagonalKernel when > 1.5.
 
@@ -244,13 +291,33 @@ class DiagonalKernel:
     @property
     def raw_weights(self) -> np.ndarray:
         """
-        Raw inverse-variance weights W_i = 1/σ_i² before normalization.
+        Raw provenance-native weights before display normalization.
         Use for cross-instance comparisons (e.g. enrichment-level
         Fisher path: W/W_baseline.max()).
 
         For scoring and gradient computation, use .weights (normalized).
         """
+        if hasattr(self, "_raw_weights"):
+            return self._raw_weights.copy()
         return 1.0 / (self.sigma ** 2)
+
+    @property
+    def provenance(self) -> WeightProvenance:
+        """What kind of weights this kernel carries."""
+        return getattr(self, "_provenance", WeightProvenance.SIGMA_DERIVED)
+
+    def normalized(self) -> np.ndarray:
+        """Max-normalized [0,1] view. Safe for display regardless of provenance.
+
+        This does NOT modify stored weights. Returns a new array.
+        Use for UI display, Tab 3/4 visualization, logging.
+        Do NOT use for scoring — use .weights for that.
+        """
+        weights = np.asarray(self.weights, dtype=np.float64)
+        w_max = float(weights.max()) if weights.size else 0.0
+        if w_max > 0:
+            return weights / w_max
+        return weights.copy()
 
     def refresh_weights(self, sigma_per_factor: np.ndarray) -> "DiagonalKernel":
         """

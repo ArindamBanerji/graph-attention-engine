@@ -13,6 +13,7 @@ from gae.calibration import (
     compute_factor_mask,
     compute_optimal_tau,
     compute_transfer_prior,
+    conservation_status,
     derive_theta_min,
     mask_to_array,
     s2p_calibration_profile,
@@ -945,3 +946,71 @@ def test_compute_eta_override_worst_case_below_half():
     from gae.calibration import compute_eta_override
     result = compute_eta_override(eta_confirm=0.05, worst_case_quality=0.40)
     assert result == 0.0
+
+
+# ---------------------------------------------------------------------------
+# conservation_status() — convenience wrapper for copilot-sdk router
+# ---------------------------------------------------------------------------
+
+class TestConservationStatus:
+    """conservation_status(verified, correct, total, penalty_ratio) -> ConservationCheck."""
+
+    def test_zero_total_returns_red(self):
+        result = conservation_status(0, 0, 0, penalty_ratio=20.0)
+        assert result.status == 'RED'
+        assert not result.passed
+        assert result.signal == 0.0
+
+    def test_zero_verified_returns_red(self):
+        result = conservation_status(0, 0, 100, penalty_ratio=20.0)
+        assert result.status == 'RED'
+        assert not result.passed
+
+    def test_healthy_signal_returns_green(self):
+        # alpha=0.30, q=0.85, V=300 -> signal=76.5; theta_min=23.53/(0.3*300)=0.262
+        # headroom >> 2 -> GREEN
+        result = conservation_status(
+            verified_count=300, correct_count=255, total_decisions=1000, penalty_ratio=20.0
+        )
+        assert result.status == 'GREEN'
+        assert result.passed
+        assert result.headroom > 2.0
+
+    def test_marginal_signal_returns_amber(self):
+        # alpha=0.01, q=0.85, V=10 -> signal=0.085; theta_min=23.53/(0.01*10)=235.3 -> RED
+        # Use values that land in AMBER: signal between theta_min and 2*theta_min
+        # alpha=0.50, q=0.85, V=60 -> signal=25.5; theta_min=23.53/(0.5*60)=0.784
+        # That's GREEN. Let's design it carefully.
+        # signal = alpha*q*V; theta_min = 23.53/(alpha*V)
+        # For AMBER: theta_min <= signal < 2*theta_min
+        # alpha=0.25, q=0.85, V=10 -> signal=2.125; theta_min=23.53/2.5=9.41 -> RED (too low)
+        # alpha=0.25, q=0.85, V=200 -> signal=42.5; theta_min=23.53/50=0.471 -> GREEN
+        # To hit AMBER: signal/theta_min in [1,2)
+        # alpha=0.25, V=50: theta_min=23.53/12.5=1.882; signal=0.25*q*50=12.5q
+        # For AMBER: 1.882 <= 12.5q < 3.764 -> q in [0.150, 0.301)
+        result = conservation_status(
+            verified_count=50, correct_count=13, total_decisions=200, penalty_ratio=20.0
+        )
+        # alpha=0.25, q=13/50=0.26, V=50, signal=0.25*0.26*50=3.25
+        # theta_min=23.53/(0.25*50)=1.882; signal/theta_min=3.25/1.882=1.73 -> AMBER
+        assert result.status == 'AMBER'
+        assert result.passed
+
+    def test_result_is_conservation_check_namedtuple(self):
+        result = conservation_status(100, 80, 400, penalty_ratio=20.0)
+        assert isinstance(result, ConservationCheck)
+        assert hasattr(result, 'signal')
+        assert hasattr(result, 'theta_min')
+        assert hasattr(result, 'headroom')
+        assert hasattr(result, 'status')
+        assert hasattr(result, 'passed')
+
+    def test_signal_formula(self):
+        """signal = alpha * q * V = (verified/total) * (correct/verified) * verified."""
+        verified, correct, total = 200, 160, 800
+        result = conservation_status(verified, correct, total, penalty_ratio=20.0)
+        expected_alpha = verified / total  # 0.25
+        expected_q = correct / verified    # 0.80
+        expected_V = float(verified)       # 200
+        expected_signal = expected_alpha * expected_q * expected_V  # 40.0
+        assert abs(result.signal - round(expected_signal, 4)) < 1e-6

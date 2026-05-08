@@ -132,6 +132,11 @@ from gae.calibration import (
     CalibrationProfile,
     soc_calibration_profile,
     s2p_calibration_profile,
+    # Conservation law primitives
+    ConservationCheck,
+    check_conservation,
+    compute_theta_min,
+    conservation_status,
 )
 
 # ── Primitives (Tier 1, Eq. 1) ───────────────────────────────────────
@@ -156,6 +161,7 @@ from gae.convergence import (
     gamma_threshold,
     phase2_effective_threshold,
     ConvergenceTrace,
+    compute_reconvergence_ratio,
 )
 
 # ── Monitoring (observability only — no gating side-effects) ─────────
@@ -191,6 +197,30 @@ from gae.factors import FactorComputer, assemble_factor_vector
 
 # ── Persistence ──────────────────────────────────────────────────────
 from gae.store import save_state, load_state
+
+# ── Evolution ledger (domain-agnostic variant lifecycle tracking) ────
+from gae.evolution import (
+    VARIANT_CREATED,
+    SHADOW_STARTED,
+    SHADOW_RESULT,
+    PROMOTION_APPROVED,
+    PROMOTION_REJECTED,
+    ROLLBACK,
+    VALID_EVENT_TYPES,
+    ARTIFACT_ROUTING_RULE,
+    ARTIFACT_CONTEXT_POLICY,
+    ARTIFACT_EVIDENCE_ORDER,
+    ARTIFACT_SCORING_THRESHOLD,
+    ARTIFACT_PROMPT_MODULE,
+    VALID_ARTIFACT_TYPES,
+    record_evolution_event,
+    rebuild_shadow_index,
+    get_shadow_summary,
+    get_variant_history,
+    get_recent_events,
+    get_evolution_summary,
+    reset_evolution_ledger,
+)
 
 # ── Deprecated (TD-029 — remove in a future release) ────────────────
 from gae.scoring import score_entity, score_alert, score_with_profile
@@ -234,6 +264,11 @@ __all__ = [
     "CalibrationProfile",
     "soc_calibration_profile",
     "s2p_calibration_profile",
+    # Conservation law primitives
+    "ConservationCheck",
+    "check_conservation",
+    "compute_theta_min",
+    "conservation_status",
     # Primitives
     "scaled_dot_product_attention",
     "softmax",
@@ -252,6 +287,7 @@ __all__ = [
     "gamma_threshold",
     "phase2_effective_threshold",
     "ConvergenceTrace",
+    "compute_reconvergence_ratio",
     # Oracle separation / EXP-G1 experiment framework
     "FactorVectorSample",
     "FactorVectorSampler",
@@ -303,6 +339,27 @@ __all__ = [
     "ReferralDecision",
     "ReferralReason",
     "OverrideDetector",
+    # Evolution ledger
+    "VARIANT_CREATED",
+    "SHADOW_STARTED",
+    "SHADOW_RESULT",
+    "PROMOTION_APPROVED",
+    "PROMOTION_REJECTED",
+    "ROLLBACK",
+    "VALID_EVENT_TYPES",
+    "ARTIFACT_ROUTING_RULE",
+    "ARTIFACT_CONTEXT_POLICY",
+    "ARTIFACT_EVIDENCE_ORDER",
+    "ARTIFACT_SCORING_THRESHOLD",
+    "ARTIFACT_PROMPT_MODULE",
+    "VALID_ARTIFACT_TYPES",
+    "record_evolution_event",
+    "rebuild_shadow_index",
+    "get_shadow_summary",
+    "get_variant_history",
+    "get_recent_events",
+    "get_evolution_summary",
+    "reset_evolution_ledger",
     # Deprecated (TD-029 — remove in a future release)
     "score_entity",
     "score_alert",

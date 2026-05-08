@@ -1,0 +1,418 @@
+{
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\prompt0_gae_structural_map.py": {
+    "mtime": 1777010873.7679372,
+    "hash": "8dc1ccbabd4d3341af53e3ef84731a71"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\examples\\minimal_domain\\run_example.py": {
+    "mtime": 1777157942.8763797,
+    "hash": "a6746e5b0304ee3cec1389ace0b810d8"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\ablation.py": {
+    "mtime": 1777157943.1528003,
+    "hash": "197209c779144548082682c521c5df1b"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\batch_pipeline.py": {
+    "mtime": 1777593452.1139452,
+    "hash": "301da2f9dd973c37a3fe5eea0cf01e16"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\bootstrap.py": {
+    "mtime": 1777157943.1528003,
+    "hash": "182515cd2c12d0ef9ad2ad9adc533411"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\calibration.py": {
+    "mtime": 1777245940.8186047,
+    "hash": "41b17f83be94fb3b0b3dd6fe99a1b39a"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\contracts.py": {
+    "mtime": 1777157943.1528003,
+    "hash": "91c882851b1560ac7667af2f3c07efdc"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\convergence.py": {
+    "mtime": 1777759792.0834532,
+    "hash": "4ed85ac6855206d50eeb9ff1b0fd2220"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\covariance.py": {
+    "mtime": 1777157943.1528003,
+    "hash": "fa558f6a1feeba29a575e6dab4e09f60"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\dk_estimator.py": {
+    "mtime": 1777565577.6941762,
+    "hash": "607fc1de6fa031d18ccd43a76f9d432e"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\enrichment_advisor.py": {
+    "mtime": 1777157942.8763797,
+    "hash": "0a59cfababaca473dc236986f1afcc87"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\evaluation.py": {
+    "mtime": 1777157943.1528003,
+    "hash": "b50359ab7d8118ceb9d07f7346b5f5dd"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\events.py": {
+    "mtime": 1777157943.1624603,
+    "hash": "3ffe70423c4b63e09aa99fc9327852ef"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\factors.py": {
+    "mtime": 1777157943.1624603,
+    "hash": "9b6d7f5b38f87d5226b92eb5a1dcc105"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\judgment.py": {
+    "mtime": 1777157943.1624603,
+    "hash": "f092dd0fc5c2db349870210a9c5d522a"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\kernels.py": {
+    "mtime": 1777757702.6044986,
+    "hash": "bf1f29d63fe0cf215ef9e84ea90630b2"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\kernel_selector.py": {
+    "mtime": 1777157943.1624603,
+    "hash": "77ad6134bd4a3e8f5f98c285957014af"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\learning.py": {
+    "mtime": 1777709627.1121557,
+    "hash": "0be484b124da00a65ec18a4441a222a8"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\novelty.py": {
+    "mtime": 1777591632.2457874,
+    "hash": "f1573dde658837062339620dd58b346d"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\oracle.py": {
+    "mtime": 1777157943.1624603,
+    "hash": "7884ff8ca1d6c13c0b8541ee0385ad88"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\primitives.py": {
+    "mtime": 1777157943.1624603,
+    "hash": "7a5dc966067851c907770fdd6bc3e965"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\profile_scorer.py": {
+    "mtime": 1777760468.3247454,
+    "hash": "ac624f1ca729892a405bac5aebb5f405"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\referral.py": {
+    "mtime": 1777157943.1624603,
+    "hash": "6bb691db7ba73d401d15131b83f14685"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\scoring.py": {
+    "mtime": 1777157943.1624603,
+    "hash": "e936411ef4099f1ac9e3579a43f52db2"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\shrinkage.py": {
+    "mtime": 1777566826.9954188,
+    "hash": "a2c95c329d03cc1e47d592d4210eecc0"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\snr.py": {
+    "mtime": 1777236465.8029892,
+    "hash": "dfbce65fb4e5807b37249effaf300195"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\store.py": {
+    "mtime": 1777157943.1782737,
+    "hash": "f46f49cc74dafbad4bd64cac7c256afa"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\synthetic.py": {
+    "mtime": 1777157943.1782737,
+    "hash": "63f8db074cdcb42aeb9bb367491ddc6a"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\two_phase.py": {
+    "mtime": 1777563466.873277,
+    "hash": "5e781176628b66ce8bee62f1204efa91"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\gae\\__init__.py": {
+    "mtime": 1777593146.5121965,
+    "hash": "3627b8b240ffef266e254108a5df08e1"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_ablation.py": {
+    "mtime": 1777157942.8977847,
+    "hash": "a48f3df8ffa719d9b095da8a6afe3533"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_adversarial_inputs.py": {
+    "mtime": 1777157943.1782737,
+    "hash": "7a73ff2962ad2437282a1caa5c53ce5a"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_api_contract.py": {
+    "mtime": 1777275905.506152,
+    "hash": "3fd6dfa5c1f9ab0a45193f19279171d9"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_batch_pipeline.py": {
+    "mtime": 1777593469.5234878,
+    "hash": "9ace47e0253cb6991893d692b2ea0d2b"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_bootstrap.py": {
+    "mtime": 1777157943.1841137,
+    "hash": "738790056595571dd28aba95b48784c4"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_calibration.py": {
+    "mtime": 1777246346.1651275,
+    "hash": "a72dbab7871c322fcf8a99be7967cf59"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_conservation_monitor.py": {
+    "mtime": 1777157943.1861184,
+    "hash": "1c86a5a8405dc99702f86915d78440bd"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_conservation_state_machine.py": {
+    "mtime": 1777760477.0290058,
+    "hash": "ac36de1c071ddd667e31af435eef0147"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_consumer_contracts.py": {
+    "mtime": 1777275940.6367033,
+    "hash": "959631f1b6d7277a21323adfe8df99af"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_consumer_roundtrip.py": {
+    "mtime": 1777157943.1881237,
+    "hash": "c455ca8f9167011dd3870fabf8a287fb"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_contracts.py": {
+    "mtime": 1773004905.4492025,
+    "hash": "153e46b8c784de2ed1975aa8210bbfbb"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_convergence.py": {
+    "mtime": 1777246433.7383354,
+    "hash": "35f87b26734de5067c0a45c85bf0a3e2"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_covariance.py": {
+    "mtime": 1777157942.8977847,
+    "hash": "b6ceb1ba29a1353d9fe8996ab53c817b"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_determinism.py": {
+    "mtime": 1777157943.1901295,
+    "hash": "d0eb52e06c1954d2215fbefc3cdd5d58"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_diagonal_kernel.py": {
+    "mtime": 1777157942.8977847,
+    "hash": "7349afb80ff712bce368a45add966cca"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_dk_estimator.py": {
+    "mtime": 1777564987.1281123,
+    "hash": "9efae9f128972ea23956d0fba5f21850"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_entropy_edge_cases.py": {
+    "mtime": 1777157943.1921341,
+    "hash": "d227a6f5efb3c63533caf214945020e9"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_evaluation.py": {
+    "mtime": 1777157943.1921341,
+    "hash": "2023ba4fd480de176730d8e8b1b15a04"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_events.py": {
+    "mtime": 1773004905.4559808,
+    "hash": "ce1d27f9054daa41e9f24101c90bcdfe"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_factors.py": {
+    "mtime": 1773004905.4559808,
+    "hash": "71740b2f353681dd6594ba7548862bae"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_fw04_integration.py": {
+    "mtime": 1777569298.544461,
+    "hash": "b54809c091b9c03f53399529b162851d"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_fw05_phase_a_gate.py": {
+    "mtime": 1777570852.8233075,
+    "hash": "e81ccd8255a2eca36e53b46d0b8f91c1"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_fw08_checkpoint.py": {
+    "mtime": 1777596926.3037567,
+    "hash": "382a1573e6c5d1dfec05b2c878fd49da"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_fw09_phase_b_gate.py": {
+    "mtime": 1777597056.8418481,
+    "hash": "bf3ef012990dd08afd948851d0daf1f1"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_generic_domains.py": {
+    "mtime": 1777709641.0039718,
+    "hash": "aa06569b4e5953dfa71587e40fd7d48c"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_harness_validation.py": {
+    "mtime": 1777164202.4005623,
+    "hash": "1d8d491e2e286c27e1c76eabf1930f27"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_judgment.py": {
+    "mtime": 1777157942.8977847,
+    "hash": "e940cb9a9b1c4e48cab13839c7763abe"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_kernels.py": {
+    "mtime": 1777157943.1941383,
+    "hash": "a76ce0fd8ab512cdfe297722db0594a4"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_kernel_properties.py": {
+    "mtime": 1777157943.1941383,
+    "hash": "fee39504149155553b95dfc9ddd3ab77"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_kernel_selector.py": {
+    "mtime": 1777275922.3317327,
+    "hash": "a1be2ea74bd1de533e92547c4bfb1a6f"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_learning.py": {
+    "mtime": 1777246346.2437077,
+    "hash": "7567a6a15a357f27a8fcca3cee2a2c08"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_mathematical_properties.py": {
+    "mtime": 1777157943.1941383,
+    "hash": "b7461f3c9d3cb94495fcec08fa52b42b"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_novelty.py": {
+    "mtime": 1777591666.432235,
+    "hash": "2e891ae6da5c578d0feaf21d67569013"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_numerical_stability.py": {
+    "mtime": 1777157943.1941383,
+    "hash": "bd82c2c1966104ac3b642f3ff155c595"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_oracle.py": {
+    "mtime": 1777157943.1941383,
+    "hash": "1f99af19db7573bc8592afee7d3c2be1"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_primitives.py": {
+    "mtime": 1773004905.4579918,
+    "hash": "2a5f70b957c0090242f98e886c0f0fc5"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_profile_scorer.py": {
+    "mtime": 1777708245.2940361,
+    "hash": "f89d8343ee18131e50ef4bbe9cf44db1"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_recommend_edge_cases.py": {
+    "mtime": 1777157943.1941383,
+    "hash": "ab274c5b4f0eadbc5067b145a8ddfc5f"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_referral.py": {
+    "mtime": 1777157942.9081018,
+    "hash": "df1df267fa602dbbadef3195dbef3edf"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_score_edge_cases.py": {
+    "mtime": 1777157943.1941383,
+    "hash": "434910145d7fc7fd438276e8a734e450"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_scoring.py": {
+    "mtime": 1773004905.4602568,
+    "hash": "fd801b733d750754ea9e883ca0764182"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_serialization.py": {
+    "mtime": 1777157943.2029638,
+    "hash": "3f04ec7beff50d35e36ecedb9a739905"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_setter_edge_cases.py": {
+    "mtime": 1777157943.2029638,
+    "hash": "41fd6a08c470699eb2bcc07381b35124"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_shape_contracts.py": {
+    "mtime": 1777246346.0046954,
+    "hash": "f12a1b423cc226c85e7b9c4615d7e7a0"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_shrinkage.py": {
+    "mtime": 1777566827.051702,
+    "hash": "2fc6b11ba439969a3d2d9b1cb958909e"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_snr.py": {
+    "mtime": 1777236424.4144046,
+    "hash": "4f5cbc378b4145b74893f2e48b139ef3"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_soc_integration.py": {
+    "mtime": 1777246346.476964,
+    "hash": "02a9c57f3c64ed764e0d4de2ddfab5bb"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_store.py": {
+    "mtime": 1773004905.4602568,
+    "hash": "9bf4bb098acfe193d8f5e6cba91667d0"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_synthetic.py": {
+    "mtime": 1777157943.2029638,
+    "hash": "94f705f9d21aa1383327e0214b9829c7"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_two_phase.py": {
+    "mtime": 1777563471.6207712,
+    "hash": "653e508be5cf1c506da26be099ea43c8"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_update_edge_cases.py": {
+    "mtime": 1777157943.2029638,
+    "hash": "542abfbd8592f7fd212aa574e8c7d3a8"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\test_weight_provenance.py": {
+    "mtime": 1777757767.7969363,
+    "hash": "615a8a7bc6ba03380d9a933f350b9389"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tests\\__init__.py": {
+    "mtime": 1773004905.4448547,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\tools\\iks_bakeoff.py": {
+    "mtime": 1777157942.9081018,
+    "hash": "4f23463dc8dd2cdc36af8c1c713bf1fa"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\AGENTS.md": {
+    "mtime": 1777157942.860262,
+    "hash": "309fa15e1bf07a904f5e3b124915b528"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\API_CONTRACT.md": {
+    "mtime": 1777157943.146655,
+    "hash": "24882e0164877c6e9284ad0869563599"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\CLAUDE.md": {
+    "mtime": 1777157943.146655,
+    "hash": "5c0da8917b3d7e6dcc704e8862e9f718"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\CODEBASE.md": {
+    "mtime": 1777643089.02166,
+    "hash": "ad92b605e4230eab7cb45fd762388a17"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\CODE_GRAPH_REVIEW.md": {
+    "mtime": 1777637139.8985736,
+    "hash": "5d2d33ffb6d3a148b0a1f39bd516b251"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\DEPENDENCIES.md": {
+    "mtime": 1777157943.146655,
+    "hash": "92f5730e57eca031b8aa93dc732c261f"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\PROJECT_STRUCTURE.md": {
+    "mtime": 1777157942.860262,
+    "hash": "d6d01aae8906c373b1fea26dd48a5979"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\README.md": {
+    "mtime": 1773004905.4267187,
+    "hash": "556e8651917881098a0ea22431db1d2a"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\REVIEW.md": {
+    "mtime": 1777644379.7040462,
+    "hash": "546b831c6281529a1c6de4b9288f3c69"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\REVIEW.part1.md": {
+    "mtime": 1777643569.3967118,
+    "hash": "d3c2817820897a968412b1899a331fd3"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\REVIEW.part2.md": {
+    "mtime": 1777643988.7579818,
+    "hash": "f19c2a07fc7aec8051f4d9f0ba3f92c6"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\REVIEW.part3.md": {
+    "mtime": 1777644364.038961,
+    "hash": "8e8c0e40bb331a5d3cf2bda9ddcd6ff5"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\TEST_CATEGORIES.md": {
+    "mtime": 1777157943.146655,
+    "hash": "c4b08cb883acf8956ee7d697be9c3e99"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\test_results_gae.txt": {
+    "mtime": 1777157943.1782737,
+    "hash": "1c87f5517915640c820b3cbcd2db00f2"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\docs\\gae_design_v10_6.md": {
+    "mtime": 1777157943.146655,
+    "hash": "9d6afb158e567d145ede5782977b3c3c"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\docs\\math_synopsis_v14.md": {
+    "mtime": 1777157943.1528003,
+    "hash": "a62839fea952928f6f53506d30ed4753"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\docs\\users_guide.md": {
+    "mtime": 1777157942.8763797,
+    "hash": "7a0f77720d01e3eeee7ff53c9b1ea83a"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\docs\\design\\gae_design_v10_8.md": {
+    "mtime": 1777464341.3813398,
+    "hash": "aea49c7a3e7cd4236f3bb1a6afdbf691"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\docs\\design\\math_synopsis_v15.md": {
+    "mtime": 1777466076.9227662,
+    "hash": "92aebb48543f332e404083ec14d22892"
+  },
+  "C:\\Users\\baner\\CopyFolder\\IoT_thoughts\\python-projects\\kaggle_experiments\\claude_projects\\graph-attention-engine-v50\\examples\\minimal_domain\\README.md": {
+    "mtime": 1777157942.8763797,
+    "hash": "54c14d36791e7a78711bcddc937ddfd8"
+  }
+}
