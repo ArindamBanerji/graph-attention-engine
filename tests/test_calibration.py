@@ -970,7 +970,8 @@ class TestConservationStatus:
         # alpha=0.30, q=0.85, V=300 -> signal=76.5; theta_min=23.53/(0.3*300)=0.262
         # headroom >> 2 -> GREEN
         result = conservation_status(
-            verified_count=300, correct_count=255, total_decisions=1000, penalty_ratio=20.0
+            verified_count=300, correct_count=255, total_decisions=1000, penalty_ratio=20.0,
+            categories_with_data=3, total_categories=10,
         )
         assert result.status == 'GREEN'
         assert result.passed
@@ -989,7 +990,8 @@ class TestConservationStatus:
         # alpha=0.25, V=50: theta_min=23.53/12.5=1.882; signal=0.25*q*50=12.5q
         # For AMBER: 1.882 <= 12.5q < 3.764 -> q in [0.150, 0.301)
         result = conservation_status(
-            verified_count=50, correct_count=13, total_decisions=200, penalty_ratio=20.0
+            verified_count=50, correct_count=13, total_decisions=200, penalty_ratio=20.0,
+            categories_with_data=1, total_categories=4,
         )
         # alpha=0.25, q=13/50=0.26, V=50, signal=0.25*0.26*50=3.25
         # theta_min=23.53/(0.25*50)=1.882; signal/theta_min=3.25/1.882=1.73 -> AMBER
@@ -1008,8 +1010,11 @@ class TestConservationStatus:
     def test_signal_formula(self):
         """signal = alpha * q * V = (verified/total) * (correct/verified) * verified."""
         verified, correct, total = 200, 160, 800
-        result = conservation_status(verified, correct, total, penalty_ratio=20.0)
-        expected_alpha = verified / total  # 0.25
+        result = conservation_status(
+            verified, correct, total, penalty_ratio=20.0,
+            categories_with_data=1, total_categories=4,
+        )
+        expected_alpha = 1 / 4  # category coverage
         expected_q = correct / verified    # 0.80
         expected_V = float(verified)       # 200
         expected_signal = expected_alpha * expected_q * expected_V  # 40.0

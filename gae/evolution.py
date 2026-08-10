@@ -4,7 +4,7 @@ Domain-agnostic evolution ledger for AgentEvolver variant lifecycle tracking.
 Tracks variants through: created → shadow → promoted/rejected.
 Used by SOC, DataOps, Purchasing, and any future copilot built on GAE.
 
-Storage backend: AGE (PostgreSQL Cypher) via the caller-supplied neo4j_client.
+Storage backend: AGE (PostgreSQL Cypher) via the caller-supplied graph_client.
 The in-memory _SHADOW_INDEX is a read-optimised projection for hot-path queries.
 
 Pattern origin fields (source_copilot, source_rule, warm_start_prior) enable
@@ -327,7 +327,7 @@ def _event_return_payload(
 # ── Public API ────────────────────────────────────────────────────────────────
 
 async def record_evolution_event(
-    neo4j_client,
+    graph_client,
     event_type:   str,
     variant_id:   str,
     artifact_type: str,
@@ -385,7 +385,7 @@ async def record_evolution_event(
         f"warm_start_prior: {_S(warm_start_json)}"
         "}) RETURN e.id AS id"
     )
-    await neo4j_client.run_query(query)
+    await graph_client.run_query(query)
 
     if event_type == SHADOW_STARTED:
         _apply_shadow_started(variant_id)
@@ -414,9 +414,9 @@ async def record_evolution_event(
     )
 
 
-async def rebuild_shadow_index(neo4j_client) -> dict[str, dict[str, Any]]:
+async def rebuild_shadow_index(graph_client) -> dict[str, dict[str, Any]]:
     _SHADOW_INDEX.clear()
-    rows = await neo4j_client.run_query(
+    rows = await graph_client.run_query(
         "MATCH (e:EvolutionEvent) "
         f"WHERE {_shadow_event_filter('e')} "
         "RETURN e.id AS id, e.event_type AS event_type, "
@@ -449,11 +449,11 @@ def get_shadow_summary(variant_id: str) -> dict[str, Any] | None:
 
 
 async def get_variant_history(
-    neo4j_client, variant_id: str
+    graph_client, variant_id: str
 ) -> list[dict[str, Any]]:
     if not variant_id or not str(variant_id).strip():
         raise ValueError("variant_id is required")
-    rows = await neo4j_client.run_query(
+    rows = await graph_client.run_query(
         "MATCH (e:EvolutionEvent) "
         f"WHERE e.variant_id = {_S(variant_id)} AND {_event_type_filter('e')} "
         "RETURN e.id AS id, e.event_type AS event_type, "
@@ -471,10 +471,10 @@ async def get_variant_history(
 
 
 async def get_recent_events(
-    neo4j_client, limit: int = 20
+    graph_client, limit: int = 20
 ) -> list[dict[str, Any]]:
     safe_limit = min(max(int(limit or 20), 1), 100)
-    rows = await neo4j_client.run_query(
+    rows = await graph_client.run_query(
         "MATCH (e:EvolutionEvent) "
         f"WHERE {_event_type_filter('e')} "
         "RETURN e.id AS id, e.event_type AS event_type, "
@@ -492,11 +492,11 @@ async def get_recent_events(
     return [_row_to_event(row) for row in rows or []]
 
 
-async def get_evolution_summary(neo4j_client) -> dict[str, Any]:
+async def get_evolution_summary(graph_client) -> dict[str, Any]:
     """Return aggregate lifecycle statistics (approximate above 10 000 nodes)."""
     summary = _empty_evolution_summary()
     try:
-        rows = await neo4j_client.run_query(
+        rows = await graph_client.run_query(
             "MATCH (e:EvolutionEvent) "
             f"WHERE {_event_type_filter('e')} "
             "RETURN e.event_type AS event_type, e.variant_id AS variant_id, "
