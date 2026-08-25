@@ -1,0 +1,1 @@
+Selective category-aware conservation mode is compared with production Arm A and theorem Arm B. γ=1 is the re-convergence boundary; ε*=0.125 is marked.

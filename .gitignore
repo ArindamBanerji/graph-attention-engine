@@ -58,3 +58,17 @@ experiments/*/raw_v*/seed_*.json
 experiments/*/raw_v*/*_rho_*.json
 experiments/*/raw_v*/deployment_*.json
 experiments/*/raw_v*/*.npy
+
+# Experiment raw data (large — keep summaries only)
+experiments/*/raw/*.json
+experiments/*/raw/*.npy
+experiments/*/raw/*/*.json
+experiments/*/raw/*/*.npy
+experiments/*/raw/*/*/*.json
+experiments/*/raw/*/*/*.npy
+experiments/*/archive/raw_*/*.json
+experiments/*/figures/*.png
+experiments/*/figures/*.pdf
+experiments/*/*.txt
+experiments/*/diagnostic/*.png
+experiments/*/diagnostic/*.pdf
