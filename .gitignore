@@ -45,3 +45,16 @@ Thumbs.db
 
 # Claude Code
 .claude/settings.local.json
+
+experiments/*/archive/raw_*/seed_*.json
+experiments/*/archive/raw_*/deployment_*.json
+experiments/*/archive/raw_*/*_rho_*.json
+
+# Experiment raw outputs (large JSON/CSV)
+experiments/*/archive/raw_*/seed_*.json
+experiments/*/archive/raw_*/deployment_*.json
+experiments/*/archive/raw_*/*_rho_*.json
+experiments/*/raw_v*/seed_*.json
+experiments/*/raw_v*/*_rho_*.json
+experiments/*/raw_v*/deployment_*.json
+experiments/*/raw_v*/*.npy

@@ -1,0 +1,4 @@
+seed,warm_decisions_to_competence,cold_decisions_to_competence,warm_minus_cold_delta,sign,A_decisions_to_competence
+42,490,704,-214,warm_faster,710
+123,495,710,-215,warm_faster,712
+777,491,708,-217,warm_faster,715

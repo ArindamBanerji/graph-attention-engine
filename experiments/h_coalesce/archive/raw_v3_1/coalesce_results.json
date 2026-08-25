@@ -1,0 +1,26 @@
+[
+  {
+    "seed": 42,
+    "warm_decisions_to_competence": 490,
+    "cold_decisions_to_competence": 704,
+    "warm_minus_cold_delta": -214,
+    "sign": "warm_faster",
+    "A_decisions_to_competence": 710
+  },
+  {
+    "seed": 123,
+    "warm_decisions_to_competence": 495,
+    "cold_decisions_to_competence": 710,
+    "warm_minus_cold_delta": -215,
+    "sign": "warm_faster",
+    "A_decisions_to_competence": 712
+  },
+  {
+    "seed": 777,
+    "warm_decisions_to_competence": 491,
+    "cold_decisions_to_competence": 708,
+    "warm_minus_cold_delta": -217,
+    "sign": "warm_faster",
+    "A_decisions_to_competence": 715
+  }
+]
