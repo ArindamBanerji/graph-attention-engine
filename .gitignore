@@ -72,3 +72,15 @@ experiments/*/figures/*.pdf
 experiments/*/*.txt
 experiments/*/diagnostic/*.png
 experiments/*/diagnostic/*.pdf
+experiments/*/raw/
+experiments/*/raw_v*/
+experiments/*/archive/raw_*/
+experiments/*/figures/
+experiments/*/figures_v*/
+experiments/*/*.err
+experiments/dk_verify*/
+experiments/rl_*/
+experiments/sa_*/
+experiments/self_compute*/
+experiments/h_enrich_dose_response/
+experiments/h_enrich_positive_control/
