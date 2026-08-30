@@ -29,3 +29,8 @@ testpaths = ["tests"]
 markers = [
     "slow: tests that take more than 2 seconds",
 ]
+
+[tool.mypy]
+python_version = "3.11"
+follow_imports = "skip"
+warn_unused_configs = true

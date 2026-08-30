@@ -1,0 +1,30 @@
+{
+  "schema": "r-hcurve-diagnostic-v1",
+  "source": "raw/r_hcurve_v1 persisted records",
+  "files": [
+    {
+      "path": "analyze_r_hcurve_diagnostic.py",
+      "bytes": 14870,
+      "sha256": "57b357c21eacb5544c9ad4e9dff8137c7723fef9184260a2cb0667f5a15c9a5f",
+      "role": "diagnostic_output"
+    },
+    {
+      "path": "r_hcurve_category_regime.pdf",
+      "bytes": 41353,
+      "sha256": "999ff556bd642651738b00a684bf106cc51508881bb1095d147a9ded655e7bbb",
+      "role": "diagnostic_output"
+    },
+    {
+      "path": "r_hcurve_category_regime.png",
+      "bytes": 435328,
+      "sha256": "e119799add60dbe8936e72ad3e70d05b1320bde2fd399110d41134be8a8d3cec",
+      "role": "diagnostic_output"
+    },
+    {
+      "path": "results_r_hcurve_diagnostic.md",
+      "bytes": 9430,
+      "sha256": "5ca381a9be71746176aacbd462ed0291164f1701167a12e2c65938627f5f59b0",
+      "role": "diagnostic_output"
+    }
+  ]
+}
