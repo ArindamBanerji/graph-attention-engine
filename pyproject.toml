@@ -4,14 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graph-attention-engine"
-version = "0.7.23"
+version = "0.7.25"
 description = "Standalone numpy-only graph attention library (GAE v5)"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+authors = [{name = "Arindam Banerji", email = "banerji.arindam@gmail.com"}]
+maintainers = [{name = "Dakshineshwari LLC"}]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ArindamBanerji/graph-attention-engine"
+Repository = "https://github.com/ArindamBanerji/graph-attention-engine"
+Documentation = "https://www.dakshineshwari.net"
 
 [project.optional-dependencies]
 dev = [
