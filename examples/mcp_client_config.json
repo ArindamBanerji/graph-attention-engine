@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "rgi-judgment-memory": {
+      "command": "rgi-mcp-server",
+      "args": [
+        "--categories", "retrieval,generation,routing",
+        "--actions", "use,skip,escalate",
+        "--factors", "relevance,confidence,recency,source_trust,complexity",
+        "--state", "./jm_state.json",
+        "--penalty-ratio", "5.0"
+      ]
+    }
+  }
+}

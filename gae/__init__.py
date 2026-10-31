@@ -44,6 +44,9 @@ Referral:
 
 Deprecated (TD-029 — remove in a future release):
   score_entity, score_alert, score_with_profile, ProfileScoringResult
+
+For LangChain integration, see gae.integrations.langchain.
+For MCP integration, see gae.integrations.mcp.
 """
 
 from __future__ import annotations
