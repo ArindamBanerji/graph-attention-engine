@@ -1,5 +1,5 @@
 """
-Graph Attention Engine (GAE) v0.7.25
+Graph Attention Engine (GAE) v0.7.27
 Public API surface.
 
 Core scoring:
@@ -51,7 +51,7 @@ For MCP integration, see gae.integrations.mcp.
 
 from __future__ import annotations
 
-__version__ = "0.7.26"
+__version__ = "0.7.27"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
 from gae.dk_estimator import DKEstimator, CoordinateDescentEstimator
