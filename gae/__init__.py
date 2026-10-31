@@ -51,7 +51,7 @@ For MCP integration, see gae.integrations.mcp.
 
 from __future__ import annotations
 
-__version__ = "0.7.25"
+__version__ = "0.7.26"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
 from gae.dk_estimator import DKEstimator, CoordinateDescentEstimator
