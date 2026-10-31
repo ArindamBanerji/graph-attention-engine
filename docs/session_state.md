@@ -158,3 +158,39 @@ Validation:
 Issues encountered:
 - An installed third-party package named `examples` shadowed the repository directory during test collection; the test now loads the dashboard explicitly by file path.
 - Windows retained `mcp-registry/publish.sh` as mode 0666 because NTFS does not preserve POSIX execute bits and the local Bash launcher was inaccessible. The script has a Bash shebang and can be made executable with `chmod +x mcp-registry/publish.sh` on Linux/macOS before publishing.
+
+--- GAE-PYPI-SMOKE-V0.7.26 ---
+Date: 2026-10-31
+Model: Spark+medium
+
+Created:
+- `examples/pypi_smoke_test.py`
+
+Behavior:
+- Exercises nine isolated public-API checks: installed package metadata, a 3x3x5 ProfileScorer, ten scores, eight verified updates, conservation, Judgment, atomic state save/load, the optional LangChain callback, and the optional MCP server.
+- Every check catches and reports its own failure so later checks continue.
+- Missing LangChain or FastMCP dependencies are handled as valid optional-dependency outcomes, allowing the script to run after only `pip install graph-attention-engine`.
+- Uses only root `gae` exports and the two documented optional integration modules; it does not import an internal GAE implementation module.
+
+Full smoke-test output:
+```
+=== GAE v0.7.26 PyPI Smoke Test ===
+[PASS] Package version: 0.7.26
+[PASS] ProfileScorer: 3x3x5
+[PASS] Score: action=use, confidence=0.999
+[PASS] Update: 8 verified (6 correct, 2 incorrect)
+[PASS] Conservation: GREEN
+[PASS] Judgment: action=use, confidence_tier=high
+[PASS] State save/load: centroids match
+[PASS] LangChain callback: available
+[PASS] MCP server: available
+=== 9/9 PASSED ===
+```
+
+Validation:
+- `python examples/pypi_smoke_test.py`: exit 0, 9/9 passed.
+- Mypy: `examples/pypi_smoke_test.py` passed with 0 errors.
+- Full suite: 1,280 passed, 0 failed, 13,296 warnings, 9.24s.
+
+Issue encountered:
+- The root symbol `gae.LearningState` is the online-learning state from `gae.learning`, while the public `save_state()` function asserts the distinct persistence state from `gae.store`. That persistence class is not exported at package root. To preserve the public-only constraint, the smoke test creates a schema-valid bootstrap JSON with the current flattened centroids, obtains the persistence object through public `load_state()`, then verifies the public `save_state()`/`load_state()` round trip and centroid equality. This export ambiguity remains a package API issue.
