@@ -170,6 +170,56 @@ The complete public export list is available in [`gae/__init__.py`](gae/__init__
 
 GAE checks the constraint `alpha * q * V >= theta_min`, combining category coverage (`alpha`), observed quality (`q`), and verified volume (`V`). Meeting the threshold provides the operational guarantee that evidence is sufficient to maintain accuracy above the configured boundary; use [`compute_theta_min`](#calibration) to derive the deployment-aware threshold.
 
+## MCP Server
+
+Graph Attention Engine includes a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that exposes decision scoring as MCP tools. Any MCP-compatible client (Claude Desktop, Cursor, etc.) can connect and use GAE's cross-graph attention scoring directly.
+
+### Install
+
+```bash
+pip install "graph-attention-engine[mcp]"
+```
+
+### Usage
+
+```bash
+# stdio transport (for Claude Desktop, Cursor)
+rgi-mcp-server --categories alert_triage,incident_response --actions investigate,escalate --factors severity,confidence,blast_radius
+
+# HTTP transport (for remote/hosted deployments)
+rgi-mcp-server --http --port 8080 --categories alert_triage,incident_response --actions investigate,escalate --factors severity,confidence,blast_radius
+```
+
+### Docker
+
+```bash
+docker build -f Dockerfile.mcp -t gae-mcp .
+docker run -p 8080:8080 gae-mcp
+```
+
+### MCP Tools
+
+| Tool | Description |
+|---|---|
+| `score_decision` | Score a decision using cross-graph attention and compounding intelligence |
+| `get_trajectory` | Retrieve the learning trajectory showing how decisions compound over time |
+| `get_conservation_status` | Check conservation law compliance and scoring integrity |
+
+### Claude Desktop Configuration
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "graph-attention-engine": {
+      "command": "rgi-mcp-server",
+      "args": ["--categories", "alert_triage,incident_response", "--actions", "investigate,escalate", "--factors", "severity,confidence,blast_radius"]
+    }
+  }
+}
+```
+
 ## Testing
 
 ```bash
