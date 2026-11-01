@@ -4,7 +4,7 @@ Batch-oriented helpers for composing candidate weight updates.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Protocol
+from typing import Dict, List, Mapping, Optional, Protocol
 
 import numpy as np
 
@@ -116,6 +116,116 @@ class GateVerdict:
     variance_pass: bool
     var_ratio: float
     reason: str
+
+
+@dataclass(frozen=True)
+class CompositionCheck:
+    """Result of the minimum batch composition invariant."""
+
+    passed: bool
+    novel_fraction: float
+    coverage_fraction: float
+    decision_count: int
+    reason: str
+
+
+def check_batch_composition(
+    novel_decisions: int,
+    total_decisions: int,
+    categories_with_data: int,
+    total_categories: int,
+    *,
+    min_novel_fraction: float = 0.10,
+    min_coverage: int = 3,
+    min_decisions: int = 50,
+) -> CompositionCheck:
+    """Enforce the §3.5 composition check before batch estimation.
+
+    A candidate batch must contain at least 10% novel observations, cover at
+    least three categories, and contain at least 50 verified decisions.
+    Invalid counts fail closed rather than producing a misleading fraction.
+    """
+    if total_decisions < 0 or novel_decisions < 0:
+        raise ValueError("decision counts must be non-negative")
+    if novel_decisions > total_decisions:
+        raise ValueError("novel_decisions cannot exceed total_decisions")
+    if total_categories < 1 or categories_with_data < 0:
+        raise ValueError("category counts must describe a positive domain")
+    if categories_with_data > total_categories:
+        raise ValueError("categories_with_data cannot exceed total_categories")
+    if not 0.0 <= min_novel_fraction <= 1.0:
+        raise ValueError("min_novel_fraction must be in [0, 1]")
+    if min_coverage < 1 or min_decisions < 1:
+        raise ValueError("minimum composition thresholds must be positive")
+
+    novel_fraction = novel_decisions / total_decisions if total_decisions else 0.0
+    coverage_fraction = categories_with_data / total_categories
+    failures: list[str] = []
+    if novel_fraction < min_novel_fraction:
+        failures.append("novel_fraction_fail")
+    if categories_with_data < min_coverage:
+        failures.append("coverage_fail")
+    if total_decisions < min_decisions:
+        failures.append("count_fail")
+    return CompositionCheck(
+        passed=not failures,
+        novel_fraction=float(novel_fraction),
+        coverage_fraction=float(coverage_fraction),
+        decision_count=int(total_decisions),
+        reason="pass" if not failures else "; ".join(failures),
+    )
+
+
+@dataclass(frozen=True)
+class HoldoutCheck:
+    """Result of the stratified holdout non-inferiority invariant."""
+
+    passed: bool
+    overall_delta: float
+    category_deltas: Dict[str, float]
+    reason: str
+
+
+def check_holdout_non_inferiority(
+    current_accuracy: float,
+    new_accuracy: float,
+    current_by_category: Mapping[str, float],
+    new_by_category: Mapping[str, float],
+    holdout_counts: Mapping[str, int],
+    *,
+    epsilon: float = 0.01,
+    delta: float = 0.02,
+    min_per_pair: int = 20,
+) -> HoldoutCheck:
+    """Validate the §3.5 holdout promotion conditions.
+
+    The overall candidate may fall by at most 1 percentage point and every
+    active category may fall by at most 2 points. Every evaluated category
+    must have at least 20 stratified holdout observations.
+    """
+    if epsilon < 0 or delta < 0 or min_per_pair < 1:
+        raise ValueError("holdout tolerances must be non-negative and count positive")
+    categories = set(current_by_category) | set(new_by_category) | set(holdout_counts)
+    if not categories:
+        return HoldoutCheck(False, float(new_accuracy - current_accuracy), {}, "no_categories")
+
+    category_deltas = {
+        category: float(new_by_category.get(category, 0.0) - current_by_category.get(category, 0.0))
+        for category in sorted(categories)
+    }
+    failures: list[str] = []
+    if float(new_accuracy - current_accuracy) < -epsilon:
+        failures.append("overall_non_inferiority_fail")
+    if any(value < -delta for value in category_deltas.values()):
+        failures.append("category_non_inferiority_fail")
+    if any(holdout_counts.get(category, 0) < min_per_pair for category in categories):
+        failures.append("holdout_count_fail")
+    return HoldoutCheck(
+        passed=not failures,
+        overall_delta=float(new_accuracy - current_accuracy),
+        category_deltas=category_deltas,
+        reason="pass" if not failures else "; ".join(failures),
+    )
 
 
 class PromotionGate(Protocol):

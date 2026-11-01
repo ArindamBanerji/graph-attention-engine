@@ -135,3 +135,26 @@ refer_to_analyst is NOT a scorable action (SOC has A=4, not A=5).
 2. If you changed a Tier 1 function signature: grep for it in
    gen-ai-roi-demo-v4-v50 AND s2p-copilot
 3. If you changed scoring math: verify against math_synopsis_v14
+
+## Mypy Gate (Standing Rule #86)
+
+**Every code change must pass mypy on all changed files before completion.**
+
+This is mandatory. mypy errors in files you changed = NOT DONE.
+
+After completing all code changes and before declaring success, run:
+`python -m mypy <every changed Python file>`
+
+Run mypy before pytest. Do not weaken annotations or suppress errors with `# type: ignore`. A failed mypy gate means the task is incomplete.
+
+## Rule #63 — Test Double Completeness
+
+No mock/monkeypatch in test code unless the external dependency is
+truly unreachable (network, hardware, paid API). Test doubles must
+be complete — track state and answer queries from their own state.
+
+If a test double needs monkeypatching to work with new code, the
+test double is incomplete. Fix the double, not the caller.
+
+Retroactive audit needed: check all existing monkeypatch usage
+against this rule. Violations are technical debt, not exceptions.

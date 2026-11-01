@@ -1,0 +1,8 @@
+# RGI Judgment Memory — MCP Server Config
+categories: [retrieval, generation, routing]
+actions: [use, skip, escalate]
+factors: [relevance, confidence, recency, source_trust, complexity]
+state_path: ./jm_state.json
+penalty_ratio: 5.0
+q_window: 400
+tau: 0.1

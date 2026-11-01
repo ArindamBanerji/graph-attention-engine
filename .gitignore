@@ -45,3 +45,42 @@ Thumbs.db
 
 # Claude Code
 .claude/settings.local.json
+
+experiments/*/archive/raw_*/seed_*.json
+experiments/*/archive/raw_*/deployment_*.json
+experiments/*/archive/raw_*/*_rho_*.json
+
+# Experiment raw outputs (large JSON/CSV)
+experiments/*/archive/raw_*/seed_*.json
+experiments/*/archive/raw_*/deployment_*.json
+experiments/*/archive/raw_*/*_rho_*.json
+experiments/*/raw_v*/seed_*.json
+experiments/*/raw_v*/*_rho_*.json
+experiments/*/raw_v*/deployment_*.json
+experiments/*/raw_v*/*.npy
+
+# Experiment raw data (large — keep summaries only)
+experiments/*/raw/*.json
+experiments/*/raw/*.npy
+experiments/*/raw/*/*.json
+experiments/*/raw/*/*.npy
+experiments/*/raw/*/*/*.json
+experiments/*/raw/*/*/*.npy
+experiments/*/archive/raw_*/*.json
+experiments/*/figures/*.png
+experiments/*/figures/*.pdf
+experiments/*/*.txt
+experiments/*/diagnostic/*.png
+experiments/*/diagnostic/*.pdf
+experiments/*/raw/
+experiments/*/raw_v*/
+experiments/*/archive/raw_*/
+experiments/*/figures/
+experiments/*/figures_v*/
+experiments/*/*.err
+experiments/dk_verify*/
+experiments/rl_*/
+experiments/sa_*/
+experiments/self_compute*/
+experiments/h_enrich_dose_response/
+experiments/h_enrich_positive_control/

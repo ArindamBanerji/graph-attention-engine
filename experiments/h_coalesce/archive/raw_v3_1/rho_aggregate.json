@@ -1,0 +1,72 @@
+[
+  {
+    "rho_nominal": 1.0,
+    "rho_realized_mean": 1.0,
+    "warm_mean": 24.0,
+    "cold_uniform_mean": 142.66666666666666,
+    "cold_random_mean": 264.0,
+    "matched_mean": 24.0,
+    "A_warm_minus_uniform": -118.66666666666666,
+    "A_warm_minus_random": -240.0,
+    "B_structure_premium_matched_minus_warm": 0.0,
+    "C_matched_minus_uniform": -118.66666666666666,
+    "A_uniform_faster_signs": 3,
+    "B_positive_structure_signs": 0
+  },
+  {
+    "rho_nominal": 0.7,
+    "rho_realized_mean": 0.8181646670676406,
+    "warm_mean": 24.0,
+    "cold_uniform_mean": 232.33333333333334,
+    "cold_random_mean": null,
+    "matched_mean": 24.0,
+    "A_warm_minus_uniform": -208.33333333333334,
+    "A_warm_minus_random": null,
+    "B_structure_premium_matched_minus_warm": 0.0,
+    "C_matched_minus_uniform": -208.33333333333334,
+    "A_uniform_faster_signs": 2,
+    "B_positive_structure_signs": 0
+  },
+  {
+    "rho_nominal": 0.5,
+    "rho_realized_mean": 0.6323526783600676,
+    "warm_mean": 24.0,
+    "cold_uniform_mean": 195.0,
+    "cold_random_mean": null,
+    "matched_mean": 24.0,
+    "A_warm_minus_uniform": -171.0,
+    "A_warm_minus_random": null,
+    "B_structure_premium_matched_minus_warm": 0.0,
+    "C_matched_minus_uniform": -171.0,
+    "A_uniform_faster_signs": 3,
+    "B_positive_structure_signs": 0
+  },
+  {
+    "rho_nominal": 0.3,
+    "rho_realized_mean": 0.38827075603033495,
+    "warm_mean": 24.0,
+    "cold_uniform_mean": 169.33333333333334,
+    "cold_random_mean": null,
+    "matched_mean": 24.0,
+    "A_warm_minus_uniform": -145.33333333333334,
+    "A_warm_minus_random": null,
+    "B_structure_premium_matched_minus_warm": 0.0,
+    "C_matched_minus_uniform": -145.33333333333334,
+    "A_uniform_faster_signs": 3,
+    "B_positive_structure_signs": 0
+  },
+  {
+    "rho_nominal": 0.0,
+    "rho_realized_mean": -0.0493340513972518,
+    "warm_mean": 24.0,
+    "cold_uniform_mean": 196.33333333333334,
+    "cold_random_mean": null,
+    "matched_mean": 24.0,
+    "A_warm_minus_uniform": -172.33333333333334,
+    "A_warm_minus_random": null,
+    "B_structure_premium_matched_minus_warm": 0.0,
+    "C_matched_minus_uniform": -172.33333333333334,
+    "A_uniform_faster_signs": 2,
+    "B_positive_structure_signs": 0
+  }
+]

@@ -1,5 +1,5 @@
 """
-Graph Attention Engine (GAE) v0.7.9
+Graph Attention Engine (GAE) v0.7.27
 Public API surface.
 
 Core scoring:
@@ -44,11 +44,14 @@ Referral:
 
 Deprecated (TD-029 — remove in a future release):
   score_entity, score_alert, score_with_profile, ProfileScoringResult
+
+For LangChain integration, see gae.integrations.langchain.
+For MCP integration, see gae.integrations.mcp.
 """
 
 from __future__ import annotations
 
-__version__ = "0.7.23"
+__version__ = "0.7.27"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
 from gae.dk_estimator import DKEstimator, CoordinateDescentEstimator

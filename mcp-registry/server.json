@@ -1,0 +1,27 @@
+{
+  "$schema": "https://registry.modelcontextprotocol.io/schema/server.json",
+  "name": "io.github.arindambanerji/rgi-judgment-memory",
+  "title": "RGI Judgment Memory",
+  "description": "Score decisions, learn from verified outcomes, conservation-gate your AI agent. Compounding intelligence for any domain.",
+  "version": "0.1.0",
+  "repository": "https://github.com/ArindamBanerji/graph-attention-engine",
+  "websiteUrl": "https://rgi.dakshineshwari.net",
+  "license": "Apache-2.0",
+  "remotes": [
+    {
+      "transportType": "stdio",
+      "command": "rgi-mcp-server",
+      "args": ["--config", "rgi.yaml"]
+    }
+  ],
+  "tools": [
+    {"name": "rgi_score", "description": "Score a decision against learned judgment memory"},
+    {"name": "rgi_verify", "description": "Verify an outcome — centroids update, conservation recalculates"},
+    {"name": "rgi_conservation", "description": "Conservation status: RED/AMBER/GREEN safety gate"},
+    {"name": "rgi_decisions", "description": "Recent decision history with outcomes"},
+    {"name": "rgi_accuracy", "description": "Per-category accuracy breakdown and IKS"},
+    {"name": "rgi_explain", "description": "Explain a decision: factor contributions, confidence, reasoning trace"}
+  ],
+  "categories": ["ai", "machine-learning", "decision-making", "memory"],
+  "keywords": ["judgment-memory", "compounding-intelligence", "rgi", "conservation-law", "decision-quality"]
+}

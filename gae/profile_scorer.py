@@ -48,7 +48,7 @@ class CentroidUpdate:
     Return value from ProfileScorer.update().
 
     Captures the magnitude of centroid movement for a single learning step.
-    Used for visualization, Neo4j persistence, and drift monitoring.
+    Used for visualization, AGE persistence, and drift monitoring.
 
     Reference: docs/gae_design_v10_6.md §9.5; IKS pipeline.
     """

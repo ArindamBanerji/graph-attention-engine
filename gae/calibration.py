@@ -150,7 +150,7 @@ class ConservationCheck(NamedTuple):
     passed: bool      # signal ≥ theta_min
 
 
-def derive_theta_min(
+def _derive_theta_min(
     eta: float = 0.05,
     n_half: float = 14.0,
     t_max_days: float = 21.0,
@@ -168,13 +168,9 @@ def derive_theta_min(
     At η=0.05, N_half=14, T_max=28: θ_min ≈ 0.350 (S2P default —
     longer acceptable convergence due to 5:1 vs 20:1 penalty ratio).
 
-    NOTE (April 16, 2026 — three-judge consensus): The previously
-    documented formula θ_min = 23.53/(α×V) was structurally
-    incorrect — it double-counted α and V which already appear on
-    the LHS of the conservation inequality α·q·V ≥ θ_min. The
-    correct form is this function's existing implementation: a
-    constant derived from convergence requirements, not a
-    deployment-scaled formula.
+    This legacy convergence-budget API is retained for compatibility only.
+    The canonical deployment threshold is θ_min = 23.53 / (α·V), where α
+    is category coverage among verified decisions; see judgment_memory_v2_9.md §6.
 
     V=50 deployments are feasible: at α=0.25, q=0.85,
     α·q·V = 10.6 >> 0.467. The "V=50 impossible" language in
@@ -191,34 +187,14 @@ def derive_theta_min(
     return float(eta * n_half ** 2 / t_max_days)
 
 
+# Compatibility name for callers of the retired convergence-budget API.
+derive_theta_min = _derive_theta_min
+
+
 def compute_theta_min(alpha: float, V: float) -> float:
-    """
-    Deployment-aware conservation threshold: θ_min = 23.53 / (α × V).
-
-    Use this in place of derive_theta_min() when alpha and V are known.
-    Returns the minimum α·q·V signal required for healthy learning.
-
-    Parameters
-    ----------
-    alpha : float
-        Override rate — must be > 0.
-    V : float
-        Verified decisions per day — must be > 0.
-
-    Returns
-    -------
-    float
-        Conservation floor θ_min.
-
-    Raises
-    ------
-    ValueError
-        When alpha <= 0 or V <= 0.
-    """
+    """Return θ_min = 23.53 / (α·V); invalid coverage is unreachable."""
     if alpha <= 0 or V <= 0:
-        raise ValueError(
-            f"alpha and V must be positive, got alpha={alpha}, V={V}"
-        )
+        return float("inf")
     return 23.53 / (alpha * V)
 
 
@@ -467,12 +443,13 @@ def conservation_status(
     total_decisions: int,
     penalty_ratio: float,
     window: int = 400,
+    categories_with_data: int | None = None,
+    total_categories: int | None = None,
 ) -> ConservationCheck:
     """Convenience: compute conservation from raw decision counts.
 
-    Derives α = verified/total, q = correct/verified, V = verified,
-    then delegates to check_conservation(). Used by copilot-sdk
-    conservation router to avoid callers computing α/q/V manually.
+    Derives α = categories_with_data/total_categories, q = correct/verified,
+    and V = verified, then delegates to check_conservation().
     """
     if total_decisions == 0 or verified_count == 0:
         return ConservationCheck(
@@ -482,7 +459,15 @@ def conservation_status(
             status='RED',
             passed=False,
         )
-    alpha = verified_count / total_decisions
+    if categories_with_data is None or total_categories is None or total_categories <= 0:
+        return ConservationCheck(
+            signal=0.0,
+            theta_min=float("inf"),
+            headroom=0.0,
+            status="RED",
+            passed=False,
+        )
+    alpha = max(0.0, min(1.0, categories_with_data / total_categories))
     q = correct_count / verified_count
     V = float(verified_count)
     theta_min = compute_theta_min(alpha, V)

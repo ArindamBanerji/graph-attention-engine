@@ -1,0 +1,26 @@
+{
+  "schema_version": "hcurve-verification-chart-v2",
+  "created_utc": "2026-08-20T19:57:08.171366+00:00",
+  "scorer_imported": false,
+  "rerun": false,
+  "inputs": [
+    "raw/two_arm_v4/fit_gate_recompute.json",
+    "raw/arm_c_v4/summary.json",
+    "raw/two_arm_v4/runs/seed-042/epsilon-0.35/arm-A/distance_trajectories.json",
+    "raw/two_arm_v4/runs/seed-042/epsilon-0.35/arm-B/distance_trajectories.json",
+    "raw/arm_c_v4/runs/seed-042/epsilon-0.35/C2-shift-triggered-boost/distance_trajectories.json"
+  ],
+  "series": [
+    "A production",
+    "B theorem",
+    "C1 symmetric rate",
+    "C2 shift-boost"
+  ],
+  "c3_note": "C3 omitted from the plot because persisted C3 values are identical to C1.",
+  "censoring": "x markers below the numeric range; no censored value is assigned gamma=0",
+  "outputs": [
+    "hcurve_gamma_by_epsilon.png",
+    "hcurve_gamma_by_epsilon.pdf",
+    "hcurve_gamma_by_epsilon.caption.txt"
+  ]
+}
