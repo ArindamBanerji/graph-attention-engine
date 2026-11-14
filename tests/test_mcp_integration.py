@@ -19,6 +19,17 @@ from gae.integrations.mcp_cli import parse_args
 FASTMCP_INSTALLED = importlib.util.find_spec("fastmcp") is not None
 
 
+def test_factor_names_forwarded_to_scorer() -> None:
+    """R1: wrapper factor names must reach the scorer's schema metadata."""
+    svc = JudgmentMemoryService(
+        categories=["routing", "validation"],
+        actions=["approve", "flag"],
+        factors=["freshness", "quality"],
+    )
+    assert list(svc.scorer.factors) == ["freshness", "quality"]
+    assert svc.scorer._extract_category_state(0)["_schema"]["factors"] == svc.factors
+
+
 class FakeFastMCP:
     """Minimal decorator registry for dependency-independent tests."""
 
@@ -125,6 +136,8 @@ def test_save_load_state(tmp_path: Path) -> None:
     )
     np.testing.assert_allclose(restored.centroids, expected)
     assert restored.rgi_accuracy()["total_verified"] == 1
+    assert restored.scorer.verified_count(0) == 1
+    assert restored.scorer.accuracy(0) == 1.0
 
 
 def test_state_compat_with_langchain(tmp_path: Path) -> None:

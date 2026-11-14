@@ -2,7 +2,7 @@
 Pluggable scoring kernels for ProfileScorer.
 
 v6.0: L2Kernel (default, proven) + DiagonalKernel (weighted, continuous mask).
-v7.0 research (not committed): ShrinkageKernel + MahalanobisKernel (gated by V-MV-KERNEL).
+v7.0 research: MahalanobisKernel + LearnedMetricKernel for held-out comparison.
 
 The kernel controls HOW distance between factor vector f and centroid μ is
 measured. Different kernels weight dimensions differently.
@@ -191,18 +191,18 @@ class DiagonalKernel:
             self._raw_weights = weight_array.copy()
             return
 
-        sigma = np.asarray(sigma, dtype=np.float64)
-        assert sigma.ndim == 1, (
-            f"sigma must be 1-D, got shape {sigma.shape}"
+        sigma_array = np.asarray(sigma, dtype=np.float64)
+        assert sigma_array.ndim == 1, (
+            f"sigma must be 1-D, got shape {sigma_array.shape}"
         )
-        if np.any(sigma <= 0):
+        if np.any(sigma_array <= 0):
             raise ValueError(
-                f"DiagonalKernel: all sigma values must be > 0. Got {sigma}"
+                f"DiagonalKernel: all sigma values must be > 0. Got {sigma_array}"
             )
-        W = 1.0 / sigma ** 2
+        W = 1.0 / sigma_array ** 2
         self._W_baseline_max = float(W.max())
         self.weights = W / self._W_baseline_max
-        self.sigma = sigma.copy()
+        self.sigma = sigma_array.copy()
         self._provenance = WeightProvenance.SIGMA_DERIVED
         self._raw_weights = W.copy()
 
@@ -320,21 +320,9 @@ class DiagonalKernel:
         return weights.copy()
 
     def refresh_weights(self, sigma_per_factor: np.ndarray) -> "DiagonalKernel":
-        """
-        Return a NEW DiagonalKernel with weights updated from fresh sigma estimates.
-        Does NOT mutate self — returns a new instance (immutable kernel design).
+        """Return a new kernel updated from fresh per-factor noise estimates.
 
-        Weights are computed as 1 / σ², where σ is clipped to ≥ 1e-6 to prevent
-        division by zero. Higher σ (noisier factor) → lower weight.
-
-        Args:
-            sigma_per_factor: array of shape (d,) — per-factor noise estimates
-                              from CovarianceEstimator.get_per_factor_sigma().
-
-        Returns:
-            New DiagonalKernel with weights = 1 / sigma_per_factor**2
-
-        Reference: V-CGA-FROZEN gap closure; docs/gae_design_v10_6.md §9.
+        Reference: docs/gae_design_v10_6.md §9; V-CGA-FROZEN.
         """
         sigma_per_factor = np.asarray(sigma_per_factor, dtype=np.float64)
         assert sigma_per_factor.shape == self.weights.shape, (
@@ -343,3 +331,125 @@ class DiagonalKernel:
         )
         clipped = np.maximum(sigma_per_factor, 1e-6)
         return DiagonalKernel(clipped)
+
+
+class MahalanobisKernel:
+    """Full-covariance squared Mahalanobis distance.
+
+    ``distance(f, mu_a) = (f-mu_a)^T Sigma^-1 (f-mu_a)``.  The covariance
+    may be supplied directly or estimated from training residuals with the
+    NumPy-only OAS shrinkage estimator in :meth:`from_samples`.
+
+    Reference: docs/gae_design_v10_6.md §9; blog Eq. 4 kernel extension.
+    """
+
+    def __init__(self, covariance: np.ndarray, *, regularization: float = 1e-9) -> None:
+        """Build a stable precision matrix from a square covariance matrix."""
+        covariance_array = np.asarray(covariance, dtype=np.float64)
+        assert covariance_array.ndim == 2, (
+            f"covariance must be 2-D, got shape {covariance_array.shape}"
+        )
+        d = covariance_array.shape[0]
+        assert covariance_array.shape == (d, d), (
+            f"covariance.shape={covariance_array.shape} must be square"
+        )
+        if not np.all(np.isfinite(covariance_array)):
+            raise ValueError("MahalanobisKernel covariance must be finite")
+        if regularization < 0.0:
+            raise ValueError("regularization must be non-negative")
+        symmetric = 0.5 * (covariance_array + covariance_array.T)
+        assert symmetric.shape == (d, d)
+        eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
+        assert eigenvalues.shape == (d,)
+        assert eigenvectors.shape == (d, d)
+        floor = max(float(regularization), float(np.finfo(np.float64).eps))
+        clipped = np.maximum(eigenvalues, floor)
+        precision = (eigenvectors * (1.0 / clipped)) @ eigenvectors.T
+        assert precision.shape == (d, d)
+        self.covariance = symmetric
+        self.precision = precision
+        self.shrinkage: float | None = None
+
+    @classmethod
+    def from_samples(cls, samples: np.ndarray) -> "MahalanobisKernel":
+        """Estimate covariance with Oracle Approximating Shrinkage (OAS).
+
+        OAS shrinks the empirical covariance toward a scaled identity matrix,
+        avoiding singular precision estimates without an sklearn dependency.
+
+        Reference: docs/gae_design_v10_6.md §9; blog Eq. 4 kernel extension.
+        """
+        sample_array = np.asarray(samples, dtype=np.float64)
+        assert sample_array.ndim == 2, (
+            f"samples must be 2-D, got shape {sample_array.shape}"
+        )
+        n_samples, d = sample_array.shape
+        if n_samples < 2:
+            raise ValueError("MahalanobisKernel requires at least two samples")
+        if not np.all(np.isfinite(sample_array)):
+            raise ValueError("MahalanobisKernel samples must be finite")
+
+        centered = sample_array - sample_array.mean(axis=0, keepdims=True)
+        assert centered.shape == (n_samples, d)
+        empirical = (centered.T @ centered) / float(n_samples)
+        assert empirical.shape == (d, d)
+        trace = float(np.trace(empirical))
+        mu = trace / float(d)
+        alpha = float(np.mean(empirical ** 2))
+        denominator = (n_samples + 1.0) * (alpha - (mu ** 2) / float(d))
+        if denominator <= 0.0:
+            shrinkage = 1.0
+        else:
+            shrinkage = min(1.0, (alpha + mu ** 2) / denominator)
+        shrunk = (
+            (1.0 - shrinkage) * empirical
+            + shrinkage * mu * np.eye(d, dtype=np.float64)
+        )
+        assert shrunk.shape == (d, d)
+        kernel = cls(shrunk)
+        kernel.shrinkage = float(shrinkage)
+        return kernel
+
+    def compute_distance(self, f: np.ndarray, mu: np.ndarray) -> np.ndarray:
+        """Return one squared Mahalanobis distance per centroid row."""
+        factor = np.asarray(f, dtype=np.float64)
+        centroids = np.asarray(mu, dtype=np.float64)
+        d = self.precision.shape[0]
+        assert factor.shape == (d,), f"f.shape={factor.shape} must be ({d},)"
+        assert centroids.ndim == 2 and centroids.shape[1] == d, (
+            f"mu.shape={centroids.shape} must be (A, {d})"
+        )
+        diff = factor - centroids
+        assert diff.shape == centroids.shape
+        transformed = diff @ self.precision
+        assert transformed.shape == diff.shape
+        distances = np.sum(transformed * diff, axis=1)
+        assert distances.shape == (centroids.shape[0],)
+        return np.maximum(distances, 0.0)
+
+    def compute_gradient(self, f: np.ndarray, mu: np.ndarray) -> np.ndarray:
+        """Return the precision-weighted centroid update direction."""
+        factor = np.asarray(f, dtype=np.float64)
+        centroid = np.asarray(mu, dtype=np.float64)
+        d = self.precision.shape[0]
+        assert factor.shape == (d,), f"f.shape={factor.shape} must be ({d},)"
+        assert centroid.shape == (d,), f"mu.shape={centroid.shape} must be ({d},)"
+        gradient = self.precision @ (factor - centroid)
+        assert gradient.shape == (d,)
+        scale = max(float(np.linalg.norm(self.precision, ord=2)), 1e-12)
+        return gradient / scale
+
+
+class LearnedMetricKernel(DiagonalKernel):
+    """Positive learned per-factor metric used for held-out comparisons.
+
+    Training is intentionally external: callers fit positive weights only on
+    labelled training data, then construct this immutable scoring kernel.  It
+    is a compact, interpretable metric-learning alternative to an MLP.
+
+    Reference: docs/gae_design_v10_6.md §9; blog Eq. 4 kernel extension.
+    """
+
+    def __init__(self, weights: np.ndarray) -> None:
+        """Store already-learned positive weights without renormalizing them."""
+        super().__init__(weights=np.asarray(weights, dtype=np.float64))

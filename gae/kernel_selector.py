@@ -24,7 +24,13 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from gae.kernels import L2Kernel, DiagonalKernel
+from gae.kernels import (
+    DiagonalKernel,
+    L2Kernel,
+    LearnedMetricKernel,
+    MahalanobisKernel,
+    ScoringKernel,
+)
 
 
 @dataclass
@@ -109,6 +115,8 @@ class KernelSelector:
         sigma_per_factor: np.ndarray,
         correlation_max: float = 0.0,
         window_size: int = 100,
+        covariance: Optional[np.ndarray] = None,
+        learned_weights: Optional[np.ndarray] = None,
     ) -> None:
         """
         Parameters
@@ -124,6 +132,12 @@ class KernelSelector:
             Rolling window length for agreement tracking (default 100).
             recommend() uses the last window_size decisions to pick the
             winner, avoiding cold-start bias from early cumulative counts.
+        covariance : np.ndarray, shape (d, d), optional
+            Training-only covariance estimate. When omitted, the uninitialized
+            Mahalanobis candidate is skipped.
+        learned_weights : np.ndarray, shape (d,), optional
+            Positive held-out metric weights. When omitted, the uninitialized
+            learned candidate is skipped.
         """
         assert d > 0, f"d must be positive, got {d}"
         sigma_per_factor = np.asarray(sigma_per_factor, dtype=np.float64)
@@ -136,8 +150,22 @@ class KernelSelector:
         self.sigma = sigma_per_factor
         self.correlation_max = float(correlation_max)
         self.window_size: int = window_size
+        self.covariance = None if covariance is None else np.asarray(
+            covariance, dtype=np.float64
+        )
+        if self.covariance is not None:
+            assert self.covariance.shape == (d, d), (
+                f"covariance.shape={self.covariance.shape} must be ({d}, {d})"
+            )
+        self.learned_weights = None if learned_weights is None else np.asarray(
+            learned_weights, dtype=np.float64
+        )
+        if self.learned_weights is not None:
+            assert self.learned_weights.shape == (d,), (
+                f"learned_weights.shape={self.learned_weights.shape} must be ({d},)"
+            )
 
-        self.kernels: Dict = self._build_kernels()
+        self.kernels: Dict[str, ScoringKernel] = self._build_kernels()
         self.scores: Dict[str, KernelScore] = {
             name: KernelScore(kernel_name=name) for name in self.kernels
         }
@@ -150,7 +178,7 @@ class KernelSelector:
     # Kernel construction                                                  #
     # ------------------------------------------------------------------ #
 
-    def _build_kernels(self) -> Dict:
+    def _build_kernels(self) -> Dict[str, ScoringKernel]:
         """
         Instantiate all candidate kernels from measured σ.
 
@@ -160,7 +188,7 @@ class KernelSelector:
 
         Shape: sigma (d,) → weights (d,).
         """
-        kernels: Dict = {"l2": L2Kernel()}
+        kernels: Dict[str, ScoringKernel] = {"l2": L2Kernel()}
 
         # 1/σ² inverse-variance weights, normalised so max weight = 1
         inv_var = 1.0 / np.maximum(self.sigma ** 2, 0.001)
@@ -172,10 +200,18 @@ class KernelSelector:
             f"weights.shape={weights.shape} must be ({self.d},)"
         )
 
-        kernels["diagonal"] = DiagonalKernel(weights)
+        kernels["diagonal"] = DiagonalKernel(weights=weights)
         # v6.0 shrinkage proxy — identical to diagonal until Σ̂ is available
         # proxy: DiagonalKernel until true ShrinkageKernel ships (v7.0 research)
-        kernels["shrinkage"] = DiagonalKernel(weights.copy())
+        kernels["shrinkage"] = DiagonalKernel(weights=weights.copy())
+
+        # Training-dependent candidates are deliberately absent until fitted.
+        # record_comparison() therefore scores every initialized kernel and
+        # safely skips candidates that have no training estimate yet.
+        if self.covariance is not None:
+            kernels["mahalanobis"] = MahalanobisKernel(self.covariance)
+        if self.learned_weights is not None:
+            kernels["learned"] = LearnedMetricKernel(self.learned_weights)
 
         return kernels
 
@@ -430,9 +466,12 @@ class KernelSelector:
         reasons = []
 
         if new_sigma is not None:
-            new_sigma = np.asarray(new_sigma, dtype=np.float64)
+            new_sigma_array = np.asarray(new_sigma, dtype=np.float64)
             old_ratio = float(self.sigma.max() / max(float(self.sigma.min()), 0.001))
-            new_ratio = float(new_sigma.max() / max(float(new_sigma.min()), 0.001))
+            new_ratio = float(
+                new_sigma_array.max()
+                / max(float(new_sigma_array.min()), 0.001)
+            )
             if abs(new_ratio - old_ratio) > 0.5:
                 reasons.append(
                     f"Noise ratio changed: {old_ratio:.1f}× → {new_ratio:.1f}×"

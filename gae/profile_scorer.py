@@ -15,6 +15,8 @@ Reference: docs/gae_design_v10_7.md §9; blog Eq. 4-final, 4b-final.
 from __future__ import annotations
 
 import warnings
+import pickle
+from pathlib import Path
 
 import numpy as np
 from dataclasses import dataclass
@@ -28,6 +30,7 @@ from gae.dk_estimator import CoordinateDescentEstimator, DKEstimator
 from gae.convergence import ConservationStateMachine
 from gae.primitives import compute_entropy
 from gae.shrinkage import FixedAlpha, ShrinkageSchedule, compute_effective_weights
+from gae.state.protocol import StateBackend, VersionConflictError
 from gae.two_phase import (
     CategoryState,
     DecisionCountPolicy,
@@ -167,6 +170,10 @@ class ProfileScorer:
         auto_pause_on_amber: bool = False,
         *,
         learning_strategy: Optional[LearningStrategy] = None,
+        backend: Optional[StateBackend] = None,
+        scorer_id: str = "default",
+        factors: Optional[List[str]] = None,
+        load_backend: bool = True,
     ) -> None:
         """
         Args:
@@ -238,7 +245,38 @@ class ProfileScorer:
         self.n_categories: int = mu.shape[0]
         self.n_actions: int = mu.shape[1]
         self.n_factors: int = mu.shape[2]
+        self.factors = list(factors) if factors is not None else [
+            f"factor_{i}" for i in range(self.n_factors)
+        ]
+        if len(self.factors) != self.n_factors or len(set(self.factors)) != self.n_factors:
+            raise ValueError("factors must contain one unique name per factor")
+        self._backend_versions: Dict[str, str] = {}
+        if backend is not None:
+            if not isinstance(scorer_id, str) or not scorer_id.strip():
+                raise ValueError("scorer_id must be a non-empty string when backend is set")
+            backend_categories = [
+                self._category_name(category_index)
+                for category_index in range(self.n_categories)
+            ]
+            if any(not category.strip() for category in backend_categories):
+                raise ValueError("backend category names must be non-empty")
+            if len(set(backend_categories)) != len(backend_categories):
+                raise ValueError("backend category names must be unique")
+        self._backend = backend
+        self._scorer_id = scorer_id
         self.decision_count: int = 0
+        # Per-category verified-outcome observability. These counters are
+        # independent of per-(category, action) learning-rate counts, so
+        # monitoring can report quality without changing Eq. 4b learning.
+        self._verified_count: Dict[int, int] = {
+            category_index: 0 for category_index in range(self.n_categories)
+        }
+        self._correct_count: Dict[int, int] = {
+            category_index: 0 for category_index in range(self.n_categories)
+        }
+        self._centroid_drift: Dict[int, float] = {
+            category_index: 0.0 for category_index in range(self.n_categories)
+        }
 
         # Hyperparameters — from CalibrationProfile or validated defaults
         if profile is not None:
@@ -279,11 +317,13 @@ class ProfileScorer:
 
         # Factor quarantine mask (v6.0 binary; None = all active)
         if factor_mask is not None:
-            factor_mask = np.asarray(factor_mask, dtype=np.float64)
-            assert factor_mask.shape == (self.n_factors,), (
-                f"factor_mask.shape={factor_mask.shape} must be ({self.n_factors},)"
+            factor_mask_array = np.asarray(factor_mask, dtype=np.float64)
+            assert factor_mask_array.shape == (self.n_factors,), (
+                f"factor_mask.shape={factor_mask_array.shape} must be ({self.n_factors},)"
             )
-        self.factor_mask: Optional[np.ndarray] = factor_mask
+            self.factor_mask: Optional[np.ndarray] = factor_mask_array
+        else:
+            self.factor_mask = None
 
         # AMBER auto-pause (G6a three-judge consensus — v6.0 blunt freeze)
         self.auto_pause_on_amber: bool = auto_pause_on_amber
@@ -295,6 +335,9 @@ class ProfileScorer:
         self._conservation_sm.register_handler("*", "GREEN", self._on_conservation_resume)
 
         self._learning_strategy = learning_strategy
+        self._category_states: Optional[List[CategoryState]]
+        self._dk_weights: Optional[np.ndarray]
+        self._decision_buffer: Optional[List[tuple[np.ndarray, int, int, bool]]]
         if learning_strategy is not None:
             C = self.centroids.shape[0]
             self._category_states = [CategoryState() for _ in range(C)]
@@ -313,6 +356,7 @@ class ProfileScorer:
         self.counts = np.zeros((self.n_categories, self.n_actions), dtype=np.int64)
         self._frozen: bool = False
         self._eta_override_warned: bool = False
+        self._cov_inv: Optional[np.ndarray] = None
         assert self.counts.shape == (self.n_categories, self.n_actions), (
             f"counts shape {self.counts.shape} != ({self.n_categories}, {self.n_actions})"
         )
@@ -337,7 +381,9 @@ class ProfileScorer:
                 stacklevel=2,
             )
             # Per-category covariance inverses — None until set_covariance() called
-            self._cov_inv: Optional[np.ndarray] = None
+
+        if backend is not None and load_backend:
+            self.load()
 
     @classmethod
     def for_soc(cls, mu, actions=None, **kwargs):
@@ -738,6 +784,163 @@ class ProfileScorer:
         """Current conservation monitor status string ('GREEN', 'AMBER', 'RED', …)."""
         return self._conservation_status
 
+    def _record_verification(
+        self, category_index: int, correct: bool, centroid_drift: float
+    ) -> None:
+        """Record one verified outcome for observability metrics (Eq. 4b)."""
+        if not 0 <= category_index < self.n_categories:
+            return
+        self._verified_count[category_index] += 1
+        if correct:
+            self._correct_count[category_index] += 1
+        self._centroid_drift[category_index] = float(centroid_drift)
+
+    def verified_count(self, category_index: int) -> int:
+        """Return verified outcomes for one category (Eq. 4b observability)."""
+        if not 0 <= category_index < self.n_categories:
+            raise ValueError(f"category_index {category_index} out of range")
+        return self._verified_count[category_index]
+
+    def accuracy(self, category_index: int) -> float:
+        """Return verified-outcome accuracy for one category (Eq. 4b observability)."""
+        verified = self.verified_count(category_index)
+        if verified == 0:
+            return 0.0
+        return self._correct_count[category_index] / verified
+
+    def centroid_drift(self, category_index: int) -> float:
+        """Return the latest centroid-update magnitude for one category (Eq. 4b)."""
+        if not 0 <= category_index < self.n_categories:
+            raise ValueError(f"category_index {category_index} out of range")
+        return self._centroid_drift[category_index]
+
+    def _extract_category_state(self, category_index: int) -> Dict:
+        """Return the complete durable learning state for one category."""
+        state: Dict = {
+            "_schema": {
+                "actions": list(self.actions),
+                "factors": list(self.factors),
+                "categories": [
+                    self._category_name(i) for i in range(self.n_categories)
+                ],
+            },
+            "centroids": self.mu[category_index].tolist(),
+            "counts": self.counts[category_index].tolist(),
+            "verified_count": self._verified_count[category_index],
+            "correct_count": self._correct_count[category_index],
+            "centroid_drift": self._centroid_drift[category_index],
+        }
+        if self._category_states is not None:
+            category_state = self._category_states[category_index]
+            state["category_state"] = {
+                "phase": category_state.phase,
+                "n_decisions": category_state.n_decisions,
+                "freeze_point": category_state.freeze_point,
+            }
+        if self._dk_weights is not None:
+            state["dk_weights"] = self._dk_weights[category_index].tolist()
+        covariance = self._cov_inv
+        if covariance is not None:
+            state["cov_inv"] = covariance[category_index].tolist()
+        return state
+
+    def _apply_category_state(self, category_index: int, state: Dict) -> None:
+        """Restore one durable backend category slice after validating shapes."""
+        schema = state.get("_schema")
+        if schema is not None:
+            for key, current, label in (
+                ("actions", self.actions, "Action"),
+                ("factors", self.factors, "Factor"),
+            ):
+                if schema.get(key) != list(current):
+                    raise ValueError(
+                        f"{label} axis mismatch for category {category_index}: "
+                        f"stored={schema.get(key)}, current={list(current)}"
+                    )
+        if "centroids" in state:
+            centroids = np.asarray(state["centroids"], dtype=np.float64)
+            expected_centroids = (self.n_actions, self.n_factors)
+            if centroids.shape != expected_centroids:
+                raise ValueError(
+                    f"backend centroid shape {centroids.shape} != {expected_centroids}"
+                )
+            if not np.all(np.isfinite(centroids)):
+                raise ValueError("backend centroids contain NaN or Inf values")
+            self.mu[category_index] = centroids
+        if "counts" in state:
+            counts = np.asarray(state["counts"], dtype=np.int64)
+            if counts.shape != (self.n_actions,):
+                raise ValueError(
+                    f"backend counts shape {counts.shape} != {(self.n_actions,)}"
+                )
+            self.counts[category_index] = counts
+        if "verified_count" in state:
+            self._verified_count[category_index] = int(state["verified_count"])
+        if "correct_count" in state:
+            self._correct_count[category_index] = int(state["correct_count"])
+        if "centroid_drift" in state:
+            self._centroid_drift[category_index] = float(state["centroid_drift"])
+
+        if self._category_states is not None and "category_state" in state:
+            persisted = state["category_state"]
+            if not isinstance(persisted, dict):
+                raise ValueError("backend category_state must be a dictionary")
+            category_state = self._category_states[category_index]
+            category_state.phase = str(persisted.get("phase", category_state.phase))
+            category_state.n_decisions = int(
+                persisted.get("n_decisions", category_state.n_decisions)
+            )
+            freeze_point = persisted.get("freeze_point", category_state.freeze_point)
+            category_state.freeze_point = None if freeze_point is None else int(freeze_point)
+
+        if "dk_weights" in state:
+            weights = np.asarray(state["dk_weights"], dtype=np.float64)
+            if weights.shape != (self.n_factors,):
+                raise ValueError(
+                    f"backend dk_weights shape {weights.shape} != {(self.n_factors,)}"
+                )
+            if self._dk_weights is None:
+                self._dk_weights = np.ones(
+                    (self.n_categories, self.n_factors), dtype=np.float64
+                )
+            assert self._dk_weights is not None
+            self._dk_weights[category_index] = weights
+
+        if "cov_inv" in state:
+            category_covariance = np.asarray(state["cov_inv"], dtype=np.float64)
+            expected_covariance = (self.n_actions, self.n_factors, self.n_factors)
+            if category_covariance.shape != expected_covariance:
+                raise ValueError(
+                    f"backend cov_inv shape {category_covariance.shape} != {expected_covariance}"
+                )
+            all_covariances = self._cov_inv
+            if all_covariances is None:
+                all_covariances = np.zeros(
+                    (self.n_categories, *expected_covariance), dtype=np.float64
+                )
+                self._cov_inv = all_covariances
+            all_covariances[category_index] = category_covariance
+
+    def _runtime_state_for_retry(self) -> Dict:
+        """Capture mutable non-category state that update retries must not duplicate."""
+        return {
+            "decision_count": self.decision_count,
+            "gated_count": self._gated_count,
+            "applied_count": self._applied_count,
+            "decision_buffer": (
+                None if self._decision_buffer is None else list(self._decision_buffer)
+            ),
+        }
+
+    def _restore_runtime_state_for_retry(self, state: Dict) -> None:
+        """Restore retry-sensitive runtime counters before replaying one outcome."""
+        self.decision_count = int(state["decision_count"])
+        self._gated_count = int(state["gated_count"])
+        self._applied_count = int(state["applied_count"])
+        if self._decision_buffer is not None:
+            saved_buffer = state["decision_buffer"]
+            self._decision_buffer = [] if saved_buffer is None else list(saved_buffer)
+
     @property
     def is_paused(self) -> bool:
         """True when learning is paused due to conservation AMBER/RED signal."""
@@ -778,6 +981,79 @@ class ProfileScorer:
         return f - mu_single
 
     def update(
+        self,
+        f: np.ndarray,
+        category_index: int,
+        action_index: int,
+        correct: bool,
+        gt_action_index: Optional[int] = None,
+        confidence: Optional[float] = None,
+    ) -> CentroidUpdate:
+        """Apply one verified outcome, using backend CAS when configured.
+
+        A backend conflict is resolved by loading the fresh category slice and
+        replaying this exact verification.  Centroid updates are count-decayed
+        and clipped, so merging a stale local delta would be incorrect.
+        """
+        if self._backend is None or not 0 <= category_index < self.n_categories:
+            return self._update_local(
+                f, category_index, action_index, correct, gt_action_index, confidence
+            )
+
+        original_category_state = self._extract_category_state(category_index)
+        original_runtime_state = self._runtime_state_for_retry()
+        category_name = self._category_name(category_index)
+        last_conflict: Optional[VersionConflictError] = None
+
+        # Initial attempt plus three reload-and-replay retries.
+        for _attempt in range(4):
+            self._restore_runtime_state_for_retry(original_runtime_state)
+            state, version = self._backend.load_category(self._scorer_id, category_name)
+            if state:
+                self._apply_category_state(category_index, state)
+            else:
+                self._apply_category_state(category_index, original_category_state)
+            self._backend_versions[category_name] = version
+            snapshot = self._extract_category_state(category_index)
+            try:
+                update = self._update_local(
+                    f, category_index, action_index, correct, gt_action_index, confidence
+                )
+                new_version = self._backend.save_category(
+                    self._scorer_id,
+                    category_name,
+                    self._extract_category_state(category_index),
+                    version,
+                )
+            except VersionConflictError as exc:
+                self._apply_category_state(category_index, snapshot)
+                self._restore_runtime_state_for_retry(original_runtime_state)
+                last_conflict = exc
+                continue
+            except Exception:
+                self._apply_category_state(category_index, snapshot)
+                self._restore_runtime_state_for_retry(original_runtime_state)
+                raise
+            self._backend_versions[category_name] = new_version
+            return update
+
+        # A failed final CAS must not leave this process with an unpersisted
+        # replay result or inflated counters from retry attempts. Reloading is
+        # also essential here: the latest persisted category may be newer than
+        # this process's original local snapshot.
+        self._restore_runtime_state_for_retry(original_runtime_state)
+        persisted_state, _version = self._backend.load_category(
+            self._scorer_id, category_name
+        )
+        self._apply_category_state(
+            category_index,
+            persisted_state if persisted_state else original_category_state,
+        )
+        self._backend_versions[category_name] = _version
+        assert last_conflict is not None
+        raise last_conflict
+
+    def _update_local(
         self,
         f: np.ndarray,
         category_index: int,
@@ -839,6 +1115,7 @@ class ProfileScorer:
         if self._paused_by_conservation:
             self._gated_count += 1
             self.decision_count += 1
+            self._record_verification(c, correct, 0.0)
             return CentroidUpdate(
                 centroid_delta_norm=0.0,
                 category_index=c,
@@ -854,6 +1131,7 @@ class ProfileScorer:
         if confidence is not None and confidence < self.min_confidence:
             self._gated_count += 1
             self.decision_count += 1
+            self._record_verification(c, correct, 0.0)
             return CentroidUpdate(
                 centroid_delta_norm=0.0,
                 category_index=c,
@@ -867,6 +1145,7 @@ class ProfileScorer:
 
         if self._frozen:
             self.decision_count += 1
+            self._record_verification(c, correct, 0.0)
             return CentroidUpdate(
                 centroid_delta_norm=0.0,
                 category_index=c,
@@ -901,6 +1180,7 @@ class ProfileScorer:
                     (f.copy(), category_index, action_index, correct)
                 )
             self.decision_count += 1
+            self._record_verification(c, correct, 0.0)
             return CentroidUpdate(
                 centroid_delta_norm=0.0,
                 category_index=c,
@@ -1002,6 +1282,7 @@ class ProfileScorer:
         self.counts[c, a] += 1
         self.decision_count += 1
         self._applied_count += 1
+        self._record_verification(c, correct, centroid_delta_norm)
 
         return CentroidUpdate(
             centroid_delta_norm=centroid_delta_norm,
@@ -1137,9 +1418,82 @@ class ProfileScorer:
         )
         self._cov_inv = cov_inv.astype(np.float64)
 
+    def _save_all_categories_to_backend(self) -> None:
+        """CAS-save category snapshots; on conflict adopt authoritative state."""
+        assert self._backend is not None
+        for category_index in range(self.n_categories):
+            category_name = self._category_name(category_index)
+            for attempt in range(4):
+                version = self._backend_versions.get(category_name, "0")
+                try:
+                    new_version = self._backend.save_category(
+                        self._scorer_id, category_name,
+                        self._extract_category_state(category_index), version,
+                    )
+                except VersionConflictError:
+                    state, version = self._backend.load_category(
+                        self._scorer_id, category_name
+                    )
+                    self._apply_category_state(category_index, state)
+                    self._backend_versions[category_name] = version
+                    self.decision_count = sum(self._verified_count.values())
+                    if attempt == 3:
+                        raise
+                else:
+                    self._backend_versions[category_name] = new_version
+                    break
+
+    def _load_all_categories_from_backend(self) -> None:
+        """Restore available category slices from the configured backend."""
+        assert self._backend is not None
+        stored_categories = self._backend.load_all(self._scorer_id)
+        by_name = {
+            self._category_name(category_index): category_index
+            for category_index in range(self.n_categories)
+        }
+        for category_name, (state, version) in stored_categories.items():
+            category_index = by_name.get(category_name)
+            if category_index is not None:
+                self._apply_category_state(category_index, state)
+                self._backend_versions[category_name] = version
+        self.decision_count = sum(self._verified_count.values())
+
+    def save(self, path=None) -> Optional[Path]:
+        """Persist backend category slices and optionally write a local pickle copy.
+
+        Backend state remains category-scoped and CAS-protected.  A requested
+        local path is a migration/backup copy and deliberately excludes the
+        backend object itself, which may hold unpicklable client resources.
+        """
+        if self._backend is not None:
+            self._save_all_categories_to_backend()
+        if path is None:
+            return None
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(pickle.dumps(self))
+        return target
+
+    def load(self, path=None) -> None:
+        """Restore a local pickle copy, then overlay configured backend state."""
+        backend = self._backend
+        scorer_id = self._scorer_id
+        if path is not None:
+            restored = pickle.loads(Path(path).read_bytes())
+            if not isinstance(restored, ProfileScorer):
+                raise ValueError("saved scorer state is not a ProfileScorer")
+            self.__setstate__(restored.__getstate__())
+            self._backend = backend
+            self._scorer_id = scorer_id
+        if self._backend is not None:
+            self._load_all_categories_from_backend()
+
     def __getstate__(self):
         """Return full pickle state for Eq. 4 profile scoring objects."""
-        return self.__dict__.copy()
+        state = self.__dict__.copy()
+        state.pop("_backend", None)
+        state.pop("_backend_versions", None)
+        return state
 
     def get_checkpoint_state(self) -> Dict:
         """
@@ -1159,6 +1513,9 @@ class ProfileScorer:
 
         return {
             "centroids": self.centroids.copy(),
+            "verified_counts": self._verified_count.copy(),
+            "correct_counts": self._correct_count.copy(),
+            "centroid_drift": self._centroid_drift.copy(),
             "category_phases": category_phases,
             "dk_weights": None if self._dk_weights is None else self._dk_weights.copy(),
             "decision_buffer_size": (
@@ -1186,6 +1543,19 @@ class ProfileScorer:
                 else np.array(dk_weights, dtype=np.float64, copy=True)
             )
 
+        for key, attribute, value_type in (
+            ("verified_counts", "_verified_count", int),
+            ("correct_counts", "_correct_count", int),
+            ("centroid_drift", "_centroid_drift", float),
+        ):
+            if key in state:
+                values = state[key]
+                setattr(
+                    self,
+                    attribute,
+                    {int(index): value_type(value) for index, value in values.items()},
+                )
+
         if self._category_states is None:
             return
 
@@ -1203,9 +1573,27 @@ class ProfileScorer:
 
     def __setstate__(self, state):
         self.__dict__.update(state)
+        self._backend_versions = {}
+        if "factors" not in state:
+            self.factors = [f"factor_{i}" for i in range(self.n_factors)]
+        if "_backend" not in state:
+            self._backend = None
+        if "_scorer_id" not in state:
+            self._scorer_id = "default"
         for attr in ('_learning_strategy', '_category_states', '_dk_weights', '_decision_buffer'):
             if attr not in state:
                 setattr(self, attr, None)
+        for attr, default in (
+            ('_verified_count', 0),
+            ('_correct_count', 0),
+            ('_centroid_drift', 0.0),
+        ):
+            if attr not in state:
+                setattr(
+                    self,
+                    attr,
+                    {category_index: default for category_index in range(self.n_categories)},
+                )
         if '_conservation_sm' not in state:
             self._conservation_sm = ConservationStateMachine(
                 initial_state=getattr(self, '_conservation_status', 'CALIBRATING')
@@ -1228,6 +1616,10 @@ class ProfileScorer:
         actions: List[str],
         profile: Optional["CalibrationProfile"] = None,
         learning_strategy: Optional[LearningStrategy] = None,
+        backend: Optional[StateBackend] = None,
+        scorer_id: str = "default",
+        factors: Optional[List[str]] = None,
+        load_backend: bool = True,
     ) -> "ProfileScorer":
         """
         Build ProfileScorer from a nested config dictionary.
@@ -1304,18 +1696,27 @@ class ProfileScorer:
             actions=actions,
             kernel=kernel,
             profile=profile,
+            categories=categories,
             learning_strategy=learning_strategy,
+            backend=backend,
+            scorer_id=scorer_id,
+            factors=factors,
+            load_backend=load_backend,
         )
 
 
 def build_profile_scorer(
     categories: List[str],
     actions: List[str],
-    centroids: Dict,
-    n_factors: int,
+    centroids: Optional[Dict] = None,
+    n_factors: Optional[int] = None,
     kernel: KernelType = KernelType.L2,
     profile: Optional["CalibrationProfile"] = None,
     learning_strategy: Optional[LearningStrategy] = None,
+    backend: Optional[StateBackend] = None,
+    scorer_id: str = "default",
+    factors: Optional[List[str]] = None,
+    load_backend: bool = True,
 ) -> ProfileScorer:
     """
     Convenience factory for building a ProfileScorer from explicit arguments.
@@ -1324,14 +1725,28 @@ def build_profile_scorer(
       categories: List of category names.
       actions:    List of action names.
       centroids:  Nested dict {cat_name: {act_name: [factor_values]}}.
-                  Missing entries default to 0.5.
+                  Missing entries default to 0.5. If omitted, neutral 0.5
+                  centroids are created from ``factors`` or ``n_factors``.
       n_factors:  Number of factors per centroid (used for validation only;
                   actual n_factors inferred from centroids dict).
       kernel:     Distance kernel (default L2).
       profile:    CalibrationProfile for hyperparameters.
+      backend:    Optional category store; restored automatically on construction.
+      scorer_id:  Namespace for persisted categories.
+      factors:    Ordered factor names persisted for axis validation. If omitted,
+                  positional names are used; supply names for semantic checks.
+      load_backend: Set False to defer backend restoration until load().
 
     Reference: docs/gae_design_v10_6.md §9.7.
     """
+    if centroids is None:
+        inferred_factors = len(factors) if factors is not None else n_factors
+        if inferred_factors is None or inferred_factors <= 0:
+            raise ValueError("provide centroids, factors, or a positive n_factors")
+        centroids = {
+            category: {action: [0.5] * inferred_factors for action in actions}
+            for category in categories
+        }
     config_dict = {
         "categories": categories,
         "centroids": centroids,
@@ -1342,4 +1757,8 @@ def build_profile_scorer(
         actions,
         profile,
         learning_strategy=learning_strategy,
+        backend=backend,
+        scorer_id=scorer_id,
+        factors=factors,
+        load_backend=load_backend,
     )

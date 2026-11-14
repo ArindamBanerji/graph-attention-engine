@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graph-attention-engine"
-version = "0.7.27"
+version = "0.8.0"
 description = "Standalone numpy-only graph attention library (GAE v5)"
 readme = "README.md"
 license = "Apache-2.0"
@@ -39,6 +39,18 @@ langchain = [
 ]
 mcp = [
     "fastmcp>=2.0",
+]
+prometheus = [
+    "prometheus_client>=0.20",
+]
+redis = [
+    "redis>=5.0",
+]
+airflow = [
+    "apache-airflow>=2.7",
+]
+postgres = [
+    "psycopg2-binary>=2.9",
 ]
 
 [project.scripts]

@@ -329,6 +329,27 @@ class TestComparisonSummary:
         summary = sel.get_comparison_summary()
         assert set(summary.keys()) == {"l2", "diagonal", "shrinkage"}
 
+    def test_five_initialized_kernels_are_compared(self, hetero_sigma, mu):
+        sel = KernelSelector(
+            d=6,
+            sigma_per_factor=hetero_sigma,
+            covariance=np.eye(6),
+            learned_weights=np.ones(6),
+        )
+        predictions = sel.record_comparison(
+            np.full(6, 0.5), 0, mu, 0, ["a", "b", "c", "d"]
+        )
+        expected = {"l2", "diagonal", "shrinkage", "mahalanobis", "learned"}
+        assert set(predictions) == expected
+        assert set(sel.get_comparison_summary()) == expected
+
+    def test_uninitialized_training_kernels_are_skipped(self, hetero_sigma, mu):
+        sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
+        predictions = sel.record_comparison(
+            np.full(6, 0.5), 0, mu, 0, ["a", "b", "c", "d"]
+        )
+        assert set(predictions) == {"l2", "diagonal", "shrinkage"}
+
     def test_summary_fields_present(self, hetero_sigma, mu):
         sel = KernelSelector(d=6, sigma_per_factor=hetero_sigma)
         rng = np.random.default_rng(7)

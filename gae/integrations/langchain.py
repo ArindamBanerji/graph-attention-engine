@@ -101,6 +101,7 @@ class JudgmentMemoryCallback(BaseCallbackHandler):
             self.actions,
             neutral,
             len(self.factors),
+            factors=self.factors,
         )
         self.scorer.categories = list(self.categories)
         self.scorer.tau = float(tau)
@@ -332,6 +333,10 @@ class JudgmentMemoryCallback(BaseCallbackHandler):
                 "initial_centroids": self._initial_centroids.tolist(),
                 "counts": self.scorer.counts.tolist(),
                 "scorer_decision_count": self.scorer.decision_count,
+                "scorer_observability": {
+                    key: self.scorer.get_checkpoint_state()[key]
+                    for key in ("verified_counts", "correct_counts", "centroid_drift")
+                },
                 "decisions": _json_safe(self._decisions),
                 "next_id": self._next_id,
                 "tau": self.tau,
@@ -380,6 +385,11 @@ class JudgmentMemoryCallback(BaseCallbackHandler):
                 raise ValueError("state count matrix shape is invalid")
             self.scorer.counts = counts.copy()
             self.scorer.decision_count = int(metadata.get("scorer_decision_count", 0))
+            observability = metadata.get("scorer_observability")
+            if observability is not None:
+                if not isinstance(observability, dict):
+                    raise ValueError("state scorer observability must be a dictionary")
+                self.scorer.restore_checkpoint_state(observability)
             decisions = metadata.get("decisions", [])
             if not isinstance(decisions, list):
                 raise ValueError("state decisions must be a list")

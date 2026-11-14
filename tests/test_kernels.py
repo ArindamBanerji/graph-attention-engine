@@ -7,7 +7,13 @@ Reference: docs/gae_design_v5.md §9; v6.0 kernel roadmap.
 import numpy as np
 import pytest
 
-from gae.kernels import L2Kernel, DiagonalKernel, ScoringKernel
+from gae.kernels import (
+    DiagonalKernel,
+    L2Kernel,
+    LearnedMetricKernel,
+    MahalanobisKernel,
+    ScoringKernel,
+)
 
 
 # ------------------------------------------------------------------ #
@@ -226,6 +232,54 @@ class TestDiagonalKernelGradient:
         k = DiagonalKernel(np.ones(6))
         g = k.compute_gradient(np.zeros(6), np.ones(6))
         assert g.shape == (6,)
+
+
+class TestMahalanobisKernel:
+    def test_identity_covariance_equals_l2(self):
+        f = np.array([0.2, 0.5, 0.8])
+        mu = np.array([[0.1, 0.4, 0.9], [0.8, 0.2, 0.3]])
+        mahalanobis = MahalanobisKernel(np.eye(3))
+        np.testing.assert_allclose(
+            mahalanobis.compute_distance(f, mu),
+            L2Kernel().compute_distance(f, mu),
+        )
+
+    def test_distance_shape_and_non_negative(self):
+        kernel = MahalanobisKernel(np.array([[2.0, 0.3], [0.3, 1.0]]))
+        distances = kernel.compute_distance(np.array([0.2, 0.7]), np.zeros((4, 2)))
+        assert distances.shape == (4,)
+        assert np.all(distances >= 0.0)
+
+    def test_oas_estimate_is_finite_and_positive_definite(self):
+        samples = np.random.default_rng(42).normal(size=(100, 3))
+        kernel = MahalanobisKernel.from_samples(samples)
+        assert kernel.shrinkage is not None
+        assert 0.0 <= kernel.shrinkage <= 1.0
+        assert np.all(np.linalg.eigvalsh(kernel.covariance) > 0.0)
+
+    def test_gradient_shape(self):
+        kernel = MahalanobisKernel(np.eye(5))
+        gradient = kernel.compute_gradient(np.ones(5), np.zeros(5))
+        assert gradient.shape == (5,)
+
+
+class TestLearnedMetricKernel:
+    def test_distance_shape(self):
+        kernel = LearnedMetricKernel(np.array([0.5, 1.0, 2.0]))
+        distances = kernel.compute_distance(np.ones(3), np.zeros((4, 3)))
+        assert distances.shape == (4,)
+
+    def test_unit_weights_equal_l2(self):
+        f = np.array([0.1, 0.6, 0.9])
+        mu = np.array([[0.2, 0.4, 0.8], [0.7, 0.3, 0.1]])
+        np.testing.assert_allclose(
+            LearnedMetricKernel(np.ones(3)).compute_distance(f, mu),
+            L2Kernel().compute_distance(f, mu),
+        )
+
+    def test_requires_positive_weights(self):
+        with pytest.raises(ValueError, match="weights must be finite and > 0"):
+            LearnedMetricKernel(np.array([1.0, 0.0]))
 
 
 # ------------------------------------------------------------------ #

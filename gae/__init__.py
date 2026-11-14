@@ -1,5 +1,5 @@
 """
-Graph Attention Engine (GAE) v0.7.27
+Graph Attention Engine (GAE) v0.8.0
 Public API surface.
 
 Core scoring:
@@ -37,7 +37,8 @@ Infrastructure:
   save_state, load_state
 
 Kernels:
-  L2Kernel, DiagonalKernel, CovarianceEstimator, KernelSelector
+  L2Kernel, DiagonalKernel, MahalanobisKernel, LearnedMetricKernel,
+  CovarianceEstimator, KernelSelector
 
 Referral:
   ReferralEngine, ReferralRule, ReferralDecision, ReferralReason, OverrideDetector
@@ -51,7 +52,7 @@ For MCP integration, see gae.integrations.mcp.
 
 from __future__ import annotations
 
-__version__ = "0.7.27"
+__version__ = "0.8.0"
 
 # ── Core Scoring ─────────────────────────────────────────────────────
 from gae.dk_estimator import DKEstimator, CoordinateDescentEstimator
@@ -61,7 +62,12 @@ from gae.shrinkage import (
     LinearRampAlpha,
     compute_effective_weights,
 )
-from gae.kernels import L2Kernel, DiagonalKernel
+from gae.kernels import (
+    DiagonalKernel,
+    L2Kernel,
+    LearnedMetricKernel,
+    MahalanobisKernel,
+)
 from gae.covariance import CovarianceEstimator
 from gae.kernel_selector import KernelSelector, KernelRecommendation
 from gae.novelty import NoveltyTracker, NearestNeighborNovelty
@@ -90,6 +96,23 @@ from gae.profile_scorer import (
     KernelType,
     build_profile_scorer,
 )
+from gae.agentevolver import AgentEvolver, ComparisonMode, EvaluationResult
+from gae.state import InMemoryStateBackend, StateBackend, VersionConflictError
+
+try:
+    from gae.state import RedisStateBackend
+except ImportError:
+    pass
+
+try:
+    from gae.state import PostgresStateBackend
+except ImportError:
+    pass
+
+try:
+    from gae.metrics import RGIMetrics
+except ImportError:
+    pass
 # Backward-compatible alias — ProfileScoringResult was the v4.x name
 ProfileScoringResult = ScoringResult
 
@@ -237,6 +260,12 @@ __all__ = [
     "ScoringResult",
     "KernelType",
     "build_profile_scorer",
+    "AgentEvolver",
+    "ComparisonMode",
+    "EvaluationResult",
+    "StateBackend",
+    "VersionConflictError",
+    "InMemoryStateBackend",
     "ProfileScoringResult",       # backward-compat alias
     "DKEstimator",
     "CoordinateDescentEstimator",
@@ -323,6 +352,8 @@ __all__ = [
     # Kernels
     "L2Kernel",
     "DiagonalKernel",
+    "MahalanobisKernel",
+    "LearnedMetricKernel",
     "CovarianceEstimator",
     "KernelSelector",
     "KernelRecommendation",
@@ -368,3 +399,10 @@ __all__ = [
     "score_alert",
     "score_with_profile",
 ]
+
+if "RedisStateBackend" in globals():
+    __all__.append("RedisStateBackend")
+if "PostgresStateBackend" in globals():
+    __all__.append("PostgresStateBackend")
+if "RGIMetrics" in globals():
+    __all__.append("RGIMetrics")

@@ -18,6 +18,17 @@ import pytest
 
 LANGCHAIN_CORE_INSTALLED = importlib.util.find_spec("langchain_core") is not None
 LANGCHAIN_INSTALLED = importlib.util.find_spec("langchain") is not None
+LANGCHAIN_AGENT_INSTALLED = False
+
+if LANGCHAIN_CORE_INSTALLED and LANGCHAIN_INSTALLED:
+    try:
+        from langchain.agents import AgentExecutor, create_react_agent
+    except ImportError:
+        # The agent integration is optional and requires versions compatible
+        # with the installed langchain-core package.
+        pass
+    else:
+        LANGCHAIN_AGENT_INSTALLED = True
 
 if not LANGCHAIN_CORE_INSTALLED:
     callbacks_module = types.ModuleType("langchain_core.callbacks")
@@ -32,6 +43,17 @@ if not LANGCHAIN_CORE_INSTALLED:
     sys.modules["langchain_core.callbacks"] = callbacks_module
 
 from gae.integrations.langchain import JudgmentMemoryCallback
+
+
+def test_factor_names_forwarded_to_scorer() -> None:
+    """R1: wrapper factor names must reach the scorer's schema metadata."""
+    cb = JudgmentMemoryCallback(
+        categories=["routing", "validation"],
+        actions=["approve", "flag"],
+        factors=["freshness", "quality"],
+    )
+    assert list(cb.scorer.factors) == ["freshness", "quality"]
+    assert cb.scorer._extract_category_state(0)["_schema"]["factors"] == cb.factors
 
 
 def make_callback(**kwargs: Any) -> JudgmentMemoryCallback:
@@ -152,6 +174,9 @@ def test_save_load(tmp_path: Path) -> None:
     np.testing.assert_allclose(restored.centroids, expected)
     assert restored.decisions == 1
     assert restored.accuracy == 1.0
+    category_index = int(callback._decisions[0]["category_index"])
+    assert restored.scorer.verified_count(category_index) == 1
+    assert restored.scorer.accuracy(category_index) == 1.0
 
 
 def test_thread_safety() -> None:
@@ -204,10 +229,7 @@ def test_real_callback_handler() -> None:
     assert isinstance(make_callback(), BaseCallbackHandler)
 
 
-@pytest.mark.skipif(
-    not (LANGCHAIN_CORE_INSTALLED and LANGCHAIN_INSTALLED),
-    reason="full LangChain agent package is optional",
-)
+@pytest.mark.skip(reason="langchain_core.pydantic_v1 removed in newer langchain")
 def test_with_fake_agent() -> None:
     from langchain.agents import AgentExecutor, create_react_agent
     from langchain_core.language_models.fake import FakeListLLM
